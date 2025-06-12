@@ -244,3 +244,8 @@ export function getRandomUserAgent() {
 export function sleep(ms) {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
+
+export function replaceImageProxy(proxy, content) {
+    const str = String(content);
+    return str.replace(/upload.chinaz.com/g, 'pic.chinaz.com').replace(/https:\/\/pic.chinaz.com/g, proxy+'https:\/\/pic.chinaz.com');
+}

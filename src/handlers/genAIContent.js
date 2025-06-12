@@ -27,7 +27,7 @@ export async function handleGenAIPodcastScript(request, env) {
         outputOfCall1 = formData.get('summarizedContent'); // Get summarized content from form data
 
         if (!outputOfCall1) {
-            const errorHtml = generateGenAiPageHtml('生成AI播客脚本出错', '<p><strong>Summarized content is missing.</strong> Please go back and generate AI content first.</p>', dateStr, true, null);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错', '<p><strong>Summarized content is missing.</strong> Please go back and generate AI content first.</p>', dateStr, true, null);
             return new Response(errorHtml, { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
 
@@ -47,7 +47,7 @@ export async function handleGenAIPodcastScript(request, env) {
             console.log("Call 2 (Podcast Formatting) successful. Final output length:", finalAiResponse.length);
         } catch (error) {
             console.error("Error in Chat API Call 2 (Podcast Formatting):", error);
-            const errorHtml = generateGenAiPageHtml('生成AI播客脚本出错(播客文案)', `<p><strong>Failed during podcast formatting:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, null, null, fullPromptForCall2_System, fullPromptForCall2_User);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错(播客文案)', `<p><strong>Failed during podcast formatting:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, null, null, fullPromptForCall2_System, fullPromptForCall2_User);
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
         
@@ -59,6 +59,7 @@ export async function handleGenAIPodcastScript(request, env) {
         let podcastScriptMarkdownContent = `# ${env.PODCAST_TITLE} ${formatDateToChinese(dateStr)}\n\n${removeMarkdownCodeBlock(finalAiResponse)}`;
 
         const successHtml = generateGenAiPageHtml(
+            env, 
             'AI播客脚本',
             escapeHtml(finalAiResponse), 
             dateStr, false, selectedItemsParams,
@@ -74,7 +75,7 @@ export async function handleGenAIPodcastScript(request, env) {
         console.error("Error in /genAIPodcastScript (outer try-catch):", error);
         const pageDateForError = dateStr || getISODate(); 
         const itemsForActionOnError = Array.isArray(selectedItemsParams) ? selectedItemsParams : [];
-        const errorHtml = generateGenAiPageHtml('生成AI播客脚本出错', `<p><strong>Unexpected error:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, pageDateForError, true, itemsForActionOnError, null, null, fullPromptForCall2_System, fullPromptForCall2_User);
+        const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错', `<p><strong>Unexpected error:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, pageDateForError, true, itemsForActionOnError, null, null, fullPromptForCall2_System, fullPromptForCall2_User);
         return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 }
@@ -96,7 +97,7 @@ export async function handleGenAIContent(request, env) {
         selectedItemsParams = formData.getAll('selectedItems');
 
         if (selectedItemsParams.length === 0) {
-            const errorHtml = generateGenAiPageHtml('生成AI日报出错，未选生成条目', '<p><strong>No items were selected.</strong> Please go back and select at least one item.</p>', dateStr, true, null);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错，未选生成条目', '<p><strong>No items were selected.</strong> Please go back and select at least one item.</p>', dateStr, true, null);
             return new Response(errorHtml, { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
         
@@ -159,13 +160,13 @@ export async function handleGenAIContent(request, env) {
         }
 
         if (validItemsProcessedCount === 0) {
-            const errorHtml = generateGenAiPageHtml('生成AI日报出错，可生成条目为空', '<p><strong>Selected items could not be retrieved or resulted in no content.</strong> Please check the data or try different selections.</p>', dateStr, true, selectedItemsParams);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错，可生成条目为空', '<p><strong>Selected items could not be retrieved or resulted in no content.</strong> Please check the data or try different selections.</p>', dateStr, true, selectedItemsParams);
             return new Response(errorHtml, { status: 404, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
         
         //提示词内不能有英文引号，否则会存储数据缺失。
         fullPromptForCall1_System = getSystemPromptSummarizationStepOne();
-        fullPromptForCall1_User = selectedContentItems.join('\n\n---\n\n'); // Keep this for logging/error reporting if needed
+        fullPromptForCall1_User = '\n\n------\n\n'+selectedContentItems.join('\n\n------\n\n')+'\n\n------\n\n'; // Keep this for logging/error reporting if needed
 
         console.log("Call 1 to Chat (Summarization): User prompt length:", fullPromptForCall1_User.length);
         try {
@@ -193,7 +194,7 @@ export async function handleGenAIContent(request, env) {
             console.log("Call 1 (Summarization) successful. Output length:", outputOfCall1.length);
         } catch (error) {
             console.error("Error in Chat API Call 1 (Summarization):", error);
-            const errorHtml = generateGenAiPageHtml('生成AI日报出错(分段处理)', `<p><strong>Failed during summarization:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall1_System, fullPromptForCall1_User);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错(分段处理)', `<p><strong>Failed during summarization:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall1_System, fullPromptForCall1_User);
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
 
@@ -214,7 +215,7 @@ export async function handleGenAIContent(request, env) {
             console.log("Call 2 (Processing Call 1 Output) successful. Output length:", outputOfCall2.length);
         } catch (error) {
             console.error("Error in Chat API Call 2 (Processing Call 1 Output):", error);
-            const errorHtml = generateGenAiPageHtml('生成AI日报出错(格式化)', `<p><strong>Failed during processing of summarized content:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall1_System, fullPromptForCall1_User, fullPromptForCall2_System, fullPromptForCall2_User);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错(格式化)', `<p><strong>Failed during processing of summarized content:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall1_System, fullPromptForCall1_User, fullPromptForCall2_System, fullPromptForCall2_User);
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
         
@@ -229,6 +230,7 @@ export async function handleGenAIContent(request, env) {
         let dailySummaryMarkdownContent = `# ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}\n\n${removeMarkdownCodeBlock(outputOfCall2)}`;
 
         const successHtml = generateGenAiPageHtml(
+            env, 
             'AI日报', // Title for Call 1 page
             escapeHtml(outputOfCall2), 
             dateStr, false, selectedItemsParams,
@@ -245,7 +247,7 @@ export async function handleGenAIContent(request, env) {
         console.error("Error in /genAIContent (outer try-catch):", error);
         const pageDateForError = dateStr || getISODate(); 
         const itemsForActionOnError = Array.isArray(selectedItemsParams) ? selectedItemsParams : [];
-        const errorHtml = generateGenAiPageHtml('生成AI日报出错', `<p><strong>Unexpected error:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, pageDateForError, true, itemsForActionOnError, fullPromptForCall1_System, fullPromptForCall1_User, fullPromptForCall2_System, fullPromptForCall2_User);
+        const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错', `<p><strong>Unexpected error:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, pageDateForError, true, itemsForActionOnError, fullPromptForCall1_System, fullPromptForCall1_User, fullPromptForCall2_System, fullPromptForCall2_User);
         return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 }

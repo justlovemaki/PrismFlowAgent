@@ -1,5 +1,5 @@
 // src/htmlGenerators.js
-import { escapeHtml, formatDateToChinese, convertEnglishQuotesToChinese} from './helpers.js';
+import { escapeHtml, formatDateToChinese, convertEnglishQuotesToChinese, replaceImageProxy} from './helpers.js';
 import { dataSources } from './dataFetchers.js'; // Import dataSources
 
 function generateHtmlListForContentPage(items, dateStr) {
@@ -275,7 +275,8 @@ function generatePromptSectionHtmlForGenAI(systemPrompt, userPrompt, promptTitle
         </div>`;
 }
 
-export function generateGenAiPageHtml(title, bodyContent, pageDate, isErrorPage = false, selectedItemsForAction = null,
+
+export function generateGenAiPageHtml(env, title, bodyContent, pageDate, isErrorPage = false, selectedItemsForAction = null,
                                  systemP1 = null, userP1 = null, systemP2 = null, userP2 = null,
                                  promptsMd = null, dailyMd = null, podcastMd = null) {
 
@@ -303,6 +304,7 @@ export function generateGenAiPageHtml(title, bodyContent, pageDate, isErrorPage 
     let githubSaveFormHtml = '';
     let generatePodcastButtonHtml = ''; 
     let aiDailyAnalysisButtonHtml = '';
+    let outDisplayButtonHtml = '';
 
     // Since commitToGitHub and genAIPodcastScript are now API calls,
     // these forms should be handled by JavaScript on the client side.
@@ -333,6 +335,9 @@ export function generateGenAiPageHtml(title, bodyContent, pageDate, isErrorPage 
         aiDailyAnalysisButtonHtml = `
             <input type="hidden" id="summarizedContentInput" value="${escapeHtml(convertEnglishQuotesToChinese(bodyContent))}">
             <button type="button" class="button-link" onclick="generateAIDailyAnalysis('${escapeHtml(pageDate)}')">AI 日报分析</button>
+        `;
+        outDisplayButtonHtml = `
+            <button type="button" class="button-link" onclick="openContentInNewWindow()" >新窗口预览内容</button>
         `;
     }
 
@@ -377,6 +382,7 @@ export function generateGenAiPageHtml(title, bodyContent, pageDate, isErrorPage 
                 .toggle-prompt-btn:hover { background-color: #5a6268; }
                 .copy-prompt-btn { background-color: #17a2b8; font-size: 0.85rem; padding: 0.4rem 0.8rem;}
                 .copy-prompt-btn:hover { background-color: #138496;}
+                #outContentBox { display: none;}
             </style>
         </head><body><div class="container">
             <div class="header-bar" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
@@ -384,10 +390,12 @@ export function generateGenAiPageHtml(title, bodyContent, pageDate, isErrorPage 
                 <div class="header-actions">
                     ${generatePodcastButtonHtml}
                     ${aiDailyAnalysisButtonHtml}
+                    ${outDisplayButtonHtml}
                 </div>
             </div>
             <p>所选内容日期: <strong>${formatDateToChinese(escapeHtml(pageDate))}</strong></p>
-            <div class="content-box">${bodyContent}</div>
+            <div class="content-box" id="mainContentBox">${bodyContent}</div>
+            <div class="content-box" id="outContentBox">${markdownToHtml(replaceImageProxy(env.IMG_PROXY, bodyContent))}</div>
             ${promptDisplayHtml}
             <div class="navigation-links">
                 <a href="/getContentHtml?date=${encodeURIComponent(pageDate)}" class="button-link">返回内容选择</a>
@@ -397,6 +405,15 @@ export function generateGenAiPageHtml(title, bodyContent, pageDate, isErrorPage 
             </div>
         </div>
         <script>
+            function openContentInNewWindow() {
+                const content = document.getElementById('outContentBox').innerHTML;
+                const newWindow = window.open('', '_blank');
+                newWindow.document.write('<!DOCTYPE html><html><head><title>内容预览</title><style> img{max-width: 100%;} div{max-width: 36%; margin: 0 auto;} body {font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; line-height: 1.6; padding: 1rem; }</style></head><body>');
+                newWindow.document.write('<div>'+content+'</div>');
+                newWindow.document.write('</body></html>');
+                newWindow.document.close();
+            }
+
             function togglePromptVisibility(elementId, buttonElement) {
                 const promptDiv = document.getElementById(elementId);
                 if (promptDiv) {
@@ -496,4 +513,287 @@ export function generateGenAiPageHtml(title, bodyContent, pageDate, isErrorPage 
             }
         </script>
         </body></html>`;
+}
+
+
+/**
+ * 一个功能完善的 Markdown 到 HTML 的转换器。
+ * 
+ * 设计思路:
+ * 1.  **tokenize(markdown)**: 词法分析器，将 Markdown 字符串转换为一个令牌数组。
+ *     - 它按块（block-level elements）处理输入，如段落、标题、列表等。
+ *     - 每个令牌是一个对象，如 { type: 'heading', depth: 1, text: '标题文字' }。
+ *     - 包含内联 Markdown 的文本（如段落内容）会先保持原样，等待下一步处理。
+ * 
+ * 2.  **render(tokens)**: 渲染器，接收令牌数组并输出 HTML。
+ *     - 它遍历令牌，根据令牌的 `type` 生成相应的 HTML 标签。
+ *     - 当遇到需要处理内联元素的令牌时（如 heading, paragraph），它会调用 `parseInline`。
+ * 
+ * 3.  **parseInline(text)**: 内联解析器。
+ *     - 它负责处理行内的 Markdown 语法，如加粗、斜体、链接、图片、行内代码等。
+ *     - 它使用一系列的正则表达式按优先级顺序进行替换。
+ * 
+ * 4.  **辅助函数**: 如 `escapeHtml` 用于防止 XSS 攻击。
+ */
+export function markdownToHtml(markdown) {
+    if (typeof markdown !== 'string') {
+        console.error("Input must be a string.");
+        return '';
+    }
+
+    // 预处理：规范化换行符，确保尾部有换行符以便于正则匹配
+    const preprocessedMarkdown = markdown.replace(/\r\n?/g, '\n').replace(/^(#+\s*[^#\s].*)\s*#+\s*$/gm, '$1') + '\n\n';
+
+    // --- 1. 辅助函数 ---
+    const escapeHtml = (str) => {
+        const map = {
+            '&': '&',
+            '<': '<',
+            '>': '>',
+            '"': '"',
+            "'": '\''
+        };
+        return str.replace(/[&<>"']/g, m => map[m]);
+    };
+
+
+    // --- 2. 内联解析器 (Inline Parser) ---
+    // 按优先级顺序处理内联元素
+    const parseInline = (text) => {
+        let html = text;
+
+        // 图片: ![alt](src "title")
+        html = html.replace(/!\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/g, (_, alt, src, title) => {
+            let titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+            return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"${titleAttr}>`;
+        });
+
+        // 链接: [text](href "title")
+        html = html.replace(/\[([^\]]+)\]\(([^)\s]+)(?:\s+"([^"]+)")?\)/g, (_, text, href, title) => {
+            let titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
+            return `<a href="${escapeHtml(href)}"${titleAttr}>${parseInline(text)}</a>`; // 递归处理链接文本中的内联格式
+        });
+        
+        // 行内代码: `code`
+        html = html.replace(/`([^`]+)`/g, (_, code) => `<code>${escapeHtml(code)}</code>`);
+
+        // 加粗+斜体: ***text*** 或 ___text___
+        html = html.replace(/(\*\*\*|___)(.+?)\1/g, '<strong><em>$2</em></strong>');
+
+        // 加粗: **text** 或 __text__
+        html = html.replace(/(\*\*|__)(.+?)\1/g, '<strong>$2</strong>');
+
+        // 斜体: *text* 或 _text_
+        // html = html.replace(/(\*|_)(.+?)\1/g, '<em>$2</em>');
+
+        // 删除线: ~~text~~
+        html = html.replace(/~~(.+?)~~/g, '<del>$1</del>');
+        
+        // 换行: 行尾两个空格
+        html = html.replace(/ {2,}\n/g, '<br>\n');
+
+        return html;
+    };
+
+
+    // --- 3. 词法分析器 (Tokenizer) ---
+    const tokenize = (md) => {
+        const tokens = [];
+        let src = md;
+
+        // 定义块级元素的正则表达式 (按优先级)
+        const rules = {
+            newline: /^\n+/,
+            code: /^```(\w*)\n([\s\S]+?)\n```\n*/,
+            fences: /^ {0,3}(`{3,}|~{3,})([^`~\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/,
+            heading: /^ {0,3}(#{1,6}) (.*)(?:\n+|$)/,
+            hr: /^ {0,3}((?:- *){3,}|(?:_ *){3,}|(?:\* *){3,})(?:\n+|$)/,
+            blockquote: /^( {0,3}> ?(.*)(?:\n|$))+/,
+            list: /^( {0,3}(?:[*+-]|\d+\.) [^\n]*(?:\n(?!(?:[*+-]|\d+\. |>|#|`{3,}|-{3,}))[^\n]*)*)+/i,
+            html: /^ {0,3}(?:<(script|pre|style|textarea)[\s>][\s\S]*?(?:<\/\1>[^\n]*\n+|$)|<!--[\s\S]*?(?:-->|$)|<\?[\s\S]*?(?:\?>\n*|$)|<![A-Z][\s\S]*?(?:>\n*|$)|<!\[CDATA\[[\s\S]*?(?:\]\]>\n*|$)|<\/?(address|article|aside|base|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|nav|ol|p|param|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul)(?: +|\n|\/?>)[\s\S]*?(?:\n\n+|$)|<(?!script|pre|style|textarea)[a-z][\w-]*\s*\/?>(?=[ \t]*(?:\n|$))[\s\S]*?(?:\n\n+|$))/,
+            setextHeading: /^([^\n]+)\n {0,3}(=+|-+) *(?:\n+|$)/,
+            paragraph: /^([^\n]+(?:\n(?! {0,3}(?:[*+-]|\d+\.) |>|#|`{3,}|-{3,}|={3,})[^\n]+)*)\n*/
+        };
+
+        while (src) {
+            // 1. 空行
+            let cap = rules.newline.exec(src);
+            if (cap) {
+                src = src.substring(cap[0].length);
+                tokens.push({ type: 'space' });
+                continue;
+            }
+            
+            // 2. Fenced Code Block (```)
+            cap = rules.fences.exec(src);
+            if (cap) {
+                src = src.substring(cap[0].length);
+                tokens.push({
+                    type: 'code',
+                    lang: cap[2] ? cap[2].trim() : '',
+                    text: cap[3] || ''
+                });
+                continue;
+            }
+
+            // 3. ATX Heading (# h1)
+            cap = rules.heading.exec(src);
+            if (cap) {
+                src = src.substring(cap[0].length);
+                tokens.push({
+                    type: 'heading',
+                    depth: cap[1].length,
+                    text: cap[2].trim()
+                });
+                continue;
+            }
+            
+            // 4. Setext Heading (underline)
+            cap = rules.setextHeading.exec(src);
+            if(cap) {
+                src = src.substring(cap[0].length);
+                tokens.push({
+                    type: 'heading',
+                    depth: cap[2].charAt(0) === '=' ? 1 : 2,
+                    text: cap[1]
+                });
+                continue;
+            }
+            
+            // 5. Horizontal Rule
+            cap = rules.hr.exec(src);
+            if (cap) {
+                src = src.substring(cap[0].length);
+                tokens.push({ type: 'hr' });
+                continue;
+            }
+            
+            // 6. Blockquote
+            cap = rules.blockquote.exec(src);
+            if (cap) {
+                src = src.substring(cap[0].length);
+                // 移除每行开头的 '>' 和一个可选的空格
+                const bqContent = cap[0].replace(/^ *> ?/gm, '');
+                tokens.push({
+                    type: 'blockquote',
+                    // 递归地对块引用内容进行词法分析
+                    tokens: tokenize(bqContent)
+                });
+                continue;
+            }
+            
+            // 7. List
+            cap = rules.list.exec(src);
+            if (cap) {
+                src = src.substring(cap[0].length);
+                const listStr = cap[0];
+                const ordered = /^\d+\./.test(listStr);
+                const itemRegex = /^( *)([*+-]|\d+\.) +([^\n]*(?:\n(?! {0,3}(?:[*+-]|\d+\.) )[^\n]*)*)/gm;
+                const items = [];
+                let match;
+                while ((match = itemRegex.exec(listStr)) !== null) {
+                    const [, indent, , itemContent] = match;
+                    // 处理嵌套内容，移除当前项的缩进
+                    const nestedContent = itemContent.replace(new RegExp('^' + ' '.repeat(indent.length), 'gm'), '');
+                    items.push({
+                        type: 'list_item',
+                        // 递归地对列表项内容进行词法分析
+                        tokens: tokenize(nestedContent)
+                    });
+                }
+
+                tokens.push({
+                    type: 'list',
+                    ordered: ordered,
+                    items: items
+                });
+                continue;
+            }
+            
+            // 8. Raw HTML
+            cap = rules.html.exec(src);
+            if (cap) {
+                src = src.substring(cap[0].length);
+                tokens.push({
+                    type: 'html',
+                    text: cap[0]
+                });
+                continue;
+            }
+            
+            // 9. Paragraph (作为最后的 fallback)
+            cap = rules.paragraph.exec(src);
+            if (cap) {
+                src = src.substring(cap[0].length);
+                tokens.push({
+                    type: 'paragraph',
+                    text: cap[1].trim()
+                });
+                continue;
+            }
+
+            // 如果没有规则匹配，说明有未知语法，跳过一个字符防止死循环
+            if (src) {
+                console.error(`Infinite loop on: ${src.slice(0, 20)}`);
+                src = src.substring(1);
+            }
+        }
+        return tokens;
+    };
+
+
+    // --- 4. 渲染器 (Renderer) ---
+    const render = (tokens) => {
+        let html = '';
+        
+        for (const token of tokens) {
+            switch (token.type) {
+                case 'space':
+                    break;
+                case 'hr':
+                    html += '<hr>\n';
+                    break;
+                case 'heading':
+                    html += `<h${token.depth}>${parseInline(token.text)}</h${token.depth}>\n`;
+                    break;
+
+                case 'code':
+                    const langClass = token.lang ? ` class="language-${escapeHtml(token.lang)}"` : '';
+                    html += `<pre><code${langClass}>${escapeHtml(token.text)}</code></pre>\n`;
+                    break;
+                
+                case 'blockquote':
+                    // 递归渲染块引用内的令牌
+                    html += `<blockquote>\n${render(token.tokens)}</blockquote>\n`;
+                    break;
+                
+                case 'list':
+                    const tag = 'ul';
+                    let listContent = '';
+                    for (const item of token.items) {
+                        // 递归渲染列表项内的令牌
+                        listContent += `<li>${render(item.tokens).trim()}</li>\n`;
+                    }
+                    html += `<${tag}>\n${listContent}</${tag}>\n`;
+                    break;
+                    
+                case 'paragraph':
+                    html += `<p>${parseInline(token.text)}</p>\n`;
+                    break;
+                    
+                case 'html':
+                    html += token.text;
+                    break;
+                    
+                default:
+                    console.error(`Unknown token type: ${token.type}`);
+            }
+        }
+        return html;
+    };
+    
+    // --- 执行流程 ---
+    const tokens = tokenize(preprocessedMarkdown);
+    const result = render(tokens);
+    return result.trim();
 }

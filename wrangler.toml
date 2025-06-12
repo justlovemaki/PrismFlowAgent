@@ -9,6 +9,7 @@ kv_namespaces = [
 ]
 
 [vars]
+IMG_PROXY = ""  #图片代理链接，用于处理图片不显示
 OPEN_TRANSLATE = "true"
 USE_MODEL_PLATFORM = "GEMINI" #GEMINI, OPEN
 GEMINI_API_KEY = "xxxxxx-xxxxxx"

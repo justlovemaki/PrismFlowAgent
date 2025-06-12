@@ -1,4 +1,6 @@
 // src/auth.js
+import { storeInKV, getFromKV} from './kv.js';
+
 const SESSION_COOKIE_NAME = 'session_id_89757';
 const SESSION_EXPIRATION_SECONDS = 60 * 60; // 1 hour
 
@@ -95,7 +97,7 @@ async function handleLogin(request, env) {
             const sessionId = crypto.randomUUID(); // Generate a simple session ID
             
             // Store sessionId in KV store for persistent sessions
-            // await env.DATA_KV.put(`session:${sessionId}`, 'valid', { expirationTtl: SESSION_EXPIRATION_SECONDS });
+            await storeInKV(env.DATA_KV, `session:${sessionId}`, 'valid', SESSION_EXPIRATION_SECONDS);
 
             const cookie = setSessionCookie(sessionId);
 
@@ -130,11 +132,13 @@ async function isAuthenticated(request, env) {
     const sessionId = sessionCookie.split('=')[1];
 
     // Validate sessionId against KV store
-    // const storedSession = await env.DATA_KV.get(`session:${sessionId}`);
-    // if (storedSession !== 'valid') {
-    //     return { authenticated: false, cookie: null };
-    // }
+    const storedSession = await getFromKV(env.DATA_KV, `session:${sessionId}`);
+    if (storedSession !== 'valid') {
+        return { authenticated: false, cookie: null };
+    }
 
+    // Store sessionId in KV store for persistent sessions
+    await storeInKV(env.DATA_KV, `session:${sessionId}`, 'valid', SESSION_EXPIRATION_SECONDS);
     // Renew the session cookie
     const newCookie = setSessionCookie(sessionId);
     return { authenticated: true, cookie: newCookie };
@@ -149,7 +153,7 @@ async function handleLogout(request, env) {
         if (sessionCookie) {
             const sessionId = sessionCookie.split('=')[1];
             // Delete session from KV store
-            // await env.DATA_KV.delete(`session:${sessionId}`);
+            await env.DATA_KV.delete(`session:${sessionId}`);
         }
     }
 
