@@ -112,6 +112,28 @@ jobs:
           mkdir -p today
           mv book today/
 
+      - name: Download RSS Feed
+        run: |
+          if [ -z "${{ vars.RSS_FEED_URL }}" ]; then
+            echo "警告: RSS_FEED_URL 仓库变量未设置或为空。"
+            echo "跳过下载 RSS Feed。如果需要 rss.xml 文件，请创建一个空的。"
+            # touch rss.xml # 可选：创建一个空的 rss.xml 以避免后续 git add 警告 (如果它不存在)
+                        # 如果 rss.xml 是可选的，并且不存在时不想创建空文件，则移除此行
+                        # 并在 git add 中使用 `git add --ignore-missing rss.xml` 或类似方法
+          else
+            echo "正在从 ${{ vars.RSS_FEED_URL }} 下载 RSS Feed..."
+            # 使用 -q (quiet) 来减少 wget 输出，使用 --show-progress 在必要时显示进度
+            # 使用 --timeout 和 --tries 增加健壮性
+            if wget -O rss.xml "${{ env.RSS_FEED_URL }}" --timeout=30 --tries=3; then
+              echo "RSS Feed 已成功下载到 rss.xml"
+            else
+              echo "错误: 下载 RSS Feed 失败。wget 返回错误码 $?。"
+              # echo "创建一个空的 rss.xml 以允许流程继续。" # 可选：如果下载失败也想继续
+              # touch rss.xml
+              # exit 1 # 如果下载失败是关键错误，则取消注释此行以使工作流失败
+            fi
+          fi
+          
       - name: Commit and push changes
         run: |
           git config --local user.email "action@github.com"
@@ -120,6 +142,11 @@ jobs:
           # 添加所有新生成或修改的文件
           # 包括 src/SUMMARY.md, src/YYYY-MM-DD.md 和 today/book/ 目录
           git add src/SUMMARY.md today/book
+          if [ -f "rss.xml" ]; then
+            git add rss.xml
+          else
+            echo "rss.xml 未找到，不添加到提交中。"
+          fi
 
           # 检查是否有文件变更
           if git diff --staged --quiet; then
