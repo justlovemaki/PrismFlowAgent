@@ -229,7 +229,7 @@ export async function handleGenAIContent(request, env) {
         if (fullPromptForCall2_User) promptsMarkdownContent += `### User Input (Output of Call 1)\n\`\`\`\n${fullPromptForCall2_User}\n\`\`\`\n\n`;
 
         let dailySummaryMarkdownContent = `# ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}\n\n${removeMarkdownCodeBlock(outputOfCall2)}`;
-        if (env.INSERT_FOOT) dailySummaryMarkdownContent += insertFoot() +`\n\n`;
+        if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;
 
         const successHtml = generateGenAiPageHtml(
             env, 

@@ -231,19 +231,28 @@ export function formatDateToChineseWithTime(isoDateString) {
  * @returns {string} 格式化後的日期字串
  */
 export function formatRssDate(date) {
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-  
-    const dayOfWeek = days[date.getUTCDay()];
-    const dayOfMonth = date.getUTCDate();
-    const month = months[date.getUTCMonth()];
-    const year = date.getUTCFullYear();
-    const hours = String(date.getUTCHours()).padStart(2, '0');
-    const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-    const seconds = String(date.getUTCSeconds()).padStart(2, '0');
-  
-    return `${dayOfWeek}, ${dayOfMonth} ${month} ${year} ${hours}:${minutes}:${seconds} GMT`;
+    if (!date) return new Date().toUTCString();
+    
+    return date.toUTCString();
   }
+
+
+  export function formatDateToGMT0WithTime(isoDateString) {
+    if (!isoDateString) return '';
+    const date = new Date(isoDateString);
+    const options = {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false, // 使用24小时制
+        timeZone: 'GMT'
+    };
+    // 使用 'zh-CN' 语言环境以确保中文格式
+    return new Intl.DateTimeFormat('zh-CN', options).format(date);
+}  
 
 /**
  * Converts English double quotes (") to Chinese double quotes (“”).

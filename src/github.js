@@ -75,7 +75,7 @@ export async function getGitHubFileSha(env, filePath) {
  */
 export async function createOrUpdateGitHubFile(env, filePath, content, commitMessage, existingSha = null) {
     const GITHUB_BRANCH = env.GITHUB_BRANCH || 'main';
-    const base64Content = btoa(String.fromCharCode(...new TextEncoder().encode(content)));
+    const base64Content = b64EncodeUnicode(content);
 
     const payload = {
         message: commitMessage,
@@ -102,20 +102,41 @@ export async function getDailyReportContent(env, filePath) {
         throw new Error("GitHub API configuration is missing in environment variables.");
     }
 
-    const rawUrl = `https://raw.githubusercontent.com/${GITHUB_REPO_OWNER}/${GITHUB_REPO_NAME}/${GITHUB_BRANCH}/${filePath}`;
-    console.log(rawUrl)
     try {
-        const response = await fetch(rawUrl);
-        if (!response.ok) {
-            if (response.status === 404) {
-                console.log(`File not found: ${filePath} on branch ${GITHUB_BRANCH}`);
-                return null;
-            }
-            throw new Error(`Failed to fetch file from GitHub: ${response.status} ${response.statusText}`);
-        }
-        return await response.text();
+        const data = await callGitHubApi(env, `/contents/${filePath}?ref=${GITHUB_BRANCH}`);
+        return b64DecodeUnicode(data.content);
     } catch (error) {
         console.error(`Error fetching daily report content from ${rawUrl}:`, error);
         throw error;
+    }
+}
+
+// Base64 encode (UTF-8 safe)
+function b64EncodeUnicode(str) {
+    // Replacing '+' with '-' and '/' with '_' makes it URL-safe, but GitHub API expects standard Base64
+    // Using btoa directly after encodeURIComponent is standard
+    try {
+        return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g,
+            function toSolidBytes(match, p1) {
+                return String.fromCharCode('0x' + p1);
+        }));
+    } catch (e) {
+        console.error("Base64 Encoding Error:", e);
+        showStatus("Error: Could not encode content for GitHub.", true);
+        return null; // Return null on error
+    }
+}
+
+// Base64 decode (UTF-8 safe)
+function b64DecodeUnicode(str) {
+    try {
+        // Standard Base64 decoding
+        return decodeURIComponent(atob(str).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+    } catch(e) {
+        console.error("Base64 Decoding Error:", e);
+        showStatus("Error: Could not decode file content from GitHub.", true);
+        return null; // Return null on error
     }
 }

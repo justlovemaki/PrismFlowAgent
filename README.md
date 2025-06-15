@@ -59,8 +59,13 @@
 
 **在线阅读地址：**
 
-*   🌐 **主站点(GitHub Pages )**：[website-1](https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/today/book/)
-*   📖 **备用站点(Cloudflare)**：[website-2](https://ai-today.justlikemaki.vip/)
+你可以通过以下任一方式访问每日生成的最新资讯：
+
+| 访问方式                | 链接                                                                                             | 状态                                                                      |
+| ----------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| 📡 **RSS 订阅**         | [https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/rss.xml](https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/rss.xml)            | 推荐使用 [Feedly](https://feedly.com/), [Folo](https://app.follow.is/) 等阅读器 |
+| 🌐 **主站点 (GitHub)**  | [https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/today/book/](https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/today/book/) | ✅ 稳定  🚀 速度                                                                  |
+| 📖 **备用站点 (Cloudflare)** | [https://ai-today.justlikemaki.vip/](https://ai-today.justlikemaki.vip/)                          |                                                                   |
 
 **内容成果展示：**
 
@@ -70,7 +75,7 @@
 | ![小酒馆](docs/images/sm2.png "img") | ![情报站](docs/images/sm1.png "img") |
 
 
-**项目截图：**
+**后台项目截图：**
 
 | 网站首页                               | 日报内容                               | 播客脚本                               |
 | -------------------------------------- | -------------------------------------- | -------------------------------------- |

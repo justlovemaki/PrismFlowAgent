@@ -23,7 +23,6 @@ export async function handleRss(request, env) {
 
   const allData = [];
   const today = getShanghaiTime(); // 加上東八時區的偏移量
-  console.log(today);
 
   for (let i = 0; i < days; i++) {
     const date = new Date(today);
@@ -58,7 +57,7 @@ export async function handleRss(request, env) {
     const finalData = Object.values(filteredData);
 
     finalData.forEach(item => {
-      const pubDate = item.published_date ? formatRssDate(new Date(item.published_date)) : formatRssDate(new Date());
+      const pubDate = formatRssDate(new Date(item.published_date));
       const content = minifyHTML(item.content_html);
       const title = item.title || '无标题';
       const link = env.BOOK_LINK+item.link || '#';
@@ -84,7 +83,7 @@ export async function handleRss(request, env) {
     <link>${env.BOOK_LINK}</link>
     <description> 近 ${days} 天的AI日报</description>
     <language>zh-cn</language>
-    <lastBuildDate>${formatRssDate(new Date())}</lastBuildDate>
+    <lastBuildDate>${formatRssDate()}</lastBuildDate>
     <atom:link href="${url.origin}/rss" rel="self" type="application/rss+xml" />
     ${rssItems}
   </channel>

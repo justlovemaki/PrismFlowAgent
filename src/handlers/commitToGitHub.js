@@ -1,5 +1,5 @@
 // src/handlers/commitToGitHub.js
-import { getISODate, formatMarkdownText, replaceImageProxy,formatDateToChineseWithTime } from '../helpers.js';
+import { getISODate, formatMarkdownText, replaceImageProxy,formatDateToGMT0WithTime, sleep } from '../helpers.js';
 import { getGitHubFileSha, createOrUpdateGitHubFile } from '../github.js';
 import { storeInKV } from '../kv.js';
 import { marked } from '../marked.esm.js';
@@ -19,7 +19,7 @@ export async function handleCommitToGitHub(request, env) {
                 link:  '/daily/'+dateStr+'.html',
                 content_html: null,
                 // 可以添加其他相關欄位，例如作者、來源等
-                published_date: formatDateToChineseWithTime(new Date()) // 記錄保存時間
+                published_date: formatDateToGMT0WithTime(new Date()) // 記錄保存時間
         }
 
         const filesToCommit = [];

@@ -172,6 +172,7 @@ TWITTER_FETCH_PAGES = "2"
     *   在您的 GitHub 仓库页面，进入 `Settings` -> `Secrets and variables` -> `Actions`。
     *   在 `Variables` 标签页，点击 `New repository variable`。
     *   创建一个名为 `IMAGE_PROXY_URL` 的变量，值为您的代理服务地址，例如 `https://your-proxy.com/`。
+    *   创建一个名为 `RSS_FEED_URL` 的变量，值为您的后端服务地址，例如 `https://your-backend.com/rss`。
 
 4.  **🚀 触发 Action 并验证**
     *   手动触发一次 `build-daily-book` 工作流，或等待其定时自动执行。
