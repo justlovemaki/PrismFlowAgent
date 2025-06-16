@@ -23,28 +23,28 @@
 
 无论您是信息的消费者、创造者，还是技术的探索者，「AI 洞察日报」都旨在为您创造独特价值。
 
-#### 🧑‍💻 AI 从业者与研究者
+### 🧑‍💻 AI 从业者与研究者
 > **痛点：** 信息海洋无边无际，筛选关键动态、前沿论文和优质开源项目耗时费力。
 
 **解决方案：**
 *   **✅ 自动化精炼：** 为您提炼每日必读核心内容，并由 AI 生成精辟摘要。
 *   **⏱️ 聚焦核心：** 在 **5 分钟内**快速掌握行业脉搏，将宝贵时间投入到真正重要的工作与研究中。
 
-#### 🎙️ 内容创作者与科技媒体人
+### 🎙️ 内容创作者与科技媒体人
 > **痛点：** 持续输出高质量内容，却苦于选题枯竭和素材搜集的繁琐。
 
 **解决方案：**
 *   **💡 灵感永动机：** 聚合最新资讯，成为您源源不断的灵感源泉。
 *   **🚀 内容半成品：** 利用 Gemini 模型生成结构化的**播客/视频口播稿**，稍作修改即可发布，极大提升创作效率。
 
-#### 🛠️ 开发者与技术 DIY 爱好者
+### 🛠️ 开发者与技术 DIY 爱好者
 > **痛点：** 想学习前沿技术栈（Serverless, AI API），但缺少一个完整、有实际价值的项目来练手。
 
 **解决方案：**
 *   **📖 绝佳学习范例：** 本项目架构清晰、代码开源，是学习如何整合云服务与 AI 模型的绝佳范例。
 *   **🎨 打造个人专属：** 轻松 Fork，通过修改订阅源和 Prompt，将其改造为您个人专属的“Web3 洞察”、“游戏快讯”或“投资摘要”等。
 
-#### 🌱 对 AI 充满好奇的终身学习者
+### 🌱 对 AI 充满好奇的终身学习者
 > **痛点：** AI 领域术语繁多、技术迭代快，想要跟上时代步伐却感到无从下手。
 
 **解决方案：**
@@ -57,17 +57,46 @@
 
 我们提供了多个在线访问地址以及项目成果的播客展示。
 
-**在线阅读地址：**
+### **在线阅读地址：**
 
-你可以通过以下任一方式访问每日生成的最新资讯：
+#### 💻 网页直达
 
-| 访问方式                | 链接                                                                                             | 状态                                                                      |
-| ----------------------- | ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------- |
-| 📡 **RSS 订阅**         | [https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/rss.xml](https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/rss.xml)            | 推荐使用 [Feedly](https://feedly.com/), [Folo](https://app.follow.is/) 等阅读器 |
-| 🌐 **主站点 (GitHub)**  | [https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/today/book/](https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/today/book/) | ✅ 稳定  🚀 速度                                                                  |
-| 📖 **备用站点 (Cloudflare)** | [https://ai-today.justlikemaki.vip/](https://ai-today.justlikemaki.vip/)                          |                                                                   |
+无需安装任何应用，直接在浏览器中打开，即刻阅读。
 
-**内容成果展示：**
+*   **主站点 (GitHub Pages)**
+    > [https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/today/book/](https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/today/book/)
+    >
+    > `✅ 推荐` `🚀 访问速度快`
+
+*   **备用站点 (Cloudflare)**
+    > [https://ai-today.justlikemaki.vip/](https://ai-today.justlikemaki.vip/)
+    >
+    > `💡 当主站点访问受阻时，请使用此链接`
+
+---
+
+#### 📡 RSS 订阅
+
+将 AI 资讯聚合到您的个人信息流中，高效获取更新。
+
+*   **订阅链接**
+    > [https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/rss.xml](https://justlovemaki.github.io/CloudFlare-AI-Insight-Daily/rss.xml)
+    >
+    > `⭐ 推荐使用 Feedly, Inoreader, Folo 等现代阅读器订阅`
+
+---
+
+#### 📱 微信公众号
+
+适合移动端阅读，每日推送，不再错过精彩内容。
+
+*   **关注方式**
+    > 打开微信，搜索公众号「**何夕2077**」并关注。
+    >
+    > `💬 欢迎在公众号后台与我们交流`
+
+
+### **内容成果展示：**
 
 | 🎙️ **小宇宙** | 📹 **抖音** |
 | --- | --- |
@@ -75,7 +104,7 @@
 | ![小酒馆](docs/images/sm2.png "img") | ![情报站](docs/images/sm1.png "img") |
 
 
-**后台项目截图：**
+### **后台项目截图：**
 
 | 网站首页                               | 日报内容                               | 播客脚本                               |
 | -------------------------------------- | -------------------------------------- | -------------------------------------- |
