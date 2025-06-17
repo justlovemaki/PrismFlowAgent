@@ -6,7 +6,7 @@ import { generateGenAiPageHtml } from '../htmlGenerators.js';
 import { dataSources } from '../dataFetchers.js'; // Import dataSources
 import { getSystemPromptSummarizationStepOne } from '../prompt/summarizationPromptStepOne.js';
 import { getSystemPromptSummarizationStepTwo } from '../prompt/summarizationPromptStepTwo.js';
-import { getSystemPromptPodcastFormatting } from '../prompt/podcastFormattingPrompt.js';
+import { getSystemPromptPodcastFormatting, getSystemPromptShortPodcastFormatting } from '../prompt/podcastFormattingPrompt.js';
 import { getSystemPromptDailyAnalysis } from '../prompt/dailyAnalysisPrompt.js'; // Import new prompt
 import { insertFoot } from '../foot.js';
 
@@ -17,8 +17,8 @@ export async function handleGenAIPodcastScript(request, env) {
     let outputOfCall1 = null; // This will be the summarized content from Call 1
 
     let userPromptPodcastFormattingData = null;
-    let fullPromptForCall2_System = null;
-    let fullPromptForCall2_User = null;
+    let fullPromptForCall3_System = null;
+    let fullPromptForCall3_User = null;
     let finalAiResponse = null;
 
     try {
@@ -32,40 +32,64 @@ export async function handleGenAIPodcastScript(request, env) {
             return new Response(errorHtml, { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
 
-        userPromptPodcastFormattingData = outputOfCall1;
-        fullPromptForCall2_System = getSystemPromptPodcastFormatting(env);
-        fullPromptForCall2_User = userPromptPodcastFormattingData;
 
-        console.log("Call 2 to Chat (Podcast Formatting): User prompt length:", userPromptPodcastFormattingData.length);
+        fullPromptForCall3_System = getSystemPromptPodcastFormatting(env);
+        userPromptPodcastFormattingData = outputOfCall1;
+        fullPromptForCall3_User = userPromptPodcastFormattingData;
+
+        console.log("Call 3 to Chat (Podcast Formatting): User prompt length:", userPromptPodcastFormattingData.length);
         try {
             let podcastChunks = [];
-            for await (const chunk of callChatAPIStream(env, userPromptPodcastFormattingData, fullPromptForCall2_System)) {
+            for await (const chunk of callChatAPIStream(env, userPromptPodcastFormattingData, fullPromptForCall3_System)) {
                 podcastChunks.push(chunk);
             }
             finalAiResponse = podcastChunks.join('');
             if (!finalAiResponse || finalAiResponse.trim() === "") throw new Error("Chat podcast formatting call returned empty content.");
             finalAiResponse = removeMarkdownCodeBlock(finalAiResponse); // Clean the output
-            console.log("Call 2 (Podcast Formatting) successful. Final output length:", finalAiResponse.length);
+            console.log("Call 3 (Podcast Formatting) successful. Final output length:", finalAiResponse.length);
         } catch (error) {
-            console.error("Error in Chat API Call 2 (Podcast Formatting):", error);
-            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错(播客文案)', `<p><strong>Failed during podcast formatting:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, null, null, fullPromptForCall2_System, fullPromptForCall2_User);
+            console.error("Error in Chat API Call 3 (Podcast Formatting):", error);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错(播客文案)', `<p><strong>Failed during podcast formatting:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, null, null, fullPromptForCall3_System, fullPromptForCall3_User);
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
-        
+        let finalAiResponseOut =  `## Full: Podcast Formatting ` + `\n\n` + finalAiResponse;
         let promptsMarkdownContent = `# Prompts for ${dateStr}\n\n`;
-        promptsMarkdownContent += `## Call 2: Podcast Formatting\n\n`;
-        if (fullPromptForCall2_System) promptsMarkdownContent += `### System Instruction\n\`\`\`\n${fullPromptForCall2_System}\n\`\`\`\n\n`;
-        if (fullPromptForCall2_User) promptsMarkdownContent += `### User Input (Output of Call 1)\n\`\`\`\n${fullPromptForCall2_User}\n\`\`\`\n\n`;
+        promptsMarkdownContent += `## Call 3: Podcast Formatting\n\n`;
+        if (fullPromptForCall3_System) promptsMarkdownContent += `### System One Instruction\n\`\`\`\n${fullPromptForCall3_System}\n\`\`\`\n\n`;
+        
 
-        let podcastScriptMarkdownContent = `# ${env.PODCAST_TITLE} ${formatDateToChinese(dateStr)}\n\n${removeMarkdownCodeBlock(finalAiResponse)}`;
+        let fullPromptForCall4_System = getSystemPromptShortPodcastFormatting(env);
+        console.log("Call 4 to Chat (Podcast Formatting): User prompt length:", userPromptPodcastFormattingData.length);
+        try {
+            let podcastChunks = [];
+            for await (const chunk of callChatAPIStream(env, userPromptPodcastFormattingData, fullPromptForCall4_System)) {
+                podcastChunks.push(chunk);
+            }
+            finalAiResponse = podcastChunks.join('');
+            if (!finalAiResponse || finalAiResponse.trim() === "") throw new Error("Chat podcast formatting call returned empty content.");
+            finalAiResponse = removeMarkdownCodeBlock(finalAiResponse); // Clean the output
+            console.log("Call 4 (Podcast Formatting) successful. Final output length:", finalAiResponse.length);
+        } catch (error) {
+            console.error("Error in Chat API Call 4 (Podcast Formatting):", error);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错(播客文案)', `<p><strong>Failed during podcast formatting:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, null, null, fullPromptForCall3_System, fullPromptForCall3_User);
+            return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        }
+        finalAiResponseOut += `\n\n` + `## Short: Podcast Formatting ` + `\n\n` + finalAiResponse;
+        let fullPromptForCallSystem =  fullPromptForCall3_System + `\n\n` + fullPromptForCall4_System;
+
+        promptsMarkdownContent += `## Call 4: Podcast Formatting\n\n`;
+        if (fullPromptForCall4_System) promptsMarkdownContent += `### System Two Instruction\n\`\`\`\n${fullPromptForCall4_System}\n\`\`\`\n\n`;
+        if (fullPromptForCall3_User) promptsMarkdownContent += `### User Input (Output of Call 1)\n\`\`\`\n${fullPromptForCall3_User}\n\`\`\`\n\n`;
+
+        let podcastScriptMarkdownContent = `# ${env.PODCAST_TITLE} ${formatDateToChinese(dateStr)}\n\n${removeMarkdownCodeBlock(finalAiResponseOut)}`;
 
         const successHtml = generateGenAiPageHtml(
             env, 
             'AI播客脚本',
-            escapeHtml(finalAiResponse), 
+            escapeHtml(finalAiResponseOut), 
             dateStr, false, selectedItemsParams,
             null, null, // No Call 1 prompts for this page
-            fullPromptForCall2_System, fullPromptForCall2_User,
+            fullPromptForCallSystem, fullPromptForCall3_User,
             convertEnglishQuotesToChinese(removeMarkdownCodeBlock(promptsMarkdownContent)), 
             outputOfCall1, // No daily summary for this page
             convertEnglishQuotesToChinese(podcastScriptMarkdownContent)
@@ -76,7 +100,7 @@ export async function handleGenAIPodcastScript(request, env) {
         console.error("Error in /genAIPodcastScript (outer try-catch):", error);
         const pageDateForError = dateStr || getISODate(); 
         const itemsForActionOnError = Array.isArray(selectedItemsParams) ? selectedItemsParams : [];
-        const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错', `<p><strong>Unexpected error:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, pageDateForError, true, itemsForActionOnError, null, null, fullPromptForCall2_System, fullPromptForCall2_User);
+        const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错', `<p><strong>Unexpected error:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, pageDateForError, true, itemsForActionOnError, null, null, fullPromptForCall3_System, fullPromptForCall3_User);
         return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 }

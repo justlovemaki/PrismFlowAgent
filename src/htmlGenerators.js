@@ -242,7 +242,10 @@ export function generateContentSelectionPageHtml(env, dateStr, allData, dataCate
                         event.preventDefault(); // Prevent form submission
                         return false;
                     }
+                    const button = event.currentTarget; // 获取触发事件的按钮
                     if (confirm('确定要从选中内容生成 AI 日报吗？此操作将调用 AI 模型生成内容。')) {
+                        button.innerText = '生成中...'; // 更改按钮文案
+                        //button.disabled = true; // 禁用按钮，防止重复提交
                         return true; // Allow form submission
                     } else {
                         event.preventDefault(); // Prevent form submission
@@ -299,8 +302,9 @@ export function generateGenAiPageHtml(env, title, bodyContent, pageDate, isError
                 ${selectedItemsForAction.map(item => `<input type="hidden" name="selectedItems" value="${escapeHtml(item)}">`).join('')}
                 <input type="hidden" name="summarizedContent" value="${escapeHtml(convertEnglishQuotesToChinese(dailyMd))}">
                 <button type="submit" class="button-link regenerate-button">${isErrorPage ? '重试生成' : '重新生成'}</button>
-            </form>`;
-    }
+            </form>
+        `;
+    } 
 
     let githubSaveFormHtml = '';
     let generatePodcastButtonHtml = ''; 

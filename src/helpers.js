@@ -105,7 +105,10 @@ export function stripHtml(html) {
     });
     processedHtml = processedHtml.replace(/<img[^>]*src="([^"]*)"[^>]*>/gi, '[图片: $1]');
 
-    // 移除所有其他 HTML 標籤，並正規化空白
+    // 处理 video 标签，保留其 src 属性
+    processedHtml = processedHtml.replace(/<video[^>]*src="([^"]*)"[^>]*>.*?<\/video>/gi, '[视频: $1]');
+
+    // 移除所有其他 HTML 标签，并规范化空白
     return processedHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 

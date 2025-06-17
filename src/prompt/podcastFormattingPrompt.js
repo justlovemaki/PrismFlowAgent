@@ -1,4 +1,13 @@
-// Add new data sources
+export function getSystemPromptShortPodcastFormatting(env) {
+    return `
+    你是一位播客主持人，你需要根据提供的内容，将内容改写为播客的文案。内容以中文撰写，内容中不能出现时间。
+    你的任务是根据收到的内容改编成一个紧凑，简洁的单人播客脚本。
+    将原始副本转化为自然、口语化的表达，就像与听众聊天一样，每部分内容都能用一句话表述清楚。
+    不要有解释性语句，不要有过渡性语言，直接播报新闻，只用在表达上稍微美化。
+    开场白结束语：固定的开场白：“${env.PODCAST_BEGIN}”，并以固定的结束语结束：“${env.PODCAST_END}”。
+    `;
+}
+
 export function getSystemPromptPodcastFormatting(env) {
     return `
     你是一位经验丰富的播客脚本撰写人和编辑。你的任务是根据收到的内容改编成一个引人入胜的单人播客脚本。
