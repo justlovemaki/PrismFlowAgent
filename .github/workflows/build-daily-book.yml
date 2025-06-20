@@ -112,6 +112,34 @@ jobs:
           mkdir -p today
           mv book today/
 
+      - name: Add Clarity tracking to book.js
+        run: |
+          TOC_FILE="today/book/book.js"
+          FORWARD_CODE='${{ vars.FORWARD_CODE }}'
+          CLARITY_CODE='${{ vars.CLARITY_CODE }}'
+
+          if [ -f "$TOC_FILE" ]; then
+            echo "Appending Forward tracking code to $TOC_FILE"
+            # Add a newline first
+            echo "" >> "$TOC_FILE"
+            # Append the Forward script
+            echo "$FORWARD_CODE" >> "$TOC_FILE"
+            echo "Forward code appended."
+            
+            echo "Appending Clarity tracking code to $TOC_FILE"
+            # Add a newline first
+            echo "" >> "$TOC_FILE"
+            # Append the Clarity script
+            echo "$CLARITY_CODE" >> "$TOC_FILE"
+            echo "Clarity code appended."
+            # tail -1000 "$TOC_FILE"
+          else
+            echo "Warning: $TOC_FILE not found. Skipping Clarity code injection."
+            # Depending on your needs, you might want to fail the build if toc.js is essential
+            # and not found, e.g., by uncommenting the next line:
+            # exit 1
+          fi
+
       - name: Download RSS Feed
         run: |
           if [ -z "${{ vars.RSS_FEED_URL }}" ]; then

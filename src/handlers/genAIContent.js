@@ -28,7 +28,7 @@ export async function handleGenAIPodcastScript(request, env) {
         outputOfCall1 = formData.get('summarizedContent'); // Get summarized content from form data
 
         if (!outputOfCall1) {
-            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错', '<p><strong>Summarized content is missing.</strong> Please go back and generate AI content first.</p>', dateStr, true, null);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错', '<p><strong>Summarized content is missing.</strong> Please go back and generate AI content first.</p>', dateStr, true, null, null, null, null, null, null, outputOfCall1, null);
             return new Response(errorHtml, { status: 400, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
 
@@ -49,7 +49,7 @@ export async function handleGenAIPodcastScript(request, env) {
             console.log("Call 3 (Podcast Formatting) successful. Final output length:", finalAiResponse.length);
         } catch (error) {
             console.error("Error in Chat API Call 3 (Podcast Formatting):", error);
-            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错(播客文案)', `<p><strong>Failed during podcast formatting:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, null, null, fullPromptForCall3_System, fullPromptForCall3_User);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错(播客文案)', `<p><strong>Failed during podcast formatting:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, null, null, fullPromptForCall3_System, fullPromptForCall3_User, null, outputOfCall1, null);
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
         let finalAiResponseOut =  `## Full: Podcast Formatting ` + `\n\n` + finalAiResponse;
@@ -71,7 +71,7 @@ export async function handleGenAIPodcastScript(request, env) {
             console.log("Call 4 (Podcast Formatting) successful. Final output length:", finalAiResponse.length);
         } catch (error) {
             console.error("Error in Chat API Call 4 (Podcast Formatting):", error);
-            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错(播客文案)', `<p><strong>Failed during podcast formatting:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, null, null, fullPromptForCall3_System, fullPromptForCall3_User);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错(播客文案)', `<p><strong>Failed during podcast formatting:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, null, null, fullPromptForCall3_System, fullPromptForCall3_User, null, outputOfCall1, null);
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
         finalAiResponseOut += `\n\n` + `## Short: Podcast Formatting ` + `\n\n` + finalAiResponse;
