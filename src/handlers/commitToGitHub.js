@@ -1,5 +1,5 @@
 // src/handlers/commitToGitHub.js
-import { getISODate, formatMarkdownText, replaceImageProxy,formatDateToGMT0WithTime, sleep } from '../helpers.js';
+import { getISODate, formatMarkdownText, replaceImageProxy,formatDateToGMT12WithTime } from '../helpers.js';
 import { getGitHubFileSha, createOrUpdateGitHubFile } from '../github.js';
 import { storeInKV } from '../kv.js';
 import { marked } from '../marked.esm.js';
@@ -13,13 +13,15 @@ export async function handleCommitToGitHub(request, env) {
         const dateStr = formData.get('date') || getISODate();
         const dailyMd = formData.get('daily_summary_markdown');
         const podcastMd = formData.get('podcast_script_markdown');
+        // 从 "YYYY-MM-DD" 格式的 dateStr 中提取 "YYYY-MM"
+        const yearMonth = dateStr.substring(0, 7);
         const report = {
                 report_date: dateStr,
                 title: dateStr+'日刊',
-                link:  '/daily/'+dateStr+'.html',
+                link:  '/'+yearMonth+'/'+dateStr+'/',
                 content_html: null,
                 // 可以添加其他相關欄位，例如作者、來源等
-                published_date: formatDateToGMT0WithTime(new Date()) // 記錄保存時間
+                published_date: formatDateToGMT12WithTime(new Date()) // 記錄保存時間
         }
 
         const filesToCommit = [];

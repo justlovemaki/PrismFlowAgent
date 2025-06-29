@@ -253,7 +253,7 @@ export async function handleGenAIContent(request, env) {
         if (fullPromptForCall2_System) promptsMarkdownContent += `### System Instruction\n\`\`\`\n${fullPromptForCall2_System}\n\`\`\`\n\n`;
         if (fullPromptForCall2_User) promptsMarkdownContent += `### User Input (Output of Call 1)\n\`\`\`\n${fullPromptForCall2_User}\n\`\`\`\n\n`;
 
-        let dailySummaryMarkdownContent = `# ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}` + '\n\n';
+        let dailySummaryMarkdownContent = `## ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}` + '\n\n';
         dailySummaryMarkdownContent += '> '+ env.DAILY_TITLE_MIN + '\n\n';
         let outputOfCall3 = null;
         console.log("Call 3 to Chat (Processing Call 2 Output): User prompt length:", outputOfCall2.length);
@@ -271,7 +271,7 @@ export async function handleGenAIContent(request, env) {
             const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错(摘要)', `<p><strong>Failed during processing of summarized content:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall1_System, fullPromptForCall1_User, fullPromptForCall2_System, fullPromptForCall2_User);
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
-        dailySummaryMarkdownContent += '\n\n#### **AI内容摘要**\n\n```\n' + outputOfCall3 + '\n```\n\n';
+        dailySummaryMarkdownContent += '\n\n### **AI内容摘要**\n\n```\n' + outputOfCall3 + '\n```\n\n';
 
         dailySummaryMarkdownContent += `\n\n${removeMarkdownCodeBlock(outputOfCall2)}`;
         if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;

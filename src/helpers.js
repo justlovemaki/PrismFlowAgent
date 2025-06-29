@@ -257,6 +257,23 @@ export function formatRssDate(date) {
     return new Intl.DateTimeFormat('zh-CN', options).format(date);
 }  
 
+  export function formatDateToGMT12WithTime(isoDateString) {
+    if (!isoDateString) return '';
+    const date = new Date(isoDateString);
+    const options = {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false, // 使用24小时制
+        timeZone: 'Asia/Kamchatka'// 指定东12时区
+    };
+    // 使用 'zh-CN' 语言环境以确保中文格式
+    return new Intl.DateTimeFormat('zh-CN', options).format(date);
+}  
+
 /**
  * Converts English double quotes (") to Chinese double quotes (“”).
  * @param {string} text - The input string.
