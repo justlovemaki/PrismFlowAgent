@@ -1,19 +1,21 @@
 import { getRandomUserAgent, sleep, isDateWithinLastDays, stripHtml, formatDateToChineseWithTime, escapeHtml} from '../helpers';
+import { callChatAPI } from '../chatapi.js';
+import { removeMarkdownCodeBlock } from '../helpers.js';
 
-const TwitterDataSource = {
+const RedditDataSource = {
     async fetch(env, foloCookie) {
-        const listId = env.TWITTER_LIST_ID;
-        const fetchPages = parseInt(env.TWITTER_FETCH_PAGES || '3', 10);
-        const allTwitterItems = [];
+        const listId = env.REDDIT_LIST_ID;
+        const fetchPages = parseInt(env.REDDIT_FETCH_PAGES || '3', 10);
+        const allRedditItems = [];
         const filterDays = parseInt(env.FOLO_FILTER_DAYS || '3', 10);
 
         if (!listId) {
-            console.error('TWITTER_LIST_ID is not set in environment variables.');
+            console.error('REDDIT_LIST_ID is not set in environment variables.');
             return {
                 version: "https://jsonfeed.org/version/1.1",
-                title: "Twitter Feeds",
-                home_page_url: "https://x.com/",
-                description: "Aggregated Twitter feeds from various users",
+                title: "Reddit Feeds",
+                home_page_url: "https://www.reddit.com/",
+                description: "Aggregated Reddit feeds from various subreddits/users",
                 language: "zh-cn",
                 items: []
             };
@@ -40,7 +42,6 @@ const TwitterDataSource = {
                 'x-app-version': '0.4.9',
             };
 
-            // 直接使用传入的 foloCookie
             if (foloCookie) {
                 headers['Cookie'] = foloCookie;
             }
@@ -56,7 +57,7 @@ const TwitterDataSource = {
             }
 
             try {
-                console.log(`Fetching Twitter data, page ${i + 1}...`);
+                console.log(`Fetching Reddit data, page ${i + 1}...`);
                 const response = await fetch(env.FOLO_DATA_API, {
                     method: 'POST',
                     headers: headers,
@@ -64,43 +65,104 @@ const TwitterDataSource = {
                 });
 
                 if (!response.ok) {
-                    console.error(`Failed to fetch Twitter data, page ${i + 1}: ${response.statusText}`);
+                    console.error(`Failed to fetch Reddit data, page ${i + 1}: ${response.statusText}`);
                     break;
                 }
                 const data = await response.json();
                 if (data && data.data && data.data.length > 0) {
                     const filteredItems = data.data.filter(entry => isDateWithinLastDays(entry.entries.publishedAt, filterDays));
-                    allTwitterItems.push(...filteredItems.map(entry => ({
+                    allRedditItems.push(...filteredItems.map(entry => ({
                         id: entry.entries.id,
                         url: entry.entries.url,
                         title: entry.entries.title,
                         content_html: entry.entries.content,
                         date_published: entry.entries.publishedAt,
                         authors: [{ name: entry.entries.author }],
-                        source: entry.feeds.title && entry.feeds.title.startsWith('Twitter') ? `twitter-${entry.entries.author}` : `${entry.feeds.title} - ${entry.entries.author}` ,
+                        source: `${entry.feeds.title}` ,
                     })));
                     publishedAfter = data.data[data.data.length - 1].entries.publishedAt;
                 } else {
-                    console.log(`No more data for Twitter, page ${i + 1}.`);
+                    console.log(`No more data for Reddit, page ${i + 1}.`);
                     break;
                 }
             } catch (error) {
-                console.error(`Error fetching Twitter data, page ${i + 1}:`, error);
+                console.error(`Error fetching Reddit data, page ${i + 1}:`, error);
                 break;
             }
 
-            // Random wait time between 0 and 5 seconds to avoid rate limiting
             await sleep(Math.random() * 5000);
         }
 
-        return {
+        const redditData = {
             version: "https://jsonfeed.org/version/1.1",
-            title: "Twitter Feeds",
-            home_page_url: "https://x.com/",
-            description: "Aggregated Twitter feeds from various users",
+            title: "Reddit Feeds",
+            home_page_url: "https://www.reddit.com/",
+            description: "Aggregated Reddit feeds from various subreddits/users",
             language: "zh-cn",
-            items: allTwitterItems
+            items: allRedditItems
         };
+
+        if (redditData.items.length === 0) {
+            console.log("No reddit posts found for today or after filtering.");
+            return redditData;
+        }
+
+        if (!env.OPEN_TRANSLATE === "true") {
+            console.warn("Skipping reddit translations.");
+            redditData.items = redditData.items.map(item => ({
+                ...item,
+                title_zh: item.title || ""
+            }));
+            return redditData;
+        }
+
+        const itemsToTranslate = redditData.items.map((item, index) => ({
+            id: index,
+            original_title: item.title || ""
+        }));
+
+        const hasContentToTranslate = itemsToTranslate.some(item => item.original_title.trim() !== "");
+        if (!hasContentToTranslate) {
+            console.log("No non-empty reddit titles to translate for today's posts.");
+            redditData.items = redditData.items.map(item => ({ ...item, title_zh: item.title || "" }));
+            return redditData;
+        }
+
+        const promptText = `You will be given a JSON array of reddit data objects. Each object has an "id" and "original_title".
+Translate "original_title" into Chinese.
+Return a JSON array of objects. Each output object MUST have:
+- "id": The same id from the input.
+- "title_zh": Chinese translation of "original_title". Empty if original is empty.
+Input: ${JSON.stringify(itemsToTranslate)}
+Respond ONLY with the JSON array.`;
+
+        let translatedItemsMap = new Map();
+        try {
+            console.log(`Requesting translation for ${itemsToTranslate.length} reddit titles for today.`);
+            const chatResponse = await callChatAPI(env, promptText);
+            const parsedTranslations = JSON.parse(removeMarkdownCodeBlock(chatResponse));
+
+            if (parsedTranslations) {
+                parsedTranslations.forEach(translatedItem => {
+                    if (translatedItem && typeof translatedItem.id === 'number' &&
+                        typeof translatedItem.title_zh === 'string') {
+                        translatedItemsMap.set(translatedItem.id, translatedItem);
+                    }
+                });
+            }
+        } catch (translationError) {
+            console.error("Failed to translate reddit titles in batch:", translationError.message);
+        }
+
+        redditData.items = redditData.items.map((originalItem, index) => {
+            const translatedData = translatedItemsMap.get(index);
+            return {
+                ...originalItem,
+                title_zh: translatedData ? translatedData.title_zh : (originalItem.title || "")
+            };
+        });
+
+        return redditData;
     },
 
     transform(rawData, sourceType) {
@@ -112,11 +174,11 @@ const TwitterDataSource = {
             id: item.id,
             type: sourceType,
             url: item.url,
-            title: item.title,
+            title: item.title_zh || item.title, // Use translated title if available
             description: stripHtml(item.content_html || ""),
             published_date: item.date_published,
             authors: item.authors ? item.authors.map(author => author.name).join(', ') : 'Unknown',
-            source: item.source || 'twitter', // Use existing source or default
+            source: item.source || 'reddit',
             details: {
                 content_html: item.content_html || ""
             }
@@ -130,9 +192,9 @@ const TwitterDataSource = {
             <div class="content-html">
                 ${item.details.content_html || '无内容。'}
             </div>
-            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">查看推文</a>
+            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">查看 Reddit 帖子</a>
         `;
     }
 };
 
-export default TwitterDataSource;
+export default RedditDataSource;

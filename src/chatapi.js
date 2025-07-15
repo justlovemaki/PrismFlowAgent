@@ -32,7 +32,7 @@ async function callGeminiChatAPI(env, promptText, systemPromptText = null) {
     }
 
     try {
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -137,7 +137,7 @@ async function* callGeminiChatAPIStream(env, promptText, systemPromptText = null
 
     let response;
     try {
-        response = await fetch(url, {
+        response = await fetchWithTimeout(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -334,7 +334,7 @@ async function callOpenAIChatAPI(env, promptText, systemPromptText = null) {
     };
 
     try {
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -413,7 +413,7 @@ async function* callOpenAIChatAPIStream(env, promptText, systemPromptText = null
 
     let response;
     try {
-        response = await fetch(url, {
+        response = await fetchWithTimeout(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -564,4 +564,35 @@ export async function* callChatAPIStream(env, promptText, systemPromptText = nul
     } else { // Default to Gemini
         yield* callGeminiChatAPIStream(env, promptText, systemPromptText);
     }
+}
+
+
+/**
+ * 带有超时功能的 fetch 封装
+ * @param {string} resource fetch 的请求 URL
+ * @param {object} options fetch 的配置对象
+ * @param {number} timeout 超时时间，单位毫秒
+ * @returns {Promise<Response>}
+ */
+async function fetchWithTimeout(resource, options = {}, timeout = 60000) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+
+  try {
+    const response = await fetch(resource, {
+      ...options,
+      signal: controller.signal  // 关联 AbortController
+    });
+    return response;
+  } catch (error) {
+    // 当 abort() 被调用时，fetch 会抛出一个 AbortError
+    if (error.name === 'AbortError') {
+      throw new Error('Request timed out');
+    }
+    // 其他网络错误等
+    throw error;
+  } finally {
+    // 清除计时器，防止内存泄漏
+    clearTimeout(id);
+  }
 }

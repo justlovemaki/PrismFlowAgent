@@ -28,7 +28,7 @@ export async function handleCommitToGitHub(request, env) {
 
         if (dailyMd) {
             filesToCommit.push({ path: `daily/${dateStr}.md`, content: formatMarkdownText(dailyMd), description: "Daily Summary File" });
-            report.content_html = marked.parse(formatMarkdownText(replaceImageProxy(env.IMG_PROXY, dailyMd)));
+            report.content_html = marked.parse(formatMarkdownText(env.IMG_PROXY, dailyMd));
             storeInKV(env.DATA_KV, `${dateStr}-report`, report);
         }
         if (podcastMd) {
