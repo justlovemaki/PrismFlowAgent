@@ -157,6 +157,45 @@ jobs:
             echo "Warning: $TOC_FILE not found. Skipping tracking code injection."
           fi
 
+      - name: Trigger RSS Data Write (2 attempts, 3 retries each)
+        run: |
+          # 检查 `WRITE_RSS_URL` 变量是否已设置
+          if [ -z "${{ vars.WRITE_RSS_URL }}" ]; then
+            echo "警告: WRITE_RSS_URL 仓库变量未设置或为空，跳过此步骤。"
+            exit 0
+          fi
+
+          # 设置时区为 Asia/Shanghai (东八区)，并获取 YYYY-MM-DD 格式的日期
+          TODAY_DATE=$(TZ="Asia/Shanghai" date +%Y-%m-%d)
+          FULL_URL="${{ vars.WRITE_RSS_URL }}?date=$TODAY_DATE"
+          
+          echo "将向以下 URL 发送2次请求（每次请求若失败则重试3次）:"
+          echo "$FULL_URL"
+          
+          # 循环两次，发送两次独立的请求
+          for i in 1 2
+          do
+            echo "---"
+            echo "正在发送第 $i 次请求..."
+            
+            # 使用 curl 发起请求，并配置重试逻辑
+            # -f: 在遇到服务器HTTP错误时，以错误码退出（对CI/CD很重要）
+            # -sS: 静默模式，但仍然显示错误信息
+            # --retry 3: 如果命令失败，则最多重试3次
+            # --retry-delay 5: 每次重试之间等待5秒
+            # --retry-connrefused: 在“连接被拒绝”时也进行重试，增强网络抖动的鲁棒性
+            if curl -fsS --retry 3 --retry-delay 5 --retry-connrefused "$FULL_URL"; then
+              echo "第 $i 次请求成功。"
+            else
+              echo "错误：第 $i 次请求在3次重试后仍然失败。"
+              # 使整个步骤失败
+              exit 1
+            fi
+          done
+          
+          echo "---"
+          echo "两次请求均已成功发送。"
+          
       - name: Download RSS Feed
         run: |
           if [ -z "${{ vars.RSS_FEED_URL }}" ]; then
