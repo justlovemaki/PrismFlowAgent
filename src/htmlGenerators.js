@@ -282,7 +282,8 @@ function generatePromptSectionHtmlForGenAI(systemPrompt, userPrompt, promptTitle
 
 export function generateGenAiPageHtml(env, title, bodyContent, pageDate, isErrorPage = false, selectedItemsForAction = null,
                                  systemP1 = null, userP1 = null, systemP2 = null, userP2 = null,
-                                 promptsMd = null, dailyMd = null, podcastMd = null) {
+                                 promptsMd = null, dailyMd = null, podcastMd = null, readGithub = null) {
+
 
     let actionButtonHtml = '';
     // Regenerate button for AI Content Summary page
@@ -333,6 +334,7 @@ export function generateGenAiPageHtml(env, title, bodyContent, pageDate, isError
         generatePodcastButtonHtml = `
             <form action="/genAIPodcastScript" method="POST" style="display: inline-block; margin-left: 0.5rem;">
                 <input type="hidden" name="date" value="${escapeHtml(pageDate)}">
+                <input type="hidden" name="readGithub" value="${readGithub}">
                 ${selectedItemsForAction.map(item => `<input type="hidden" name="selectedItems" value="${escapeHtml(item)}">`).join('')}
                 <input type="hidden" name="summarizedContent" value="${escapeHtml(convertEnglishQuotesToChinese(bodyContent))}">
                 <button type="submit" class="button-link">生成播客脚本</button>
@@ -347,7 +349,7 @@ export function generateGenAiPageHtml(env, title, bodyContent, pageDate, isError
     }
 
     let promptDisplayHtml = '';
-    if (title === 'AI日报') {
+    if (title === 'AI日报' || title.includes('生成AI日报出错(')) {
         if (systemP1 || userP1) {
             promptDisplayHtml = `
                 <div style="margin-top: 1.5rem;">

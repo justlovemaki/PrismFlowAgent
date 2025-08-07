@@ -32,7 +32,7 @@ async function callGeminiChatAPI(env, promptText, systemPromptText = null) {
     }
 
     try {
-        const response = await fetchWithTimeout(url, {
+        const response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -126,6 +126,10 @@ async function* callGeminiChatAPIStream(env, promptText, systemPromptText = null
         contents: [{
             parts: [{ text: promptText }]
         }],
+        generationConfig: {
+            temperature: 1,
+            topP: 0.95
+        }
     };
 
     if (systemPromptText && typeof systemPromptText === 'string' && systemPromptText.trim() !== '') {
@@ -137,7 +141,7 @@ async function* callGeminiChatAPIStream(env, promptText, systemPromptText = null
 
     let response;
     try {
-        response = await fetchWithTimeout(url, {
+        response = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
@@ -334,7 +338,7 @@ async function callOpenAIChatAPI(env, promptText, systemPromptText = null) {
     };
 
     try {
-        const response = await fetchWithTimeout(url, {
+        const response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -413,7 +417,7 @@ async function* callOpenAIChatAPIStream(env, promptText, systemPromptText = null
 
     let response;
     try {
-        response = await fetchWithTimeout(url, {
+        response = await fetch(url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -574,7 +578,7 @@ export async function* callChatAPIStream(env, promptText, systemPromptText = nul
  * @param {number} timeout 超时时间，单位毫秒
  * @returns {Promise<Response>}
  */
-async function fetchWithTimeout(resource, options = {}, timeout = 60000) {
+async function fetchWithTimeout(resource, options = {}, timeout = 180000) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeout);
 

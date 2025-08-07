@@ -1,19 +1,20 @@
-import { getRandomUserAgent, sleep, isDateWithinLastDays, stripHtml, formatDateToChineseWithTime, escapeHtml} from '../helpers';
+import { getRandomUserAgent, sleep, isDateWithinLastDays, stripHtml, formatDateToChineseWithTime, escapeHtml } from '../helpers';
 
-const RedditDataSource = {
+const NewsAggregatorDataSource = {
+    type: 'news-aggregator',
     async fetch(env, foloCookie) {
-        const listId = env.REDDIT_LIST_ID;
-        const fetchPages = parseInt(env.REDDIT_FETCH_PAGES || '3', 10);
-        const allRedditItems = [];
+        const listId = env.NEWS_AGGREGATOR_LIST_ID;
+        const fetchPages = parseInt(env.NEWS_AGGREGATOR_FETCH_PAGES || '1', 10);
+        const allNewsItems = [];
         const filterDays = parseInt(env.FOLO_FILTER_DAYS || '3', 10);
 
         if (!listId) {
-            console.error('REDDIT_LIST_ID is not set in environment variables.');
+            console.warn('NEWS_AGGREGATOR_LIST_ID is not set in environment variables. Skipping news aggregator fetch.');
             return {
                 version: "https://jsonfeed.org/version/1.1",
-                title: "Reddit Feeds",
-                home_page_url: "https://www.reddit.com/",
-                description: "Aggregated Reddit feeds from various subreddits/users",
+                title: "Aggregated News",
+                home_page_url: "https://example.com/news",
+                description: "Aggregated news from various sources",
                 language: "zh-cn",
                 items: []
             };
@@ -55,7 +56,7 @@ const RedditDataSource = {
             }
 
             try {
-                console.log(`Fetching Reddit data, page ${i + 1}...`);
+                console.log(`Fetching News Aggregator data, page ${i + 1}...`);
                 const response = await fetch(env.FOLO_DATA_API, {
                     method: 'POST',
                     headers: headers,
@@ -63,54 +64,42 @@ const RedditDataSource = {
                 });
 
                 if (!response.ok) {
-                    console.error(`Failed to fetch Reddit data, page ${i + 1}: ${response.statusText}`);
+                    console.error(`Failed to fetch News Aggregator data, page ${i + 1}: ${response.statusText}`);
                     break;
                 }
                 const data = await response.json();
                 if (data && data.data && data.data.length > 0) {
                     const filteredItems = data.data.filter(entry => isDateWithinLastDays(entry.entries.publishedAt, filterDays));
-                    allRedditItems.push(...filteredItems.map(entry => ({
+                    allNewsItems.push(...filteredItems.map(entry => ({
                         id: entry.entries.id,
                         url: entry.entries.url,
                         title: entry.entries.title,
                         content_html: entry.entries.content,
                         date_published: entry.entries.publishedAt,
                         authors: [{ name: entry.entries.author }],
-                        source: `${entry.feeds.title}` ,
+                        source: entry.entries.author ? `${entry.feeds.title} - ${entry.entries.author}` : entry.feeds.title,
                     })));
                     publishedAfter = data.data[data.data.length - 1].entries.publishedAt;
                 } else {
-                    console.log(`No more data for Reddit, page ${i + 1}.`);
+                    console.log(`No more data for News Aggregator, page ${i + 1}.`);
                     break;
                 }
             } catch (error) {
-                console.error(`Error fetching Reddit data, page ${i + 1}:`, error);
+                console.error(`Error fetching News Aggregator data, page ${i + 1}:`, error);
                 break;
             }
 
             await sleep(Math.random() * 5000);
         }
 
-        const redditData = {
+        return {
             version: "https://jsonfeed.org/version/1.1",
-            title: "Reddit Feeds",
-            home_page_url: "https://www.reddit.com/",
-            description: "Aggregated Reddit feeds from various subreddits/users",
+            title: "Aggregated News",
+            home_page_url: "https://example.com/news",
+            description: "Aggregated news from various sources",
             language: "zh-cn",
-            items: allRedditItems
+            items: allNewsItems
         };
-
-        if (redditData.items.length === 0) {
-            console.log("No reddit posts found for today or after filtering.");
-            return redditData;
-        }
-
-        redditData.items = redditData.items.map(item => ({
-            ...item,
-            title_zh: item.title || ""
-        }));
-
-        return redditData;
     },
 
     transform(rawData, sourceType) {
@@ -126,7 +115,7 @@ const RedditDataSource = {
             description: stripHtml(item.content_html || ""),
             published_date: item.date_published,
             authors: item.authors ? item.authors.map(author => author.name).join(', ') : 'Unknown',
-            source: item.source || 'reddit',
+            source: item.source || 'Aggregated News',
             details: {
                 content_html: item.content_html || ""
             }
@@ -137,12 +126,10 @@ const RedditDataSource = {
         return `
             <strong>${escapeHtml(item.title)}</strong><br>
             <small>来源: ${escapeHtml(item.source || '未知')} | 发布日期: ${formatDateToChineseWithTime(item.published_date)}</small>
-            <div class="content-html">
-                ${item.details.content_html || '无内容。'}
-            </div>
-            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">查看 Reddit 帖子</a>
+            <div class="content-html">${item.details.content_html || '无内容。'}</div>
+            <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">阅读更多</a>
         `;
     }
 };
 
-export default RedditDataSource;
+export default NewsAggregatorDataSource;

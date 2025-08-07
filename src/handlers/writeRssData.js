@@ -1,4 +1,4 @@
-import { replaceImageProxy, formatMarkdownText, formatDateToGMT12WithTime } from '../helpers.js';
+import { replaceImageProxy, formatMarkdownText, formatDateToGMT8WithTime, removeMarkdownCodeBlock } from '../helpers.js';
 import { getDailyReportContent } from '../github.js';
 import { storeInKV } from '../kv.js';
 import { marked } from '../marked.esm.js';
@@ -26,7 +26,7 @@ export async function handleWriteRssData(request, env) {
         }
         console.log(`[writeRssData] Successfully retrieved content for ${path}. Content length: ${content.length}`);
 
-        //content = extractContentFromSecondHash(content);
+        // content = extractContentFromSecondHash(content);
         // 从 "YYYY-MM-DD" 格式的 dateStr 中提取 "YYYY-MM"
         const yearMonth = dateStr.substring(0, 7);
         const report = {
@@ -35,9 +35,11 @@ export async function handleWriteRssData(request, env) {
             link:  '/'+yearMonth+'/'+dateStr+'/',
             content_html: null,
             // 可以添加其他相關欄位，例如作者、來源等
-            published_date: formatDateToGMT12WithTime(new Date()) // 記錄保存時間
+            published_date: formatDateToGMT8WithTime(new Date()) // 記錄保存時間
         }
         report.content_html = marked.parse(formatMarkdownText(replaceImageProxy(env, content)));
+        //report.content_html = marked.parse(formatMarkdownText(await generateAIContent(env, content)));
+
         
         const kvKey = `${dateStr}-report`;
         console.log(`[writeRssData] Preparing to store report in KV. Key: ${kvKey}, Report object:`, JSON.stringify(report).substring(0, 200) + '...'); // Log first 200 chars
@@ -64,11 +66,12 @@ export function extractContentFromSecondHash(content) {
     const parts = content.split('###');
     if (parts.length > 2) {
         // 原始逻辑：重新组合从第二个 ### 开始的所有部分
-        const newcontent = '###' + parts.slice(2).join('###');
-        const lastHashIndex = newcontent.lastIndexOf('###');
+        let newcontent = '###' + parts.slice(2).join('###');
+        const lastHashIndex = newcontent.lastIndexOf('AI资讯日报语音版');
         if (lastHashIndex !== -1) {
-            return newcontent.substring(0, lastHashIndex);
+            newcontent = newcontent.substring(0, lastHashIndex-10);
         }
+        return newcontent;
     }
     return content; // 如果没有找到 ### 或不符合上述条件，则返回原始内容
 }
@@ -87,8 +90,8 @@ export async function generateAIContent(env, promptText) {
     try {
         let result = await callChatAPI(env, promptText, getSummarizationSimplifyPrompt());
         console.log(`[generateAIContent] AI model returned content. Length: ${result.length}`);
-
-        result += "\n\n </br>"+env.INSERT_APP_URL;
+        result = removeMarkdownCodeBlock(result);
+        result += "\n\n</br>"+env.INSERT_APP_URL;
         return result;
     } catch (error) {
         console.error('[generateAIContent] Error calling AI model:', error.message, error.stack);

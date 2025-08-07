@@ -1,19 +1,16 @@
 // src/dataFetchers.js
-import AibaseDataSource from './dataSources/aibase.js';
+import NewsAggregatorDataSource from './dataSources/newsAggregator.js';
 import GithubTrendingDataSource from './dataSources/github-trending.js';
-import HuggingfacePapersDataSource from './dataSources/huggingface-papers.js';
-import XinZhiYuanDataSource from './dataSources/xinzhiyuan.js';
-import QBitDataSource from './dataSources/qbit.js';
-import JiqizhixinDataSource from './dataSources/jiqizhixin.js';
-import XiaohuDataSource from './dataSources/xiaohu.js';
+import PapersDataSource from './dataSources/papers.js';
 import TwitterDataSource from './dataSources/twitter.js';
 import RedditDataSource from './dataSources/reddit.js';
 
+
 // Register data sources as arrays to support multiple sources per type
 export const dataSources = {
-    news: { name: '新闻', sources: [AibaseDataSource, XiaohuDataSource, QBitDataSource, XinZhiYuanDataSource] },
+    news: { name: '新闻', sources: [NewsAggregatorDataSource] },
     project: { name: '项目', sources: [GithubTrendingDataSource] },
-    paper: { name: '论文', sources: [HuggingfacePapersDataSource, JiqizhixinDataSource] },
+    paper: { name: '论文', sources: [PapersDataSource] },
     socialMedia: { name: '社交平台', sources: [TwitterDataSource, RedditDataSource] },
     // Add new data sources here as arrays, e.g.,
     // newType: { name: '新类型', sources: [NewTypeDataSource1, NewTypeDataSource2] },

@@ -4,12 +4,14 @@ import { getFromKV } from '../kv.js';
 import { callChatAPIStream } from '../chatapi.js';
 import { generateGenAiPageHtml } from '../htmlGenerators.js';
 import { dataSources } from '../dataFetchers.js'; // Import dataSources
-import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepOne";
+import { getSystemPromptSummarizationStepOne } from "../prompt/summarizationPromptStepZero";
 import { getSystemPromptSummarizationStepTwo } from "../prompt/summarizationPromptStepTwo";
 import { getSystemPromptSummarizationStepThree } from "../prompt/summarizationPromptStepThree";
 import { getSystemPromptPodcastFormatting, getSystemPromptShortPodcastFormatting } from '../prompt/podcastFormattingPrompt.js';
 import { getSystemPromptDailyAnalysis } from '../prompt/dailyAnalysisPrompt.js'; // Import new prompt
 import { insertFoot } from '../foot.js';
+import { insertAd } from '../ad.js';
+import { getDailyReportContent } from '../github.js'; // 导入 getDailyReportContent
 
 export async function handleGenAIPodcastScript(request, env) {
     let dateStr;
@@ -26,7 +28,25 @@ export async function handleGenAIPodcastScript(request, env) {
         formData = await request.formData();
         dateStr = formData.get('date');
         selectedItemsParams = formData.getAll('selectedItems');
-        outputOfCall1 = formData.get('summarizedContent'); // Get summarized content from form data
+        const readGithub = formData.get('readGithub') === 'true';
+
+        if (readGithub) {
+            const filePath = `daily/${dateStr}.md`;
+            console.log(`从 GitHub 读取文件: ${filePath}`);
+            try {
+                outputOfCall1 = await getDailyReportContent(env, filePath);
+                if (!outputOfCall1) {
+                    throw new Error(`从 GitHub 读取文件 ${filePath} 失败或内容为空。`);
+                }
+                console.log(`成功从 GitHub 读取文件，内容长度: ${outputOfCall1.length}`);
+            } catch (error) {
+                console.error(`读取 GitHub 文件出错: ${error}`);
+                const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错', `<p><strong>从 GitHub 读取文件失败:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, null, null, null, null, null, null, outputOfCall1, null);
+                return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+            }
+        } else {
+            outputOfCall1 = formData.get('summarizedContent'); // Get summarized content from form data
+        }
 
         if (!outputOfCall1) {
             const errorHtml = generateGenAiPageHtml(env, '生成AI播客脚本出错', '<p><strong>Summarized content is missing.</strong> Please go back and generate AI content first.</p>', dateStr, true, null, null, null, null, null, null, outputOfCall1, null);
@@ -156,7 +176,7 @@ export async function handleGenAIContent(request, env) {
                 // Add new data sources
                 switch (item.type) {
                     case 'news':
-                        itemText = `News Title: ${item.title}\nPublished: ${item.published_date}\nContent Summary: ${stripHtml(item.details.content_html)}`;
+                        itemText = `News Title: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nContent Summary: ${stripHtml(item.details.content_html)}`;
                         break;
                     case 'project':
                         itemText = `Project Name: ${item.title}\nPublished: ${item.published_date}\nUrl: ${item.url}\nDescription: ${item.description}\nStars: ${item.details.totalStars}`;
@@ -191,43 +211,43 @@ export async function handleGenAIContent(request, env) {
         }
         
         //提示词内不能有英文引号，否则会存储数据缺失。
-        fullPromptForCall1_System = getSystemPromptSummarizationStepOne();
-        fullPromptForCall1_User = '\n\n------\n\n'+selectedContentItems.join('\n\n------\n\n')+'\n\n------\n\n'; // Keep this for logging/error reporting if needed
+        // fullPromptForCall1_System = getSystemPromptSummarizationStepOne();
+        // fullPromptForCall1_User = '\n\n------\n\n'+selectedContentItems.join('\n\n------\n\n')+'\n\n------\n\n'; // Keep this for logging/error reporting if needed
 
-        console.log("Call 1 to Chat (Summarization): User prompt length:", fullPromptForCall1_User.length);
-        try {
-            const chunkSize = 3;
-            const summaryPromises = [];
+        // console.log("Call 1 to Chat (Summarization): User prompt length:", fullPromptForCall1_User.length);
+        // try {
+        //     const chunkSize = 3;
+        //     const summaryPromises = [];
             
-            for (let i = 0; i < selectedContentItems.length; i += chunkSize) {
-                const chunk = selectedContentItems.slice(i, i + chunkSize);
-                const chunkPrompt = chunk.join('\n\n---\n\n'); // Join selected items with the separator
+        //     for (let i = 0; i < selectedContentItems.length; i += chunkSize) {
+        //         const chunk = selectedContentItems.slice(i, i + chunkSize);
+        //         const chunkPrompt = chunk.join('\n\n---\n\n'); // Join selected items with the separator
                 
-                summaryPromises.push((async () => {
-                    let summarizedChunks = [];
-                    for await (const streamChunk of callChatAPIStream(env, chunkPrompt, fullPromptForCall1_System)) {
-                        summarizedChunks.push(streamChunk);
-                    }
-                    return summarizedChunks.join('');
-                })());
-            }
+        //         summaryPromises.push((async () => {
+        //             let summarizedChunks = [];
+        //             for await (const streamChunk of callChatAPIStream(env, chunkPrompt, fullPromptForCall1_System)) {
+        //                 summarizedChunks.push(streamChunk);
+        //             }
+        //             return summarizedChunks.join('');
+        //         })());
+        //     }
 
-            const allSummarizedResults = await Promise.all(summaryPromises);
-            outputOfCall1 = allSummarizedResults.join('\n\n'); // Join all summarized parts
+        //     const allSummarizedResults = await Promise.all(summaryPromises);
+        //     outputOfCall1 = allSummarizedResults.join('\n\n'); // Join all summarized parts
 
-            if (!outputOfCall1 || outputOfCall1.trim() === "") throw new Error("Chat summarization call returned empty content.");
-            outputOfCall1 = removeMarkdownCodeBlock(outputOfCall1); // Clean the output
-            console.log("Call 1 (Summarization) successful. Output length:", outputOfCall1.length);
-        } catch (error) {
-            console.error("Error in Chat API Call 1 (Summarization):", error);
-            const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错(分段处理)', `<p><strong>Failed during summarization:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall1_System, fullPromptForCall1_User);
-            return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
-        }
+        //     if (!outputOfCall1 || outputOfCall1.trim() === "") throw new Error("Chat summarization call returned empty content.");
+        //     outputOfCall1 = removeMarkdownCodeBlock(outputOfCall1); // Clean the output
+        //     console.log("Call 1 (Summarization) successful. Output length:", outputOfCall1.length);
+        // } catch (error) {
+        //     console.error("Error in Chat API Call 1 (Summarization):", error);
+        //     const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错(分段处理)', `<p><strong>Failed during summarization:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall1_System, fullPromptForCall1_User);
+        //     return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+        // }
 
         // Call 2: Process outputOfCall1
         let outputOfCall2 = null;
-        let fullPromptForCall2_System = getSystemPromptSummarizationStepTwo(); // Re-using summarization prompt for now
-        let fullPromptForCall2_User = outputOfCall1; // Input for Call 2 is output of Call 1
+        let fullPromptForCall2_System = getSystemPromptSummarizationStepOne(); // Re-using summarization prompt for now
+        let fullPromptForCall2_User = '\n\n------\n\n'+selectedContentItems.join('\n\n------\n\n')+'\n\n------\n\n'; // Input for Call 2 is output of Call 1
 
         console.log("Call 2 to Chat (Processing Call 1 Output): User prompt length:", fullPromptForCall2_User.length);
         try {
@@ -241,25 +261,28 @@ export async function handleGenAIContent(request, env) {
             console.log("Call 2 (Processing Call 1 Output) successful. Output length:", outputOfCall2.length);
         } catch (error) {
             console.error("Error in Chat API Call 2 (Processing Call 1 Output):", error);
-            const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错(格式化)', `<p><strong>Failed during processing of summarized content:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall1_System, fullPromptForCall1_User, fullPromptForCall2_System, fullPromptForCall2_User);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错(格式化)', `<p><strong>Failed during processing of summarized content:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall2_System, fullPromptForCall2_User);
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
         
         let promptsMarkdownContent = `# Prompts for ${dateStr}\n\n`;
-        promptsMarkdownContent += `## Call 1: Content Summarization\n\n`;
-        if (fullPromptForCall1_System) promptsMarkdownContent += `### System Instruction\n\`\`\`\n${fullPromptForCall1_System}\n\`\`\`\n\n`;
-        if (fullPromptForCall1_User) promptsMarkdownContent += `### User Input\n\`\`\`\n${fullPromptForCall1_User}\n\`\`\`\n\n`;
+        // promptsMarkdownContent += `## Call 1: Content Summarization\n\n`;
+        // if (fullPromptForCall1_System) promptsMarkdownContent += `### System Instruction\n\`\`\`\n${fullPromptForCall1_System}\n\`\`\`\n\n`;
+        // if (fullPromptForCall1_User) promptsMarkdownContent += `### User Input\n\`\`\`\n${fullPromptForCall1_User}\n\`\`\`\n\n`;
         promptsMarkdownContent += `## Call 2: Summarized Content Format\n\n`;
         if (fullPromptForCall2_System) promptsMarkdownContent += `### System Instruction\n\`\`\`\n${fullPromptForCall2_System}\n\`\`\`\n\n`;
         if (fullPromptForCall2_User) promptsMarkdownContent += `### User Input (Output of Call 1)\n\`\`\`\n${fullPromptForCall2_User}\n\`\`\`\n\n`;
 
         let dailySummaryMarkdownContent = `## ${env.DAILY_TITLE} ${formatDateToChinese(dateStr)}` + '\n\n';
         dailySummaryMarkdownContent += '> '+ env.DAILY_TITLE_MIN + '\n\n';
+
+        let fullPromptForCall3_System = getSystemPromptSummarizationStepThree(); // Re-using summarization prompt for now
+        let fullPromptForCall3_User = outputOfCall2; // Input for Call 2 is output of Call 1
         let outputOfCall3 = null;
-        console.log("Call 3 to Chat (Processing Call 2 Output): User prompt length:", outputOfCall2.length);
+        console.log("Call 3 to Chat (Processing Call 1 Output): User prompt length:", fullPromptForCall3_User.length);
         try {
             let processedChunks = [];
-            for await (const chunk of callChatAPIStream(env, outputOfCall2, getSystemPromptSummarizationStepThree())) {
+            for await (const chunk of callChatAPIStream(env, fullPromptForCall3_User, fullPromptForCall3_System)) {
                 processedChunks.push(chunk);
             }
             outputOfCall3 = processedChunks.join('');
@@ -268,12 +291,13 @@ export async function handleGenAIContent(request, env) {
             console.log("Call 3 (Processing Call 2 Output) successful. Output length:", outputOfCall3.length);
         } catch (error) {
             console.error("Error in Chat API Call 3 (Processing Call 2 Output):", error);
-            const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错(摘要)', `<p><strong>Failed during processing of summarized content:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall1_System, fullPromptForCall1_User, fullPromptForCall2_System, fullPromptForCall2_User);
+            const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错(摘要)', `<p><strong>Failed during processing of summarized content:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, dateStr, true, selectedItemsParams, fullPromptForCall3_System, fullPromptForCall3_User);
             return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
-        dailySummaryMarkdownContent += '\n\n### **AI内容摘要**\n\n```\n' + outputOfCall3 + '\n```\n\n';
+        dailySummaryMarkdownContent += '\n\n### **今日摘要**\n\n```\n' + outputOfCall3 + '\n```\n\n';
 
         dailySummaryMarkdownContent += `\n\n${removeMarkdownCodeBlock(outputOfCall2)}`;
+        if (env.INSERT_AD=='true') dailySummaryMarkdownContent += insertAd() +`\n`;
         if (env.INSERT_FOOT=='true') dailySummaryMarkdownContent += insertFoot() +`\n\n`;
 
         const successHtml = generateGenAiPageHtml(
@@ -281,12 +305,11 @@ export async function handleGenAIContent(request, env) {
             'AI日报', // Title for Call 1 page
             escapeHtml(dailySummaryMarkdownContent), 
             dateStr, false, selectedItemsParams,
-            fullPromptForCall1_System, fullPromptForCall1_User,
+            fullPromptForCall2_System, fullPromptForCall2_User,
             null, null, // Pass Call 2 prompts
             convertEnglishQuotesToChinese(removeMarkdownCodeBlock(promptsMarkdownContent)), 
             convertEnglishQuotesToChinese(dailySummaryMarkdownContent), 
             null, // No podcast script for this page
-            outputOfCall1 // Pass summarized content for the next step (original outputOfCall1)
         );
         return new Response(successHtml, { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
 
@@ -294,7 +317,7 @@ export async function handleGenAIContent(request, env) {
         console.error("Error in /genAIContent (outer try-catch):", error);
         const pageDateForError = dateStr || getISODate(); 
         const itemsForActionOnError = Array.isArray(selectedItemsParams) ? selectedItemsParams : [];
-        const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错', `<p><strong>Unexpected error:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, pageDateForError, true, itemsForActionOnError, fullPromptForCall1_System, fullPromptForCall1_User, fullPromptForCall2_System, fullPromptForCall2_User);
+        const errorHtml = generateGenAiPageHtml(env, '生成AI日报出错', `<p><strong>Unexpected error:</strong> ${escapeHtml(error.message)}</p>${error.stack ? `<pre>${escapeHtml(error.stack)}</pre>` : ''}`, pageDateForError, true, itemsForActionOnError, fullPromptForCall2_System, fullPromptForCall2_User);
         return new Response(errorHtml, { status: 500, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     }
 }

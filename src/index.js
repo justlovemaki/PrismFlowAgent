@@ -2,7 +2,8 @@
 import { handleWriteData } from './handlers/writeData.js';
 import { handleGetContent } from './handlers/getContent.js';
 import { handleGetContentHtml } from './handlers/getContentHtml.js';
-import { handleGenAIContent, handleGenAIPodcastScript, handleGenAIDailyAnalysis } from './handlers/genAIContent.js'; // Import handleGenAIPodcastScript and handleGenAIDailyAnalysis
+import { handleGenAIContent, handleGenAIPodcastScript, handleGenAIDailyAnalysis } from './handlers/genAIContent.js';
+import { handleGenAIDailyPage } from './handlers/genAIDailyPage.js'; // Import handleGenAIDailyPage
 import { handleCommitToGitHub } from './handlers/commitToGitHub.js';
 import { handleRss } from './handlers/getRss.js';
 import { handleWriteRssData } from './handlers/writeRssData.js'; 
@@ -18,9 +19,6 @@ export default {
             'LOGIN_USERNAME', 'LOGIN_PASSWORD',
             'PODCAST_TITLE','PODCAST_BEGIN','PODCAST_END',
             'FOLO_COOKIE_KV_KEY','FOLO_DATA_API','FOLO_FILTER_DAYS',
-            'AIBASE_FEED_ID', 'XIAOHU_FEED_ID', 'HGPAPERS_FEED_ID', 'TWITTER_LIST_ID',
-            'AIBASE_FETCH_PAGES', 'XIAOHU_FETCH_PAGES', 'HGPAPERS_FETCH_PAGES', 'TWITTER_FETCH_PAGES',
-            //'AIBASE_API_URL', 'XIAOHU_API_URL','PROJECTS_API_URL','HGPAPERS_API_URL', 'TWITTER_API_URL', 'TWITTER_USERNAMES',
         ];
         console.log(env);
         const missingVars = requiredEnvVars.filter(varName => !env[varName]);
@@ -79,6 +77,8 @@ export default {
                 response = await handleGenAIPodcastScript(request, env);
             } else if (path === '/genAIDailyAnalysis' && request.method === 'POST') { // New route for AI Daily Analysis
                 response = await handleGenAIDailyAnalysis(request, env);
+            } else if (path === '/genAIDailyPage' && request.method === 'GET') { // New route for AI Daily Page
+                response = await handleGenAIDailyPage(request, env);
             } else if (path === '/commitToGitHub' && request.method === 'POST') {
                 response = await handleCommitToGitHub(request, env);
             } else {
