@@ -7,6 +7,7 @@ import { PromptService } from './PromptService.js';
 import { GeminiProvider, OpenAIProvider, AnthropicProvider, OllamaProvider, AIProvider } from './AIProvider.js';
 import { AgentService } from './agents/AgentService.js';
 import { SkillService } from './agents/SkillService.js';
+import { ToolRegistry } from './agents/ToolRegistry.js';
 import { WorkflowEngine } from './agents/WorkflowEngine.js';
 import { ProxyAgent } from 'undici';
 import { SystemSettings } from '../types/config.js';
@@ -65,6 +66,17 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   // 6. Initialize Agent Ecosystem
   const skillService = new SkillService();
   await skillService.init();
+
+  // Initialize Tool Registry from Global Registry
+  const { ToolRegistry: GlobalToolRegistry } = await import('../registries/ToolRegistry.js');
+  const toolRegistry = ToolRegistry.getInstance();
+  const globalToolRegistry = GlobalToolRegistry.getInstance();
+  for (const toolId of globalToolRegistry.getAll()) {
+    const ToolClass = globalToolRegistry.get(toolId);
+    if (ToolClass) {
+      toolRegistry.registerTool(new (ToolClass as any)());
+    }
+  }
 
   const agentService = aiProvider ? new AgentService(store, aiProvider, skillService, proxyAgent) : null;
   const workflowEngine = (agentService && aiProvider) ? new WorkflowEngine(store, agentService, aiProvider) : null;

@@ -4,6 +4,7 @@ import { getStats, getAdapters, getLogs, triggerIngestion, syncAdapter, testAI }
 import { getSettings } from '../services/settingsService';
 import { getTodayShanghai } from '../utils/dateUtils';
 import { clearCache, CACHE_KEYS } from '../utils/cacheUtils';
+import { useToast } from '../context/ToastContext.js';
 
 
 
@@ -39,6 +40,7 @@ interface Log {
 }
 
 const Dashboard: React.FC = () => {
+  const { success: toastSuccess, error: toastError } = useToast();
   const [statsData, setStatsData] = useState<Stats | null>(null);
   const [adaptersData, setAdaptersData] = useState<Record<string, Adapter>>({});
   const [logsData, setLogsData] = useState<Log[]>([]);
@@ -93,10 +95,11 @@ const Dashboard: React.FC = () => {
       // 抓取成功后立即清理内容筛选页面的缓存，确保用户看到最新数据
       clearCache(CACHE_KEYS.SELECTION_ITEMS);
       await fetchData();
+      toastSuccess(`同步成功: ${name}`);
     } catch (error) {
 
       console.error(`Sync failed for ${name}:`, error);
-      alert(`同步失败: ${error}`);
+      toastError(`同步失败: ${error}`);
     } finally {
       setSyncingAdapters(prev => ({ ...prev, [name]: false }));
     }
@@ -130,9 +133,11 @@ const Dashboard: React.FC = () => {
       // 抓取成功后立即清理内容筛选页面的缓存
       clearCache(CACHE_KEYS.SELECTION_ITEMS);
       await fetchData();
+      toastSuccess('抓取任务已启动');
     } catch (error) {
 
       console.error('Sync failed:', error);
+      toastError('抓取任务启动失败');
     } finally {
       setSyncing(false);
     }
@@ -144,14 +149,14 @@ const Dashboard: React.FC = () => {
     try {
       const result = await testAI();
       if (result.status === 'healthy') {
-        alert('✅ AI 服务连接正常');
+        toastSuccess('✅ AI 服务连接正常');
       } else {
-        alert(`❌ AI 服务连接失败: ${result.message}`);
+        toastError(`❌ AI 服务连接失败: ${result.message}`);
       }
       await fetchData();
     } catch (error: any) {
       console.error('AI test failed:', error);
-      alert(`❌ AI 服务测试失败: ${error.message || '未知错误'}`);
+      toastError(`❌ AI 服务测试失败: ${error.message || '未知错误'}`);
     } finally {
       setTestingAI(false);
     }

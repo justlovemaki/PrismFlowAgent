@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './context/ThemeContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ToastProvider } from './context/ToastContext';
 import AppLayout from './components/Layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import Selection from './pages/Selection';
@@ -20,29 +21,31 @@ function App() {
   return (
     <ThemeProvider>
       <AuthProvider>
-        <Router>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route
-              path="/*"
-              element={
-                <ProtectedRoute>
-                  <AppLayout>
-                    <Routes>
-                      <Route path="/" element={<Dashboard />} />
-                      <Route path="/selection" element={<Selection />} />
-                       <Route path="/generation" element={<Generation />} />
-                       <Route path="/history" element={<History />} />
-                       <Route path="/agents" element={<Agents />} />
-                       <Route path="/plugins" element={<PluginManagement />} />
-                       <Route path="/settings" element={<Settings />} />
-                     </Routes>
-                  </AppLayout>
-                </ProtectedRoute>
-              }
-            />
-          </Routes>
-        </Router>
+        <ToastProvider>
+          <Router>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route
+                path="/*"
+                element={
+                  <ProtectedRoute>
+                    <AppLayout>
+                      <Routes>
+                        <Route path="/" element={<Dashboard />} />
+                        <Route path="/selection" element={<Selection />} />
+                         <Route path="/generation" element={<Generation />} />
+                         <Route path="/history" element={<History />} />
+                         <Route path="/agents" element={<Agents />} />
+                         <Route path="/plugins" element={<PluginManagement />} />
+                         <Route path="/settings" element={<Settings />} />
+                       </Routes>
+                    </AppLayout>
+                  </ProtectedRoute>
+                }
+              />
+            </Routes>
+          </Router>
+        </ToastProvider>
       </AuthProvider>
     </ThemeProvider>
   );

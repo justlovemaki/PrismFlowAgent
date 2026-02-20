@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSettings, saveSettings, getPluginMetadata } from '../services/settingsService';
+import { useToast } from '../context/ToastContext.js';
 
 const PluginManagement: React.FC = () => {
+  const { success: toastSuccess, error: toastError } = useToast();
   const [settings, setSettings] = useState<any>({});
   const [metadata, setMetadata] = useState<{ adapters: any[], publishers: any[], storages: any[] }>({
     adapters: [],
@@ -42,7 +44,7 @@ const PluginManagement: React.FC = () => {
     return (settings.CLOSED_PLUGINS || []).includes(id);
   };
 
-  const togglePlugin = async (id: string) => {
+  const togglePlugin = (id: string) => {
     const closedPlugins = [...(settings.CLOSED_PLUGINS || [])];
     const index = closedPlugins.indexOf(id);
     
@@ -54,14 +56,16 @@ const PluginManagement: React.FC = () => {
 
     const updatedSettings = { ...settings, CLOSED_PLUGINS: closedPlugins };
     setSettings(updatedSettings);
+  };
 
+  const handleSave = async () => {
     try {
       setIsSaving(true);
-      await saveSettings(updatedSettings);
+      await saveSettings(settings);
+      toastSuccess('设置已保存');
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('保存失败');
-      // Rollback
+      toastError('保存失败');
       loadData();
     } finally {
       setIsSaving(false);
@@ -145,9 +149,27 @@ const PluginManagement: React.FC = () => {
 
   return (
     <div className="p-8 space-y-8 max-w-7xl mx-auto">
-      <div className="flex flex-col gap-2">
-        <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">插件管理</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">全局管理系统插件的启用状态。禁用的插件将在系统设置中隐藏且不可用。</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+        <div className="flex flex-col gap-2">
+          <h2 className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">插件管理</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">全局管理系统插件的启用状态。禁用的插件将在系统设置中隐藏且不可用。</p>
+        </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={loadData}
+            className="px-4 py-2 rounded-xl border border-slate-200 dark:border-white/10 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5 font-medium transition-colors"
+          >
+            重置
+          </button>
+          <button 
+            onClick={handleSave}
+            disabled={isSaving}
+            className="px-8 py-2 rounded-xl bg-primary hover:bg-primary/90 text-white font-bold shadow-lg shadow-primary/20 transition-all active:scale-95 disabled:opacity-50 flex items-center gap-2"
+          >
+            {isSaving && <span className="material-symbols-outlined animate-spin text-sm">sync</span>}
+            保存更改
+          </button>
+        </div>
       </div>
 
       <div className="space-y-10">
@@ -199,13 +221,6 @@ const PluginManagement: React.FC = () => {
           </motion.div>
         </section>
       </div>
-      
-      {isSaving && (
-        <div className="fixed bottom-8 right-8 bg-primary text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-bounce">
-          <span className="material-symbols-outlined animate-spin">sync</span>
-          <span className="font-bold text-sm">正在保存配置...</span>
-        </div>
-      )}
     </div>
   );
 };

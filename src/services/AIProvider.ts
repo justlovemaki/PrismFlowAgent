@@ -63,21 +63,24 @@ export class GeminiProvider implements AIProvider {
     console.log(`[Gemini] API Request (Tools): ${url}, Using Proxy: ${!!this.dispatcher}`);
     const payload: any = {
       contents: [{ parts: [{ text: prompt }] }],
-      tools: [
+    };
+
+    if (tools && tools.length > 0) {
+      payload.tools = [
         {
-          functionDeclarations: (tools || []).map(t => ({
+          functionDeclarations: tools.map(t => ({
             name: t.name,
             description: t.description,
             parameters: t.parameters
           }))
         }
-      ],
-      toolConfig: {
+      ];
+      payload.toolConfig = {
         functionCallingConfig: {
           mode: 'AUTO'
         }
-      }
-    };
+      };
+    }
 
     if (systemInstruction) {
       payload.systemInstruction = { parts: [{ text: systemInstruction }] };
@@ -205,25 +208,30 @@ export class OpenAIProvider implements AIProvider {
     }
     messages.push({ role: 'user', content: prompt });
 
+    const body: any = {
+      model: this.model,
+      messages
+    };
+
+    if (tools && tools.length > 0) {
+      body.tools = tools.map(t => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters
+        }
+      }));
+      body.tool_choice = 'auto';
+    }
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.apiKey}`
       },
-      body: JSON.stringify({
-        model: this.model,
-        messages,
-        tools: tools.map(t => ({
-          type: 'function',
-          function: {
-            name: t.name,
-            description: t.description,
-            parameters: t.parameters
-          }
-        })),
-        tool_choice: 'auto'
-      }),
+      body: JSON.stringify(body),
       dispatcher: this.dispatcher
     } as any);
 
@@ -334,14 +342,17 @@ export class AnthropicProvider implements AIProvider {
     const payload: any = {
       model: this.model,
       max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }],
-      tools: (tools || []).map(t => ({
+      messages: [{ role: 'user', content: prompt }]
+    };
+
+    if (tools && tools.length > 0) {
+      payload.tools = tools.map(t => ({
         name: t.name,
         description: t.description,
         input_schema: t.parameters
-      })),
-      tool_choice: { type: 'auto' }
-    };
+      }));
+      payload.tool_choice = { type: 'auto' };
+    }
 
     if (systemInstruction) {
       payload.system = systemInstruction;
@@ -476,16 +487,19 @@ export class OllamaProvider implements AIProvider {
       model: this.model,
       messages,
       stream: false,
-      tools: (tools || []).map(t => ({
+    };
+
+    if (tools && tools.length > 0) {
+      payload.tools = tools.map(t => ({
         type: 'function',
         function: {
           name: t.name,
           description: t.description,
           parameters: t.parameters
         }
-      })),
-      tool_choice: 'auto'
-    };
+      }));
+      payload.tool_choice = 'auto';
+    }
 
     try {
       const response = await fetch(url, {

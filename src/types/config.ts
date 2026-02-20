@@ -56,6 +56,12 @@ export interface StorageConfig {
   config: Record<string, any>;
 }
 
+export interface CategoryConfig {
+  id: string;
+  label: string;
+  icon: string;
+}
+
 export interface SystemSettings {
   ACTIVE_AI_PROVIDER_ID: string;
   AI_PROVIDERS: AIProviderConfig[];
@@ -68,5 +74,6 @@ export interface SystemSettings {
   IMAGE_PROCESS_CONFIG: ImageProcessConfig;
   ADAPTERS: AdapterConfig[];
   CLOSED_PLUGINS?: string[];
+  CATEGORIES: CategoryConfig[];
   [key: string]: any; // Allow for dynamic extension
 }

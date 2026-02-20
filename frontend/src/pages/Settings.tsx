@@ -2,8 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getSettings, saveSettings, getModels, getPluginMetadata } from '../services/settingsService';
 import IconPicker from '../components/UI/IconPicker';
+import { useToast } from '../context/ToastContext.js';
 
 const Settings: React.FC = () => {
+  const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
   const [activeTab, setActiveTab] = useState('ai');
   const [settings, setSettings] = useState<Record<string, any>>({});
   const [pluginMetadata, setPluginMetadata] = useState<{ adapters: any[], publishers: any[], storages: any[], aiProviders: any[] }>({ adapters: [], publishers: [], storages: [], aiProviders: [] });
@@ -12,6 +14,7 @@ const Settings: React.FC = () => {
   const [providerModels, setProviderModels] = useState<Record<string, string[]>>({});
   const [isFetchingModels, setIsFetchingModels] = useState<Record<string, boolean>>({});
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
 
 
@@ -49,7 +52,7 @@ const Settings: React.FC = () => {
 
     } catch (error) {
       console.error('Failed to load settings:', error);
-      alert('加载配置失败，请重试');
+      toastError('加载配置失败，请重试');
     } finally {
       setIsLoading(false);
     }
@@ -60,10 +63,10 @@ const Settings: React.FC = () => {
     try {
       setIsSaving(true);
       await saveSettings(settings);
-      alert('配置保存成功！');
+      toastSuccess('配置保存成功！');
     } catch (error) {
       console.error('Failed to save settings:', error);
-      alert('保存配置失败，请检查网络或控制台。');
+      toastError('保存配置失败，请检查网络或控制台。');
     } finally {
       setIsSaving(false);
     }
@@ -71,7 +74,7 @@ const Settings: React.FC = () => {
 
   const fetchModels = async (provider: any) => {
     if (!provider.apiUrl || !provider.apiKey && provider.type !== 'OLLAMA') {
-      alert('请先填写 API 地址和 API Key');
+      toastInfo('请先填写 API 地址和 API Key');
       return;
     }
 
@@ -79,9 +82,10 @@ const Settings: React.FC = () => {
       setIsFetchingModels(prev => ({ ...prev, [provider.id]: true }));
       const models = await getModels(provider);
       setProviderModels(prev => ({ ...prev, [provider.id]: models }));
+      toastSuccess('模型列表同步成功');
     } catch (error: any) {
       console.error('Failed to fetch models:', error);
-      alert('获取模型列表失败: ' + error.message);
+      toastError('获取模型列表失败: ' + error.message);
     } finally {
       setIsFetchingModels(prev => ({ ...prev, [provider.id]: false }));
     }
@@ -414,7 +418,7 @@ const Settings: React.FC = () => {
 
   const handleDeleteAIProvider = (id: string) => {
     if (settings.ACTIVE_AI_PROVIDER_ID === id) {
-      alert('不能删除当前正在使用的提供商。请先切换到其他提供商。');
+      toastInfo('不能删除当前正在使用的提供商。请先切换到其他提供商。');
       return;
     }
     setSettings(prev => ({
@@ -462,37 +466,56 @@ const Settings: React.FC = () => {
     }
   };
 
-  const renderDynamicConfigFields = (fields: any[], currentValues: any, onChange: (key: string, value: any) => void, scope?: 'adapter' | 'item') => {
+  const renderDynamicConfigFields = (fields: any[], currentValues: any, onChange: (key: string, value: any) => void, scope?: 'adapter' | 'item', idPrefix?: string) => {
     const filteredFields = scope ? fields.filter(f => f.scope === scope || (!f.scope && scope === 'item')) : fields;
     
-    return filteredFields.map(field => (
-      <div key={field.key} className="space-y-1.5 flex-1 min-w-[150px]">
-        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
-          {field.label} {field.required && <span className="text-red-500">*</span>}
-        </label>
-        {field.type === 'select' ? (
-          <select
-            value={currentValues[field.key] ?? field.default ?? ''}
-            onChange={(e) => onChange(field.key, e.target.value)}
-            className="w-full px-3 py-1.5 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs text-slate-600 dark:text-slate-300 focus:ring-1 focus:ring-primary outline-none transition-all"
-          >
-            {field.options?.map((opt: any) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
-        ) : (
-          <input
-            type={field.type === 'password' ? 'password' : 'text'}
-            value={currentValues[field.key] ?? field.default ?? ''}
-            onChange={(e) => {
-              const val = e.target.value;
-              onChange(field.key, field.type === 'number' ? (val === '' ? 0 : parseInt(val)) : val);
-            }}
-            className="w-full px-3 py-1.5 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs text-slate-600 dark:text-slate-300 focus:ring-1 focus:ring-primary outline-none transition-all"
-          />
-        )}
-      </div>
-    ));
+    return filteredFields.map(field => {
+      const fieldId = idPrefix ? `${idPrefix}-${field.key}` : field.key;
+      const isPassword = field.type === 'password';
+      const showPassword = showPasswords[fieldId];
+
+      return (
+        <div key={field.key} className="space-y-1.5 flex-1 min-w-[150px]">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+            {field.label} {field.required && <span className="text-red-500">*</span>}
+          </label>
+          {field.type === 'select' ? (
+            <select
+              value={currentValues[field.key] ?? field.default ?? ''}
+              onChange={(e) => onChange(field.key, e.target.value)}
+              className="w-full px-3 py-1.5 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs text-slate-600 dark:text-slate-300 focus:ring-1 focus:ring-primary outline-none transition-all"
+            >
+              {field.options?.map((opt: any) => (
+                <option key={opt} value={opt}>{opt}</option>
+              ))}
+            </select>
+          ) : (
+            <div className="relative">
+              <input
+                type={isPassword ? (showPassword ? 'text' : 'password') : (field.type === 'number' ? 'number' : 'text')}
+                value={currentValues[field.key] ?? field.default ?? ''}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  onChange(field.key, field.type === 'number' ? (val === '' ? 0 : parseInt(val)) : val);
+                }}
+                className={`w-full px-3 py-1.5 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs text-slate-600 dark:text-slate-300 focus:ring-1 focus:ring-primary outline-none transition-all ${isPassword ? 'pr-9' : ''}`}
+              />
+              {isPassword && (
+                <button
+                  type="button"
+                  onClick={() => setShowPasswords(prev => ({ ...prev, [fieldId]: !prev[fieldId] }))}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors"
+                >
+                  <span className="material-symbols-outlined text-base">
+                    {showPassword ? 'visibility_off' : 'visibility'}
+                  </span>
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    });
   };
 
   const renderField = (field: any) => {
@@ -538,7 +561,9 @@ const Settings: React.FC = () => {
                     {renderDynamicConfigFields(
                       storageMeta.configFields || [],
                       storageData.config || {},
-                      (key, value) => handleStorageChange(storageMeta.id, key, value)
+                      (key, value) => handleStorageChange(storageMeta.id, key, value),
+                      undefined,
+                      `storage-${storageMeta.id}`
                     )}
                   </div>
                 )}
@@ -588,7 +613,9 @@ const Settings: React.FC = () => {
                     {renderDynamicConfigFields(
                       pubMeta.configFields || [],
                       pubData.config || {},
-                      (key, value) => handlePublisherChange(pubMeta.id, key, value)
+                      (key, value) => handlePublisherChange(pubMeta.id, key, value),
+                      undefined,
+                      `publisher-${pubMeta.id}`
                     )}
                   </div>
                 )}
@@ -954,7 +981,8 @@ const Settings: React.FC = () => {
                             adapterMeta.configFields || [],
                             adapter,
                             (key, value) => handleAdapterChange(adapter.id, null, key, value),
-                            'adapter'
+                            'adapter',
+                            `adapter-${adapter.id}`
                           ) : null;
                         })()}
                       </div>
@@ -1010,7 +1038,8 @@ const Settings: React.FC = () => {
                                 adapterMeta.configFields || [],
                                 item,
                                 (key, value) => handleAdapterChange(adapter.id, item.id, key, value),
-                                'item'
+                                'item',
+                                `item-${item.id}`
                               ) : null;
                             })()}
                           </div>
@@ -1155,13 +1184,26 @@ const Settings: React.FC = () => {
             className="w-full px-4 py-2.5 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-border-dark rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none"
           />
         ) : (
-          <input
-            type={field.type}
-            placeholder={(field as any).placeholder}
-            value={currentValue || ''}
-            onChange={(e) => handleFieldChange(field.key!, field.type === 'number' ? parseInt(e.target.value) || 0 : e.target.value)}
-            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-border-dark rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
-          />
+          <div className="relative">
+            <input
+              type={field.type === 'password' ? (showPasswords[field.key] ? 'text' : 'password') : field.type}
+              placeholder={(field as any).placeholder}
+              value={currentValue || ''}
+              onChange={(e) => handleFieldChange(field.key!, field.type === 'number' ? parseInt(e.target.value) || 0 : e.target.value)}
+              className={`w-full px-4 py-2.5 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-border-dark rounded-xl text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-600 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all ${field.type === 'password' ? 'pr-12' : ''}`}
+            />
+            {field.type === 'password' && (
+              <button
+                type="button"
+                onClick={() => setShowPasswords(prev => ({ ...prev, [field.key]: !prev[field.key] }))}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors"
+              >
+                <span className="material-symbols-outlined text-lg">
+                  {showPasswords[field.key] ? 'visibility_off' : 'visibility'}
+                </span>
+              </button>
+            )}
+          </div>
         )}
       </div>
     );

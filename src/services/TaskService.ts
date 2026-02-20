@@ -121,6 +121,8 @@ export class TaskService {
       
       await this.store.put(storageKey, mergedData);
       
+      LogService.info(`[TaskService] Adapter ${adapter.name} finished. Total items for today: ${mergedData.length} (New items in this run: ${newData.length})`);
+
       this.adapterStatus[adapter.name] = {
         lastActive: new Date().toISOString(),
         status: 'success',

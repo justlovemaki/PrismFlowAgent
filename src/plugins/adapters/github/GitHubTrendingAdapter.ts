@@ -3,6 +3,7 @@ import type { UnifiedData } from '../../../types/index.js';
 import { getISODate } from '../../../utils/helpers.js';
 import type { ConfigField } from '../../../types/plugin.js';
 import type { AdapterMetadata } from '../../../registries/AdapterRegistry.js';
+import { LogService } from '../../../services/LogService.js';
 
 
 export class GitHubTrendingAdapter extends BaseAdapter {
@@ -34,12 +35,15 @@ export class GitHubTrendingAdapter extends BaseAdapter {
     // but better to expect a base URL or a full URL in config
     const since = config.since || this.since;
     const url = config.apiUrl.replace(/\/(daily|weekly|monthly)$/, `/${since}`);
-    console.log(`[GitHubTrendingAdapter] Fetching: ${url}, Using Proxy: ${!!this.dispatcher}`);
+    LogService.info(`[GitHubTrendingAdapter: ${this.name}] Requesting: ${url}`);
     const response = await fetch(url, { dispatcher: this.dispatcher } as any);
     if (!response.ok) {
+      LogService.error(`[GitHubTrendingAdapter: ${this.name}] Failed to fetch: ${response.status} ${response.statusText}`);
       throw new Error(`Failed to fetch GitHub Trending: ${response.statusText}`);
     }
-    return response.json();
+    const data = await response.json();
+    LogService.info(`[GitHubTrendingAdapter: ${this.name}] Successfully fetched ${Array.isArray(data) ? data.length : 0} items.`);
+    return data;
   }
 
   transform(rawData: any[], config?: any): UnifiedData[] {

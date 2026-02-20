@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { agentService } from '../services/agentService';
 import type { Agent, Skill, Tool, Workflow, WorkflowStep, MCPServerConfig } from '../services/agentService';
 import { getSettings } from '../services/settingsService';
+import { useToast } from '../context/ToastContext.js';
 
 const FileTreeNode: React.FC<{
   items: any[];
@@ -46,6 +47,7 @@ const FileTreeNode: React.FC<{
 );
 
 const Agents: React.FC = () => {
+  const { success: toastSuccess, error: toastError } = useToast();
   const [activeTab, setActiveTab] = useState('agents');
   const [agents, setAgents] = useState<Agent[]>([]);
   const [skills, setSkills] = useState<Skill[]>([]);
@@ -110,8 +112,9 @@ const Agents: React.FC = () => {
       await agentService.saveAgent(agent);
       await loadData();
       setEditingAgent(null);
+      toastSuccess('Agent 保存成功');
     } catch (error) {
-      alert('保存失败');
+      toastError('保存失败');
     } finally {
       setIsSaving(false);
     }
@@ -122,13 +125,21 @@ const Agents: React.FC = () => {
     try {
       await agentService.deleteAgent(id);
       await loadData();
+      toastSuccess('Agent 已删除');
     } catch (error) {
-      alert('删除失败');
+      toastError('删除失败');
     }
   };
 
   const handleRunAgent = async (id: string, input: string) => {
     try {
+      // 在测试前清除上一次的测试结果
+      setTestResults(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+      
       setTestResults(prev => ({ ...prev, [id]: '运行中...' }));
       const result = await agentService.runAgent(id, input);
       setTestResults(prev => ({ ...prev, [id]: result.content }));
@@ -574,8 +585,9 @@ const Agents: React.FC = () => {
       await agentService.deleteSkill(id);
       await loadData();
       if (previewSkill?.id === id) setPreviewSkill(null);
+      toastSuccess('技能已删除');
     } catch (error) {
-      alert('删除失败');
+      toastError('删除失败');
     }
   };
 
@@ -620,8 +632,9 @@ const Agents: React.FC = () => {
       if (updatedSkill) {
         setPreviewSkill(updatedSkill);
       }
+      toastSuccess('文件保存成功');
     } catch (error: any) {
-      alert(`保存失败: ${error.message}`);
+      toastError(`保存失败: ${error.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -829,8 +842,9 @@ const Agents: React.FC = () => {
       await agentService.saveMCPConfig(config);
       await loadData();
       setEditingMCP(null);
+      toastSuccess('MCP 配置保存成功');
     } catch (error) {
-      alert('保存 MCP 配置失败');
+      toastError('保存 MCP 配置失败');
     } finally {
       setIsSaving(false);
     }
@@ -841,8 +855,9 @@ const Agents: React.FC = () => {
     try {
       await agentService.deleteMCPConfig(id);
       await loadData();
+      toastSuccess('MCP 配置已删除');
     } catch (error) {
-      alert('删除失败');
+      toastError('删除失败');
     }
   };
 
@@ -1190,8 +1205,9 @@ const Agents: React.FC = () => {
       await agentService.saveWorkflow(workflow);
       await loadData();
       setEditingWorkflow(null);
+      toastSuccess('工作流保存成功');
     } catch (error) {
-      alert('保存工作流失败');
+      toastError('保存工作流失败');
     } finally {
       setIsSaving(false);
     }
@@ -1202,13 +1218,21 @@ const Agents: React.FC = () => {
     try {
       await agentService.deleteWorkflow(id);
       await loadData();
+      toastSuccess('工作流已删除');
     } catch (error) {
-      alert('删除失败');
+      toastError('删除失败');
     }
   };
 
   const handleRunWorkflow = async (id: string, input: string) => {
     try {
+      // 在测试前清除上一次的测试结果
+      setWorkflowTestResult(prev => {
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+
       setWorkflowTestResult(prev => ({ ...prev, [id]: '运行中...' }));
       const result = await agentService.runWorkflow(id, input);
       setWorkflowTestResult(prev => ({ ...prev, [id]: result?.content || (typeof result === 'string' ? result : JSON.stringify(result, null, 2)) }));

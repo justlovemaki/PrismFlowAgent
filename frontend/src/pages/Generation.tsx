@@ -7,8 +7,10 @@ import { saveToCache, loadFromCache, CACHE_KEYS, clearExpiredCache, clearCache, 
 import { getSettings } from '../services/settingsService';
 import ContentRenderer from '../components/UI/ContentRenderer';
 import { request } from '../services/api';
+import { useToast } from '../context/ToastContext.js';
 
 const Generation: React.FC = () => {
+  const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
   const location = useLocation();
   const { date: initialDate, result: initialResult, selectedIds: initialSelectedIds, selectedItems: initialSelectedItems } = (location.state as any) || {};
   
@@ -225,7 +227,7 @@ const Generation: React.FC = () => {
 
   const openCommitPicker = () => {
     if (!result) {
-      alert('没有可提交的内容');
+      toastInfo('没有可提交的内容');
       return;
     }
     setShowCommitPicker(true);
@@ -276,7 +278,7 @@ const Generation: React.FC = () => {
 
   const handleCommit = async (target: string, options: any = {}) => {
     if (!result) {
-      alert('没有可提交的内容');
+      toastInfo('没有可提交的内容');
       return;
     }
     setCommitting(true);
@@ -293,9 +295,9 @@ const Generation: React.FC = () => {
       
       setStatus(`已成功提交到 ${targetLabel} (${date})`);
       if (res.data?.media_id) {
-        alert(`已成功提交到 ${targetLabel} (${date})\nMedia ID: ${res.data.media_id}`);
+        toastSuccess(`已成功提交到 ${targetLabel} (${date})\nMedia ID: ${res.data.media_id}`);
       } else {
-        alert(`已成功提交到 ${targetLabel} (${date})`);
+        toastSuccess(`已成功提交到 ${targetLabel} (${date})`);
       }
 
       if (target === 'wechat') {
@@ -305,7 +307,7 @@ const Generation: React.FC = () => {
       console.error('Commit failed:', error);
       const errorMsg = error.response?.data?.error || error.message || '未知错误';
       setStatus(`提交失败: ${errorMsg}`);
-      alert(`提交失败: ${errorMsg}`);
+      toastError(`提交失败: ${errorMsg}`);
     } finally {
       setCommitting(false);
     }
@@ -325,11 +327,12 @@ const Generation: React.FC = () => {
         if (materialRes.media_id) {
           setWechatThumbMediaId(materialRes.media_id);
           setStatus('封面图生成并上传成功');
+          toastSuccess('封面图生成并上传成功');
         }
       }
     } catch (error: any) {
       console.error('Generate cover failed:', error);
-      alert('生成封面失败: ' + error.message);
+      toastError('生成封面失败: ' + error.message);
     } finally {
       setIsGeneratingCover(false);
     }
@@ -337,7 +340,7 @@ const Generation: React.FC = () => {
 
   const openAIPicker = async () => {
     if (!selectedIds || selectedIds.length === 0) {
-      alert('没有选择任何内容，请返回筛选页面');
+      toastInfo('没有选择任何内容，请返回筛选页面');
       return;
     }
     setShowAIPicker(true);
@@ -394,7 +397,7 @@ const Generation: React.FC = () => {
     } catch (error: any) {
       console.error('Tool run failed:', error);
       setStatus(`工具执行失败: ${error.message}`);
-      alert(`工具执行失败: ${error.message}`);
+      toastError(`工具执行失败: ${error.message}`);
     } finally {
       setGenerating(false);
       setSelectedTool(null);
@@ -417,7 +420,7 @@ const Generation: React.FC = () => {
     } catch (error: any) {
       console.error('Workflow run failed:', error);
       setStatus(`工作流执行失败: ${error.message}`);
-      alert(`工作流执行失败: ${error.message}`);
+      toastError(`工作流执行失败: ${error.message}`);
     } finally {
       setGenerating(false);
     }
@@ -439,7 +442,7 @@ const Generation: React.FC = () => {
     } catch (error: any) {
       console.error('Agent run failed:', error);
       setStatus(`Agent 执行失败: ${error.message}`);
-      alert(`Agent 执行失败: ${error.message}`);
+      toastError(`Agent 执行失败: ${error.message}`);
     } finally {
       setGenerating(false);
     }
@@ -447,7 +450,7 @@ const Generation: React.FC = () => {
 
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
-    alert('已复制到剪贴板');
+    toastSuccess('已复制到剪贴板');
   };
 
   return (
@@ -681,7 +684,7 @@ const Generation: React.FC = () => {
                 setSelectedIds(null);
                 setSelectedItems(null);
                 setStatus('已清除所有缓存');
-                alert('已清除所有缓存');
+                toastSuccess('已清除所有缓存');
               }
             }}
             className="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 dark:text-text-secondary hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors border border-transparent flex items-center gap-1.5"
@@ -1010,11 +1013,11 @@ const Generation: React.FC = () => {
                     if (r.type === 'workflow') {
                       const wf = workflows.find(w => w.id === r.id);
                       if (wf) handleRunWithWorkflow(wf);
-                      else { alert(`工作流 "${r.name}" 已不存在`); }
+                      else { toastError(`工作流 "${r.name}" 已不存在`); }
                     } else if (r.type === 'agent') {
                       const ag = agents.find(a => a.id === r.id);
                       if (ag) handleRunWithAgent(ag);
-                      else { alert(`Agent "${r.name}" 已不存在`); }
+                      else { toastError(`Agent "${r.name}" 已不存在`); }
                     } else if (r.type === 'tool') {
                       const tl = tools.find(t => t.id === r.id);
                       if (tl) {
@@ -1025,7 +1028,7 @@ const Generation: React.FC = () => {
                                             (selectedItems ? JSON.stringify(selectedItems, null, 2) : '');
                         setToolInput(defaultInput);
                       }
-                      else { alert(`工具 "${r.name}" 已不存在`); }
+                      else { toastError(`工具 "${r.name}" 已不存在`); }
                     }
                   };
                   return (

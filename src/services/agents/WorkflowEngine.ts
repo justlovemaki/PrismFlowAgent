@@ -220,17 +220,17 @@ export class WorkflowEngine {
     }
 
     const inputText = typeof stepInput === 'string' ? stepInput : (JSON.stringify(stepInput) ?? '');
-    LogService.info(`[Step ${step.id}] Input: ${(inputText || '').slice(0, 500)}${(inputText || '').length > 500 ? '...(truncated)' : ''}`);
+    LogService.info(`[Workflow ${step.id}] Input: ${inputText.slice(0, 1000)}${inputText.length > 1000 ? '...(truncated)' : ''}`);
 
     // Execute Agent
     let output: any = null;
     if (step.agentId) {
-      const agentResult = await this.agentService.runAgent(step.agentId, inputText, date);
+      const agentResult = await this.agentService.runAgent(step.agentId, inputText, date, { silent: true });
       output = agentResult.content;
     }
 
     const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
-    LogService.info(`[Step ${step.id}] Output: ${outputStr?.slice(0, 500)}${(outputStr?.length || 0) > 500 ? '...(truncated)' : ''}`);
+    LogService.info(`[Workflow ${step.id}] Output: ${outputStr?.slice(0, 1000)}${(outputStr?.length || 0) > 1000 ? '...(truncated)' : ''}`);
     return output;
   }
 }

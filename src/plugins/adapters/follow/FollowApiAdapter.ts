@@ -3,6 +3,7 @@ import type { UnifiedData } from '../../../types/index.js';
 import { stripHtml, getRandomUserAgent, sleep } from '../../../utils/helpers.js';
 import type { ConfigField } from '../../../types/plugin.js';
 import type { AdapterMetadata } from '../../../registries/AdapterRegistry.js';
+import { LogService } from '../../../services/LogService.js';
 
 
 export class FollowApiAdapter extends BaseAdapter {
@@ -47,7 +48,8 @@ export class FollowApiAdapter extends BaseAdapter {
     const listId = config.listId || this.listId;
     const feedId = config.feedId || this.feedId;
 
-    console.log(`[FollowApiAdapter] Fetching: ${config.apiUrl}, Using Proxy: ${!!this.dispatcher}`);
+    LogService.info(`[FollowApiAdapter: ${this.name}] Requesting: ${config.apiUrl}, listId: ${listId || 'none'}, feedId: ${feedId || 'none'}, pages: ${fetchPages}`);
+
     for (let i = 0; i < fetchPages; i++) {
       const body: any = {
         view: 1,
@@ -87,13 +89,15 @@ export class FollowApiAdapter extends BaseAdapter {
         } as any);
 
         if (!response.ok) {
-          console.error(`Failed to fetch Follow API data, page ${i + 1}: ${response.statusText}`);
+          LogService.error(`[FollowApiAdapter: ${this.name}] Failed to fetch page ${i + 1}: ${response.status} ${response.statusText}`);
           break;
         }
 
         const json: any = await response.json();
         const pageData = json.data || [];
         
+        LogService.info(`[FollowApiAdapter: ${this.name}] Page ${i + 1} fetched, found ${pageData.length} entries.`);
+
         if (pageData.length === 0) {
           break;
         }
@@ -104,8 +108,8 @@ export class FollowApiAdapter extends BaseAdapter {
         if (i < this.fetchPages - 1) {
           await sleep(Math.random() * 2000 + 1000);
         }
-      } catch (error) {
-        console.error(`Error fetching Follow API data, page ${i + 1}:`, error);
+      } catch (error: any) {
+        LogService.error(`[FollowApiAdapter: ${this.name}] Error fetching page ${i + 1}: ${error.message}`);
         break;
       }
     }

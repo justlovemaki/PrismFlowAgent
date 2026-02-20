@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { getCommitHistory, deleteCommitHistory, type CommitRecord } from '../services/historyService';
 import ContentRenderer from '../components/UI/ContentRenderer';
+import { useToast } from '../context/ToastContext.js';
 
 const History: React.FC = () => {
+  const { success: toastSuccess, error: toastError } = useToast();
   const [commits, setCommits] = useState<CommitRecord[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -56,10 +58,10 @@ const History: React.FC = () => {
       await deleteCommitHistory(id);
       // 重新获取列表
       await fetchHistory();
-      alert('删除成功');
+      toastSuccess('删除成功');
     } catch (error) {
       console.error('Failed to delete:', error);
-      alert('删除失败，请重试');
+      toastError('删除失败，请重试');
     } finally {
       setDeleting(null);
     }

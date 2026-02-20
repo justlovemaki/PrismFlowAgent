@@ -115,10 +115,10 @@ export const defaultSettings: SystemSettings = {
       category: 'githubTrending',
       adapterType: 'GitHubTrendingAdapter',
       enabled: true,
-      apiUrl: 'https://api.trending.dev/projects/daily',
+      apiUrl: 'https://git-trending.justlikemaki.vip/topone/?since=',
       items: [
-        { id: 'daily', name: '每日热门', since: 'daily', enabled: true, useProxy: false },
-        { id: 'weekly', name: '每周热门', since: 'weekly', enabled: false, useProxy: false }
+        { id: 'daily', name: '每日热门', category: 'githubTrending', since: 'daily', enabled: true, useProxy: false },
+        { id: 'weekly', name: '每周热门', category: 'githubTrending', since: 'weekly', enabled: false, useProxy: false }
       ]
     },
     {
@@ -126,7 +126,7 @@ export const defaultSettings: SystemSettings = {
       name: 'Follow API (Folo)',
       adapterType: 'FollowApiAdapter',
       enabled: true,
-      apiUrl: 'https://api.follow.is/nodes/entries',
+      apiUrl: 'https://api.follow.is/entries',
       fetchDays: 3,
       foloCookie: '',
       items: [
@@ -135,5 +135,12 @@ export const defaultSettings: SystemSettings = {
       ]
     }
   ],
-  CLOSED_PLUGINS: []
+  CLOSED_PLUGINS: [],
+
+  CATEGORIES: [
+    { id: 'news', label: '新闻资讯', icon: 'newspaper' },
+    { id: 'githubTrending', label: 'GitHub 热门', icon: 'code' },
+    { id: 'paper', label: '学术论文', icon: 'school' },
+    { id: 'socialMedia', label: '社交媒体', icon: 'forum' }
+  ]
 };
