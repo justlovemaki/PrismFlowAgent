@@ -59,7 +59,11 @@ export class AgentService {
       toolIds.add('execute_command');
     }
 
+    const settings = await this.store.get('system_settings');
+    const closedPlugins = settings?.CLOSED_PLUGINS || [];
+
     const tools = Array.from(toolIds)
+      .filter(id => !closedPlugins.includes(id)) // 过滤已禁用的工具
       .map(id => this.toolRegistry.getTool(id))
       .filter(Boolean);
 

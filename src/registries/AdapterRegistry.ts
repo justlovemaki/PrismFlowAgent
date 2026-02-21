@@ -1,4 +1,4 @@
-import { BaseAdapter } from '../plugins/adapters/base/BaseAdapter.js';
+import { BaseAdapter } from '../plugins/base/BaseAdapter.js';
 import { LogService } from '../services/LogService.js';
 import { ConfigField } from '../types/plugin.js';
 
@@ -10,6 +10,7 @@ export interface AdapterMetadata {
   description?: string;
   icon?: string;
   configFields: ConfigField[];
+  isBuiltin?: boolean;
 }
 
 export class AdapterRegistry {

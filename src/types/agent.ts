@@ -12,6 +12,7 @@ export interface ToolDefinition {
   name: string;
   description: string;
   parameters: any; // JSON Schema
+  isBuiltin?: boolean;
 }
 
 export interface SkillDefinition {

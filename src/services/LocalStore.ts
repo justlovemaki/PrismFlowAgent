@@ -127,7 +127,31 @@ export class LocalStore {
         )
       `);
 
+      // 创建调度配置表
+      await this.db.exec(`
+        CREATE TABLE IF NOT EXISTS schedules (
+          id TEXT PRIMARY KEY,
+          data TEXT NOT NULL
+        )
+      `);
+
+      // 创建执行日志记录表
+      await this.db.exec(`
+        CREATE TABLE IF NOT EXISTS task_logs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          task_id TEXT NOT NULL,
+          task_name TEXT,
+          start_time TEXT NOT NULL,
+          end_time TEXT,
+          duration INTEGER,
+          status TEXT NOT NULL,
+          message TEXT,
+          result_count INTEGER
+        )
+      `);
+
       console.log('Database initialized successfully');
+
     } catch (err) {
       console.error('Failed to initialize database:', err);
       throw err;
@@ -368,4 +392,80 @@ export class LocalStore {
   async deleteMCPConfig(id: string): Promise<void> {
     await this.db?.run('DELETE FROM mcp_configs WHERE id = ?', id);
   }
+
+  // --- Schedule CRUD ---
+
+  async saveSchedule(schedule: any): Promise<void> {
+    await this.db?.run('INSERT OR REPLACE INTO schedules (id, data) VALUES (?, ?)', schedule.id, JSON.stringify(schedule));
+  }
+
+  async getSchedule(id: string): Promise<any> {
+    const row = await this.db?.get('SELECT data FROM schedules WHERE id = ?', id);
+    return row ? JSON.parse(row.data) : null;
+  }
+
+  async listSchedules(): Promise<any[]> {
+    const rows = await this.db?.all('SELECT data FROM schedules');
+    return (rows || []).map(row => JSON.parse(row.data));
+  }
+
+  async deleteSchedule(id: string): Promise<void> {
+    await this.db?.run('DELETE FROM schedules WHERE id = ?', id);
+  }
+
+  // --- Task Log CRUD ---
+
+  async saveTaskLog(log: any): Promise<number> {
+    const result = await this.db?.run(
+      `INSERT INTO task_logs (task_id, task_name, start_time, end_time, duration, status, message, result_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      log.taskId,
+      log.taskName,
+      log.startTime,
+      log.endTime,
+      log.duration,
+      log.status,
+      log.message,
+      log.resultCount
+    );
+    return result?.lastID || 0;
+  }
+
+  async updateTaskLog(log: any): Promise<void> {
+    await this.db?.run(
+      `UPDATE task_logs SET end_time = ?, duration = ?, status = ?, message = ?, result_count = ? WHERE id = ?`,
+      log.endTime,
+      log.duration,
+      log.status,
+      log.message,
+      log.resultCount,
+      log.id
+    );
+  }
+
+  async listTaskLogs(options?: { limit?: number; offset?: number; taskId?: string }): Promise<any[]> {
+    let query = 'SELECT * FROM task_logs';
+    const params: any[] = [];
+    
+    if (options?.taskId) {
+      query += ' WHERE task_id = ?';
+      params.push(options.taskId);
+    }
+    
+    query += ' ORDER BY start_time DESC';
+    
+    if (options?.limit) {
+      query += ' LIMIT ?';
+      params.push(options.limit);
+    }
+    
+    if (options?.offset) {
+      query += ' OFFSET ?';
+      params.push(options.offset);
+    }
+    
+    const rows = await this.db?.all(query, ...params);
+    return rows || [];
+  }
 }
+

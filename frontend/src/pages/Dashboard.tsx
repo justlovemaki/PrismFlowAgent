@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getStats, getAdapters, getLogs, triggerIngestion, syncAdapter, testAI } from '../services/dashboardService';
+import { getStats, getAdapters, getLogs, triggerIngestion, syncAdapter, clearAdapterData, testAI } from '../services/dashboardService';
 import { getSettings } from '../services/settingsService';
 import { getTodayShanghai } from '../utils/dateUtils';
 import { clearCache, CACHE_KEYS } from '../utils/cacheUtils';
@@ -47,6 +47,7 @@ const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [syncingAdapters, setSyncingAdapters] = useState<Record<string, boolean>>({});
+  const [clearingAdapters, setClearingAdapters] = useState<Record<string, boolean>>({});
   const [syncForm, setSyncForm] = useState<Record<string, any>>({});
   const [syncDate, setSyncDate] = useState<string>(getTodayShanghai());
   const [showSyncModal, setShowSyncModal] = useState<string | null>(null);
@@ -102,6 +103,25 @@ const Dashboard: React.FC = () => {
       toastError(`同步失败: ${error}`);
     } finally {
       setSyncingAdapters(prev => ({ ...prev, [name]: false }));
+    }
+  };
+
+  const handleClearData = async (name: string) => {
+    if (clearingAdapters[name]) return;
+    if (!window.confirm(`确定要清空适配器 "${name}" 今日的数据吗？`)) return;
+
+    setClearingAdapters(prev => ({ ...prev, [name]: true }));
+    try {
+      await clearAdapterData(name, getTodayShanghai());
+      // 清理内容筛选页面的缓存
+      clearCache(CACHE_KEYS.SELECTION_ITEMS);
+      await fetchData();
+      toastSuccess(`数据已清空: ${name}`);
+    } catch (error) {
+      console.error(`Clear data failed for ${name}:`, error);
+      toastError(`清空失败: ${error}`);
+    } finally {
+      setClearingAdapters(prev => ({ ...prev, [name]: false }));
     }
   };
 
@@ -422,21 +442,37 @@ const Dashboard: React.FC = () => {
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-slate-900 dark:text-white font-medium tabular-nums">{adapter.count}</td>
-                            <td className="px-6 py-4 text-center">
-                              <button 
-                                onClick={() => openSyncModal(id)}
-                                disabled={syncingAdapters[id]}
-                                title="手动刷新/配置抓取"
-                                className={`flex items-center justify-center w-8 h-8 rounded-full transition-all ${
-                                  syncingAdapters[id] 
-                                    ? 'bg-primary/10 text-primary cursor-not-allowed' 
-                                    : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-primary'
-                                }`}
-                              >
-                                <span className={`material-symbols-outlined text-lg ${syncingAdapters[id] ? 'animate-spin' : ''}`}>
-                                  {syncingAdapters[id] ? 'progress_activity' : 'refresh'}
-                                </span>
-                              </button>
+                            <td className="px-6 py-4">
+                              <div className="flex items-center justify-end gap-2">
+                                <button 
+                                  onClick={() => handleClearData(id)}
+                                  disabled={clearingAdapters[id]}
+                                  title="清空今日数据"
+                                  className={`flex items-center justify-center w-8 h-8 rounded-full transition-all ${
+                                    clearingAdapters[id] 
+                                      ? 'text-accent-error/50 cursor-not-allowed' 
+                                      : 'text-slate-400 hover:bg-accent-error/10 hover:text-accent-error'
+                                  }`}
+                                >
+                                  <span className={`material-symbols-outlined text-lg ${clearingAdapters[id] ? 'animate-spin' : ''}`}>
+                                    {clearingAdapters[id] ? 'progress_activity' : 'delete_sweep'}
+                                  </span>
+                                </button>
+                                <button 
+                                  onClick={() => openSyncModal(id)}
+                                  disabled={syncingAdapters[id]}
+                                  title="手动刷新/配置抓取"
+                                  className={`flex items-center justify-center w-8 h-8 rounded-full transition-all ${
+                                    syncingAdapters[id] 
+                                      ? 'bg-primary/10 text-primary cursor-not-allowed' 
+                                      : 'text-slate-400 hover:bg-slate-100 dark:hover:bg-white/10 hover:text-primary'
+                                  }`}
+                                >
+                                  <span className={`material-symbols-outlined text-lg ${syncingAdapters[id] ? 'animate-spin' : ''}`}>
+                                    {syncingAdapters[id] ? 'progress_activity' : 'refresh'}
+                                  </span>
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         );

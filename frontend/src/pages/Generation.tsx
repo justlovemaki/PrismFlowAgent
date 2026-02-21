@@ -1169,28 +1169,35 @@ const Generation: React.FC = () => {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                      {tools.map(tool => (
-                        <button
-                          key={tool.id}
-                          onClick={() => {
-                            setSelectedTool(tool);
-                            // 默认填充内容：优先使用当前生成的内容，其次使用待处理内容的完整 JSON 格式
-                            const defaultInput = result?.daily_summary_markdown || 
-                                                (selectedItems ? JSON.stringify(selectedItems, null, 2) : '');
-                            setToolInput(defaultInput);
-                          }}
-                          className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-border-dark hover:border-amber-400 dark:hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all group text-left"
-                        >
-                          <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-                            <span className="material-symbols-outlined">build</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">{tool.name}</div>
-                            {tool.description && <div className="text-xs text-slate-500 dark:text-text-secondary mt-0.5 line-clamp-1">{tool.description}</div>}
-                          </div>
-                          <span className="material-symbols-outlined text-slate-300 dark:text-white/10 group-hover:text-amber-500 transition-colors">arrow_forward</span>
-                        </button>
-                      ))}
+                          {tools.map(tool => (
+                            <button
+                              key={tool.id}
+                              onClick={() => {
+                                setSelectedTool(tool);
+                                // 默认填充内容：优先使用当前生成的内容，其次使用待处理内容的完整 JSON 格式
+                                const defaultInput = result?.daily_summary_markdown || 
+                                                    (selectedItems ? JSON.stringify(selectedItems, null, 2) : '');
+                                setToolInput(defaultInput);
+                              }}
+                              className="w-full flex items-center gap-4 p-4 rounded-xl border border-slate-200 dark:border-border-dark hover:border-amber-400 dark:hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all group text-left"
+                            >
+                              <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                                <span className="material-symbols-outlined">build</span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <div className="font-bold text-slate-900 dark:text-white text-sm group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">{tool.name}</div>
+                                  {(tool as any).isBuiltin ? (
+                                    <span className="px-1 py-0.5 rounded text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider">内置</span>
+                                  ) : (
+                                    <span className="px-1 py-0.5 rounded text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider">自定义</span>
+                                  )}
+                                </div>
+                                {tool.description && <div className="text-xs text-slate-500 dark:text-text-secondary mt-0.5 line-clamp-1">{tool.description}</div>}
+                              </div>
+                              <span className="material-symbols-outlined text-slate-300 dark:text-white/10 group-hover:text-amber-500 transition-colors">arrow_forward</span>
+                            </button>
+                          ))}
                     </div>
                   )
                 )

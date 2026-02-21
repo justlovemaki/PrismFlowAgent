@@ -9,6 +9,7 @@ export interface PublisherMetadata {
   description?: string;
   icon?: string;
   configFields: ConfigField[];
+  isBuiltin?: boolean;
 }
 
 export class PublisherRegistry {

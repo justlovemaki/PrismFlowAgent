@@ -6,10 +6,11 @@ import { useToast } from '../context/ToastContext.js';
 const PluginManagement: React.FC = () => {
   const { success: toastSuccess, error: toastError } = useToast();
   const [settings, setSettings] = useState<any>({});
-  const [metadata, setMetadata] = useState<{ adapters: any[], publishers: any[], storages: any[] }>({
+  const [metadata, setMetadata] = useState<{ adapters: any[], publishers: any[], storages: any[], tools: any[] }>({
     adapters: [],
     publishers: [],
-    storages: []
+    storages: [],
+    tools: []
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -31,7 +32,8 @@ const PluginManagement: React.FC = () => {
       setMetadata({
         adapters: metadataData?.adapters || [],
         publishers: metadataData?.publishers || [],
-        storages: metadataData?.storages || []
+        storages: metadataData?.storages || [],
+        tools: metadataData?.tools || []
       });
     } catch (error) {
       console.error('Failed to load plugin data:', error);
@@ -80,9 +82,10 @@ const PluginManagement: React.FC = () => {
     );
   }
 
-  const renderPluginCard = (plugin: any, type: 'adapter' | 'publisher' | 'storage' | 'aiProvider') => {
+  const renderPluginCard = (plugin: any, type: 'adapter' | 'publisher' | 'storage' | 'tool' | 'aiProvider') => {
     const id = type === 'adapter' ? plugin.type : plugin.id;
     const enabled = !isClosed(id);
+    const isBuiltin = plugin.isBuiltin === true;
     
     return (
       <motion.div 
@@ -103,11 +106,18 @@ const PluginManagement: React.FC = () => {
               enabled ? 'bg-primary/10 text-primary' : 'bg-slate-100 dark:bg-white/5 text-slate-400'
             }`}>
               <span className="material-symbols-outlined text-2xl">
-                {plugin.icon || (type === 'adapter' ? 'extension' : type === 'publisher' ? 'send' : type === 'storage' ? 'cloud_upload' : 'psychology')}
+                {plugin.icon || (type === 'adapter' ? 'extension' : type === 'publisher' ? 'send' : type === 'storage' ? 'cloud_upload' : type === 'tool' ? 'build' : 'psychology')}
               </span>
             </div>
             <div>
-              <h4 className="font-bold text-slate-900 dark:text-white">{plugin.name}</h4>
+              <div className="flex items-center gap-2">
+                <h4 className="font-bold text-slate-900 dark:text-white">{plugin.name}</h4>
+                {isBuiltin ? (
+                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider">内置</span>
+                ) : (
+                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider">自定义</span>
+                )}
+              </div>
               <p className="text-[10px] font-mono text-slate-400 uppercase tracking-tight">{id}</p>
             </div>
           </div>
@@ -129,6 +139,7 @@ const PluginManagement: React.FC = () => {
               type === 'adapter' ? '数据源适配器，负责抓取和转换特定平台的数据。' : 
               type === 'publisher' ? '内容发布器，负责将生成的内容分发到对应平台。' : 
               type === 'storage' ? '存储插件，负责多媒体资源的上传与托管。' :
+              type === 'tool' ? '功能工具，可被 Agent 调用执行特定任务。' :
               'AI 提供商，为系统提供 LLM 推理、翻译和生成能力。'
             )}
           </p>
@@ -217,6 +228,21 @@ const PluginManagement: React.FC = () => {
           >
             <AnimatePresence mode="popLayout">
               {metadata.storages.map(plugin => renderPluginCard(plugin, 'storage'))}
+            </AnimatePresence>
+          </motion.div>
+        </section>
+        {/* Tools Section */}
+        <section className="space-y-4">
+          <div className="flex items-center gap-3 ml-1">
+            <span className="material-symbols-outlined text-primary">build</span>
+            <h3 className="text-lg font-bold text-slate-800 dark:text-white">智能工具 (Tools)</h3>
+          </div>
+          <motion.div 
+            layout
+            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          >
+            <AnimatePresence mode="popLayout">
+              {metadata.tools.map(plugin => renderPluginCard(plugin, 'tool'))}
             </AnimatePresence>
           </motion.div>
         </section>

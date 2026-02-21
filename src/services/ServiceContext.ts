@@ -22,6 +22,12 @@ export class ServiceContext {
 
   public async reload() {
     console.log('Reloading services with latest configuration...');
+    
+    // Stop existing scheduler if it exists
+    if (this.services?.schedulerService) {
+      this.services.schedulerService.stopAll();
+    }
+
     this.services = await initServices(this.store);
   }
 
@@ -29,12 +35,12 @@ export class ServiceContext {
     return this.services.taskService;
   }
 
-  public get aiProvider(): AIProvider | undefined {
-    return this.services.aiProvider;
+  public get schedulerService() {
+    return this.services.schedulerService;
   }
 
-  public get imageService() {
-    return this.services.imageService;
+  public get aiProvider(): AIProvider | undefined {
+    return this.services.aiProvider;
   }
 
   public get settings(): SystemSettings {

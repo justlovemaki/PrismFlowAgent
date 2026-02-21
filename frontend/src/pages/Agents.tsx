@@ -886,9 +886,9 @@ const Agents: React.FC = () => {
         </p>
       </div>
 
-      {/* Built-in Tools */}
+      {/* Tools Section */}
       <div>
-        <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">内置工具</h3>
+        <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">工具列表</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {tools.map(tool => (
             <div key={tool.id} className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-6 shadow-sm">
@@ -897,7 +897,14 @@ const Agents: React.FC = () => {
                   <span className="material-symbols-outlined text-2xl">construction</span>
                 </div>
                 <div>
-                  <h4 className="font-bold text-slate-900 dark:text-white">{tool.name}</h4>
+                  <div className="flex items-center gap-2">
+                    <h4 className="font-bold text-slate-900 dark:text-white">{tool.name}</h4>
+                    {(tool as any).isBuiltin ? (
+                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider">内置</span>
+                    ) : (
+                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider">自定义</span>
+                    )}
+                  </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">ID: {tool.id}</p>
                 </div>
               </div>

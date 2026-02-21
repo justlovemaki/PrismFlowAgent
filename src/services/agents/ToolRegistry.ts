@@ -1,6 +1,6 @@
 import { ToolDefinition } from '../../types/agent.js';
 import { LogService } from '../LogService.js';
-import { BaseTool } from '../../plugins/tools/base/BaseTool.js';
+import { BaseTool } from '../../plugins/base/BaseTool.js';
 
 export class ToolRegistry {
   private static instance: ToolRegistry;
@@ -42,7 +42,8 @@ export class ToolRegistry {
       id: tool.id,
       name: tool.name,
       description: tool.description,
-      parameters: tool.parameters
+      parameters: tool.parameters,
+      isBuiltin: tool.isBuiltin
     }));
   }
 

@@ -1,4 +1,4 @@
-import { BaseAdapter } from '../plugins/adapters/base/BaseAdapter.js';
+import { BaseAdapter } from '../plugins/base/BaseAdapter.js';
 import { LocalStore } from './LocalStore.js';
 import type { AIProvider } from './AIProvider.js';
 import type { UnifiedData } from '../types/index.js';
@@ -90,6 +90,30 @@ export class TaskService {
     return this.getAggregatedData(targetDate);
   }
 
+  /**
+   * 清空单个适配器的数据
+   */
+  async clearAdapterData(adapterName: string, date?: string) {
+    const targetDate = date || getISODate();
+    const adapter = this.adapters.find(a => a.name === adapterName);
+    if (!adapter) throw new Error(`Adapter ${adapterName} not found`);
+
+    const storageKey = `${targetDate}-${adapter.category}-${adapter.name}`;
+    await this.store.delete(storageKey);
+    
+    // 更新内存中的状态
+    this.adapterStatus[adapterName] = {
+      ...this.adapterStatus[adapterName],
+      status: 'idle',
+      count: 0
+    };
+    
+    // 数据变动，清除统计缓存
+    this.statsCache = null;
+    
+    LogService.info(`Cleared data for adapter ${adapterName} on ${targetDate}`);
+  }
+
   private async runAdapter(adapter: BaseAdapter, extraConfig?: any, targetDate?: string) {
     const date = targetDate || getISODate();
     LogService.info(`Running adapter: ${adapter.name}`);
@@ -122,6 +146,7 @@ export class TaskService {
       await this.store.put(storageKey, mergedData);
       
       LogService.info(`[TaskService] Adapter ${adapter.name} finished. Total items for today: ${mergedData.length} (New items in this run: ${newData.length})`);
+
 
       this.adapterStatus[adapter.name] = {
         lastActive: new Date().toISOString(),
@@ -212,7 +237,12 @@ export class TaskService {
     };
   }
 
+  getAdapters() {
+    return this.adapters;
+  }
+
   getAdapterStatus() {
+
     const status: Record<string, any> = {};
     for (const adapter of this.adapters) {
       // 获取当前适配器的实际配置值

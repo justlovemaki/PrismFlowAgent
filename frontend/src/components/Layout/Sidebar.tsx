@@ -20,6 +20,7 @@ const Sidebar: React.FC = () => {
     { name: '智能体', icon: 'smart_toy', path: '/agents' },
     { name: '历史存档', icon: 'history', path: '/history' },
     { name: '插件管理', icon: 'extension', path: '/plugins' },
+    { name: '任务管理', icon: 'schedule', path: '/tasks' },
     { name: '系统设置', icon: 'settings', path: '/settings' },
   ];
 

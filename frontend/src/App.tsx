@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Selection from './pages/Selection';
 import Generation from './pages/Generation';
 import History from './pages/History';
+import TaskManagement from './pages/TaskManagement';
 import Agents from './pages/Agents';
 import PluginManagement from './pages/PluginManagement';
 import Settings from './pages/Settings';
@@ -35,6 +36,7 @@ function App() {
                         <Route path="/selection" element={<Selection />} />
                          <Route path="/generation" element={<Generation />} />
                          <Route path="/history" element={<History />} />
+                         <Route path="/tasks" element={<TaskManagement />} />
                          <Route path="/agents" element={<Agents />} />
                          <Route path="/plugins" element={<PluginManagement />} />
                          <Route path="/settings" element={<Settings />} />

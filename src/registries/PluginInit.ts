@@ -16,7 +16,8 @@ const __dirname = path.dirname(__filename);
 async function scanAndRegister(
   dir: string,
   registry: any,
-  type: 'adapter' | 'publisher' | 'storage' | 'tool'
+  type: 'adapter' | 'publisher' | 'storage' | 'tool',
+  isBuiltin: boolean
 ) {
   if (!fs.existsSync(dir)) return;
 
@@ -40,21 +41,30 @@ async function scanAndRegister(
         if (typeof ExportedClass === 'function') {
           // 处理带有 metadata 的插件 (Adapter, Publisher, Storage)
           if (ExportedClass.metadata) {
-            const metadata = ExportedClass.metadata;
+            const metadata = { ...ExportedClass.metadata, isBuiltin };
             if (type === 'adapter') {
               registry.register(metadata.type, ExportedClass, metadata);
             } else {
               registry.register(metadata.id, ExportedClass, metadata);
             }
-            LogService.info(`Auto-registered ${type}: ${metadata.name || metadata.id || metadata.type}`);
+            LogService.info(`Auto-registered ${type}: ${metadata.name || metadata.id || metadata.type} (builtin: ${isBuiltin})`);
           }
           // 处理工具插件 (Tool)
           else if (type as string === 'tool') {
             try {
               const toolInstance = new ExportedClass();
               if (toolInstance.id && toolInstance.handler) {
-                registry.register(toolInstance.id, ExportedClass);
-                LogService.info(`Auto-registered tool: ${toolInstance.id}`);
+                // 如果是工具，我们需要在类或者实例上标记 isBuiltin
+                // 由于目前 ToolRegistry 只存储类，我们可以在实例上标记然后传递，或者在注册时处理
+                // 修改: 给实例设置 isBuiltin
+                (toolInstance as any).isBuiltin = isBuiltin;
+                registry.register(toolInstance.id, ExportedClass, { 
+                  id: toolInstance.id, 
+                  name: toolInstance.name, 
+                  description: toolInstance.description,
+                  isBuiltin 
+                });
+                LogService.info(`Auto-registered tool: ${toolInstance.id} (builtin: ${isBuiltin})`);
               }
             } catch (e) {
               // Ignore if not a valid tool class
@@ -75,32 +85,30 @@ export async function initRegistries() {
   const toolRegistry = ToolRegistryClass.getInstance();
 
   const pluginsDir = path.resolve(__dirname, '../plugins');
+  const builtinDir = path.join(pluginsDir, 'builtin');
+  const customDir = path.join(pluginsDir, 'custom');
 
-  // 1. 扫描适配器
-  await scanAndRegister(
-    path.join(pluginsDir, 'adapters'), 
-    adapterRegistry, 
-    'adapter'
-  );
+  const categories = [
+    { name: 'adapters', registry: adapterRegistry, type: 'adapter' as const },
+    { name: 'publishers', registry: publisherRegistry, type: 'publisher' as const },
+    { name: 'storages', registry: storageRegistry, type: 'storage' as const },
+    { name: 'tools', registry: toolRegistry, type: 'tool' as const },
+  ];
 
-  // 2. 扫描发布器
-  await scanAndRegister(
-    path.join(pluginsDir, 'publishers'), 
-    publisherRegistry, 
-    'publisher'
-  );
-
-  // 3. 扫描存储提供商
-  await scanAndRegister(
-    path.join(pluginsDir, 'storages'), 
-    storageRegistry,
-    'storage'
-  );
-
-  // 4. 扫描工具
-  await scanAndRegister(
-    path.join(pluginsDir, 'tools'),
-    toolRegistry,
-    'tool'
-  );
+  for (const category of categories) {
+    // 1. 扫描内建插件
+    await scanAndRegister(
+      path.join(builtinDir, category.name),
+      category.registry,
+      category.type,
+      true
+    );
+    // 2. 扫描自定义插件
+    await scanAndRegister(
+      path.join(customDir, category.name),
+      category.registry,
+      category.type,
+      false
+    );
+  }
 }

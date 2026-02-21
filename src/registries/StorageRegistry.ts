@@ -9,6 +9,7 @@ export interface StorageMetadata {
   description?: string;
   icon?: string;
   configFields: any[];
+  isBuiltin?: boolean;
 }
 
 export class StorageRegistry {

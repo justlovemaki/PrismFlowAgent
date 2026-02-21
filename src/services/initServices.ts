@@ -2,10 +2,11 @@ import { LocalStore } from './LocalStore.js';
 import { ConfigService } from './ConfigService.js';
 import { TaskService } from './TaskService.js';
 import { AIService } from './AIService.js';
-import { ImageService } from './ImageService.js';
 import { PromptService } from './PromptService.js';
+import { SchedulerService } from './SchedulerService.js';
 import { GeminiProvider, OpenAIProvider, AnthropicProvider, OllamaProvider, AIProvider } from './AIProvider.js';
 import { AgentService } from './agents/AgentService.js';
+
 import { SkillService } from './agents/SkillService.js';
 import { ToolRegistry } from './agents/ToolRegistry.js';
 import { WorkflowEngine } from './agents/WorkflowEngine.js';
@@ -23,9 +24,10 @@ export interface AppServices {
   aiProvider: AIProvider | undefined;
   aiService: AIService | null;
   promptService: PromptService;
-  imageService: ImageService;
   taskService: TaskService;
+  schedulerService: SchedulerService;
   agentService: AgentService | null;
+
   workflowEngine: WorkflowEngine | null;
   skillService: SkillService;
   adapterInstances: any[];
@@ -53,7 +55,6 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
 
   // 3. Initialize Core Services
   const aiService = aiProvider ? new AIService(aiProvider, settings) : null;
-  const imageService = new ImageService();
 
   // 4. Initialize Adapters & Publishers & Storages
   const adapterInstances = initAdapters(settings, proxyAgent);
@@ -65,6 +66,7 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   
   // 6. Initialize Agent Ecosystem
   const skillService = new SkillService();
+
   await skillService.init();
 
   // Initialize Tool Registry from Global Registry
@@ -73,21 +75,36 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   const globalToolRegistry = GlobalToolRegistry.getInstance();
   for (const toolId of globalToolRegistry.getAll()) {
     const ToolClass = globalToolRegistry.get(toolId);
+    const metadata = globalToolRegistry.getMetadata(toolId);
     if (ToolClass) {
-      toolRegistry.registerTool(new (ToolClass as any)());
+      const instance = new (ToolClass as any)();
+      if (metadata) {
+        instance.isBuiltin = metadata.isBuiltin;
+      }
+      toolRegistry.registerTool(instance);
     }
   }
 
   const agentService = aiProvider ? new AgentService(store, aiProvider, skillService, proxyAgent) : null;
   const workflowEngine = (agentService && aiProvider) ? new WorkflowEngine(store, agentService, aiProvider) : null;
 
+  // 6.1. Initialize Scheduler Service (Now that WorkflowEngine exists)
+  const schedulerService = new SchedulerService(store, taskService, agentService, workflowEngine, aiService);
+
+
   // 7. Seed Data
   if (agentService) {
     await seedDefaultAgents(store, agentService, settings);
   }
 
+  // Seed Default Schedules if none exist
+  await seedDefaultSchedules(store, adapterInstances);
+
   // Restore status
   taskService.initStatus().catch(err => console.error('Failed to init task status:', err));
+  
+  // Start Scheduler
+  schedulerService.init().catch(err => console.error('Failed to init scheduler:', err));
 
   return {
     settings,
@@ -95,8 +112,8 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
     aiProvider,
     aiService,
     promptService,
-    imageService,
     taskService,
+    schedulerService,
     agentService,
     workflowEngine,
     skillService,
@@ -106,6 +123,7 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
     proxyAgent
   };
 }
+
 
 function initProxyAgent(settings: SystemSettings): ProxyAgent | undefined {
   if (settings.API_PROXY) {
@@ -277,3 +295,24 @@ async function seedDefaultAgents(store: LocalStore, agentService: AgentService, 
   });
   
 }
+
+async function seedDefaultSchedules(store: LocalStore, adapters: any[]) {
+  const existingSchedules = await store.listSchedules();
+  if (existingSchedules.length > 0) return;
+
+  console.log('Seeding default schedules...');
+
+  // Create individual schedules for each adapter (initially disabled)
+  for (const adapter of adapters) {
+    await store.saveSchedule({
+      id: `sync_${adapter.name}`,
+      name: `${adapter.name} 定时同步`,
+      cron: '30 9 * * *', 
+      type: 'ADAPTER',
+      targetId: adapter.name,
+      enabled: false
+    });
+  }
+}
+
+

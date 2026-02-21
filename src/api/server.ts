@@ -20,7 +20,7 @@ import { ToolRegistry } from '../services/agents/ToolRegistry.js';
 import { AdapterRegistry } from '../registries/AdapterRegistry.js';
 import { PublisherRegistry } from '../registries/PublisherRegistry.js';
 import { StorageRegistry } from '../registries/StorageRegistry.js';
-import { WechatService } from '../plugins/publishers/wechat/WechatService.js';
+import { WechatService } from '../plugins/builtin/publishers/wechat/WechatService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -138,6 +138,17 @@ export async function createServer(existingStore?: LocalStore) {
     }
   });
 
+  fastify.post('/api/dashboard/adapters/:name/clear', async (request, reply) => {
+    try {
+      const { name } = request.params as any;
+      const { date } = request.body as any;
+      await context.taskService.clearAdapterData(name, date);
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.get('/api/dashboard/logs', async (request, reply) => {
     try {
       return LogService.getLogs();
@@ -228,11 +239,13 @@ export async function createServer(existingStore?: LocalStore) {
     const adapterRegistry = AdapterRegistry.getInstance();
     const publisherRegistry = PublisherRegistry.getInstance();
     const storageRegistry = StorageRegistry.getInstance();
+    const toolRegistry = (await import('../registries/ToolRegistry.js')).ToolRegistry.getInstance();
 
     return { 
       adapters: adapterRegistry.listMetadata(), 
       publishers: publisherRegistry.listMetadata(),
-      storages: storageRegistry.listMetadata()
+      storages: storageRegistry.listMetadata(),
+      tools: toolRegistry.listMetadata()
     };
   });
 
@@ -622,13 +635,20 @@ export async function createServer(existingStore?: LocalStore) {
   });
 
   fastify.get('/api/tools', async () => {
-    return ToolRegistry.getInstance().getAllTools();
+    const allTools = ToolRegistry.getInstance().getAllTools();
+    const closedPlugins = context.settings.CLOSED_PLUGINS || [];
+    return allTools.filter(tool => !closedPlugins.includes(tool.id));
   });
 
   fastify.post('/api/tools/:id/run', async (request, reply) => {
     try {
       const { id } = request.params as any;
       const args = request.body as any;
+
+      const closedPlugins = context.settings.CLOSED_PLUGINS || [];
+      if (closedPlugins.includes(id)) {
+        return reply.status(403).send({ success: false, error: `Tool ${id} is disabled` });
+      }
       
       const result = await ToolRegistry.getInstance().callTool(id, args);
       
@@ -668,7 +688,57 @@ export async function createServer(existingStore?: LocalStore) {
     return { status: 'success' };
   });
 
+  // --- Scheduler API ---
+
+  fastify.get('/api/schedules', async () => {
+    return await store.listSchedules();
+  });
+
+  fastify.post('/api/schedules', async (request) => {
+    const schedule = request.body as any;
+    await store.saveSchedule(schedule);
+    
+    // Restart/Start the task in memory
+    if (schedule.enabled) {
+      context.schedulerService.startSchedule(schedule);
+    } else {
+      context.schedulerService.stopSchedule(schedule.id);
+    }
+    
+    return { status: 'success' };
+  });
+
+  fastify.delete('/api/schedules/:id', async (request) => {
+    const { id } = request.params as any;
+    context.schedulerService.stopSchedule(id);
+    await store.deleteSchedule(id);
+    return { status: 'success' };
+  });
+
+  fastify.get('/api/schedules/logs', async (request) => {
+    const { limit, offset, taskId } = request.query as any;
+    return await store.listTaskLogs({
+      limit: limit ? parseInt(limit) : 50,
+      offset: offset ? parseInt(offset) : 0,
+      taskId
+    });
+  });
+
+  fastify.post('/api/schedules/:id/run', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      
+      // Fire and forget
+      context.schedulerService.runNow(id).catch(err => LogService.error(`Manual run for ${id} failed: ${err}`));
+      
+      return { status: 'success', message: 'Task triggered' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   // --- MCP Config API ---
+
 
   fastify.get('/api/mcp-configs', async () => {
     return await store.listMCPConfigs();

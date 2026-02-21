@@ -8,8 +8,10 @@ export interface UnifiedData {
   category: string;
   author?: string;
   tags?: string[];
+  ai_summary?: string; // AI 处理后的摘要或评论
   metadata?: Record<string, any>;
 }
+
 
 export interface DataCategory {
   id: string;
