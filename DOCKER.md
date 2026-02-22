@@ -38,7 +38,6 @@ docker-compose up -d
 - 构建镜像（如果尚未构建）。
 - 启动容器并将容器的 3000 端口映射到宿主机的 3000 端口。
 - 挂载 `./data` 目录到容器内的 `/app/data`，实现数据持久化。
-- 挂载 `.env` 文件到容器。
 
 ### 查看日志
 
@@ -69,9 +68,9 @@ docker run -d \
   --name PrismFlowAgent \
   -p 3000:3000 \
   -v $(pwd)/data:/app/data \
-  --env-file .env \
+  -e JWT_SECRET=your_secret_here \
   --restart always \
-  prism-flow-agent
+  ghcr.io/justlovemaki/prismflowagent
 ```
 
 ## 5. 数据持久化
