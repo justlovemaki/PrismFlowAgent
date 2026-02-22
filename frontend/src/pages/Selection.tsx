@@ -414,31 +414,31 @@ const Selection: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-24">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-end gap-4">
+      <div className="flex flex-col lg:flex-row justify-between items-start lg:items-end gap-6">
         <div>
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">内容筛选</h1>
           <p className="text-slate-500 dark:text-text-secondary text-sm">筛选用于生成的原始素材 (Github, Papers, News, Social 等)</p>
         </div>
-        <div className="flex items-center gap-3 bg-white dark:bg-surface-dark p-1.5 rounded-lg border border-slate-200 dark:border-border-dark shadow-sm">
-          <div className="relative group">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-white dark:bg-surface-dark p-2 rounded-xl border border-slate-200 dark:border-border-dark shadow-sm w-full lg:w-auto">
+          <div className="relative group flex-1 sm:flex-initial">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-text-secondary">
               <span className="material-symbols-outlined text-[20px]">calendar_today</span>
             </div>
             <input 
-              className="bg-slate-50 dark:bg-surface-darker text-slate-900 dark:text-white text-sm rounded border-none focus:ring-1 focus:ring-primary pl-10 pr-3 py-1.5 min-w-[160px] cursor-pointer" 
+              className="bg-slate-50 dark:bg-surface-darker text-slate-900 dark:text-white text-sm rounded-lg border-none focus:ring-1 focus:ring-primary pl-10 pr-3 py-2 w-full sm:min-w-[160px] cursor-pointer" 
               type="date" 
               value={date}
               onChange={(e) => handleDateChange(e.target.value)}
               onClick={(e) => (e.target as any).showPicker?.()}
             />
           </div>
-          <div className="h-6 w-px bg-slate-200 dark:bg-border-dark"></div>
-          <div className="relative group">
+          <div className="hidden sm:block h-6 w-px bg-slate-200 dark:bg-border-dark"></div>
+          <div className="relative group flex-[2] sm:flex-initial">
             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400 dark:text-text-secondary">
               <span className="material-symbols-outlined text-[20px]">search</span>
             </div>
             <input 
-              className="bg-slate-50 dark:bg-surface-darker text-slate-900 dark:text-white text-sm rounded border-none focus:ring-1 focus:ring-primary pl-10 pr-3 py-1.5 min-w-[200px]" 
+              className="bg-slate-50 dark:bg-surface-darker text-slate-900 dark:text-white text-sm rounded-lg border-none focus:ring-1 focus:ring-primary pl-10 pr-3 py-2 w-full sm:min-w-[240px]" 
               type="text" 
               placeholder="搜索标题、描述、来源..."
               value={searchQuery}
@@ -449,13 +449,13 @@ const Selection: React.FC = () => {
       </div>
 
       <div className="sticky top-0 z-10 bg-background-light dark:bg-background-dark pt-2 pb-4 space-y-4">
-        <div className="border-b border-slate-200 dark:border-border-dark">
+        <div className="border-b border-slate-200 dark:border-border-dark overflow-x-auto no-scrollbar">
           <div className="flex gap-8 min-w-max px-2">
-            {['全部', '历史存档', ...categories.map(c => c.label)].map((tab) => (
+            {['全部', '历史存档', ...categories.map(tab => tab.label)].map((tab) => (
               <button 
                 key={tab} 
                 onClick={() => setActiveTab(tab)}
-                className={`pb-3 border-b-2 text-sm font-medium px-1 transition-colors ${activeTab === tab ? 'border-primary text-slate-900 dark:text-white' : 'border-transparent text-slate-500 dark:text-text-secondary hover:text-primary'}`}
+                className={`pb-3 border-b-2 text-sm font-medium px-1 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-primary text-slate-900 dark:text-white' : 'border-transparent text-slate-500 dark:text-text-secondary hover:text-primary'}`}
               >
                 {tab}
               </button>

@@ -1001,45 +1001,50 @@ const Settings: React.FC = () => {
                             : 'bg-slate-50/30 dark:bg-black/10 border-slate-100 dark:border-white/5 opacity-60'}
                         `}
                       >
-                        <div className="flex-1 space-y-2">
-                          <div className="flex items-center gap-3">
+                        <div className="flex-1 space-y-4">
+                          <div className="flex flex-wrap items-center gap-3">
                             <input 
                               type="text"
                               value={item.name}
                               onChange={(e) => handleAdapterChange(adapter.id, item.id, 'name', e.target.value)}
-                              className={`font-semibold bg-transparent border-none p-0 focus:ring-0 w-24 ${item.enabled ? 'text-slate-900 dark:text-white' : 'text-slate-500'}`}
+                              placeholder="数据项名称"
+                              className={`font-semibold bg-transparent border-none p-0 focus:ring-0 min-w-[120px] flex-1 sm:flex-initial ${item.enabled ? 'text-slate-900 dark:text-white' : 'text-slate-500'}`}
                             />
-                             <select 
+                            <div className="flex flex-wrap items-center gap-3">
+                              <select 
                                 value={item.category || ''}
                                 onChange={(e) => handleAdapterChange(adapter.id, item.id, 'category', e.target.value)}
-                                className={`text-[10px] px-1.5 py-0.5 rounded uppercase border-none focus:ring-0 cursor-pointer ${item.enabled ? 'bg-primary/10 text-primary' : 'bg-slate-200 dark:bg-white/10 text-slate-500'}`}
+                                className={`text-[10px] px-2 py-1 rounded-lg uppercase border-none focus:ring-0 cursor-pointer ${item.enabled ? 'bg-primary/10 text-primary' : 'bg-slate-200 dark:bg-white/10 text-slate-500'}`}
                               >
                                 {(settings.CATEGORIES || []).map((cat: any) => (
                                   <option key={cat.id} value={cat.id}>{cat.label}</option>
                                 ))}
                               </select>
 
-                            <label className="flex items-center gap-1.5 cursor-pointer group">
-                              <input 
-                                type="checkbox"
-                                checked={item.useProxy ?? false}
-                                onChange={(e) => handleAdapterChange(adapter.id, item.id, 'useProxy', e.target.checked)}
-                                className="w-3 h-3 rounded border-slate-300 dark:border-white/20 text-primary focus:ring-primary/20 bg-transparent"
-                              />
-                              <span className="text-[9px] font-bold text-slate-400 group-hover:text-primary transition-colors uppercase tracking-wider">代理</span>
-                            </label>
+                              <div className="flex items-center gap-4">
+                                <label className="flex items-center gap-1.5 cursor-pointer group">
+                                  <input 
+                                    type="checkbox"
+                                    checked={item.useProxy ?? false}
+                                    onChange={(e) => handleAdapterChange(adapter.id, item.id, 'useProxy', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded border-slate-300 dark:border-white/20 text-primary focus:ring-primary/20 bg-transparent"
+                                  />
+                                  <span className="text-[10px] font-bold text-slate-400 group-hover:text-primary transition-colors uppercase tracking-wider">代理</span>
+                                </label>
 
-                            <label className="flex items-center gap-1.5 cursor-pointer group">
-                              <input 
-                                type="checkbox"
-                                checked={item.enableTranslation ?? false}
-                                onChange={(e) => handleAdapterChange(adapter.id, item.id, 'enableTranslation', e.target.checked)}
-                                className="w-3 h-3 rounded border-slate-300 dark:border-white/20 text-primary focus:ring-primary/20 bg-transparent"
-                              />
-                              <span className="text-[9px] font-bold text-slate-400 group-hover:text-primary transition-colors uppercase tracking-wider">翻译</span>
-                            </label>
+                                <label className="flex items-center gap-1.5 cursor-pointer group">
+                                  <input 
+                                    type="checkbox"
+                                    checked={item.enableTranslation ?? false}
+                                    onChange={(e) => handleAdapterChange(adapter.id, item.id, 'enableTranslation', e.target.checked)}
+                                    className="w-3.5 h-3.5 rounded border-slate-300 dark:border-white/20 text-primary focus:ring-primary/20 bg-transparent"
+                                  />
+                                  <span className="text-[10px] font-bold text-slate-400 group-hover:text-primary transition-colors uppercase tracking-wider">翻译</span>
+                                </label>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex flex-wrap gap-4 items-end">
+                          <div className="flex flex-wrap gap-4 items-end pt-2 border-t border-slate-100 dark:border-white/5">
                             {(() => {
                               const adapterMeta = pluginMetadata.adapters.find(a => a.type === adapter.adapterType);
                               return adapterMeta ? renderDynamicConfigFields(
@@ -1051,24 +1056,27 @@ const Settings: React.FC = () => {
                               ) : null;
                             })()}
                           </div>
-
                         </div>
-                        <div className="flex items-center gap-4">
-                          <label className="relative inline-flex items-center cursor-pointer">
-                            <input 
-                              type="checkbox" 
-                              className="sr-only peer"
-                              checked={item.enabled}
-                              onChange={(e) => handleAdapterChange(adapter.id, item.id, 'enabled', e.target.checked)}
-                            />
-                            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
-                          </label>
-                          <button 
-                            onClick={() => handleDeleteItem(adapter.id, item.id)}
-                            className="w-8 h-8 inline-flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all"
-                          >
-                            <span className="material-symbols-outlined text-lg">delete</span>
-                          </button>
+                        <div className="flex items-center justify-between md:justify-end gap-6 pt-4 md:pt-0 border-t md:border-none border-slate-100 dark:border-white/5">
+                          <div className="md:hidden text-[10px] font-bold text-slate-400 uppercase tracking-widest">状态与操作</div>
+                          <div className="flex items-center gap-4">
+                            <label className="relative inline-flex items-center cursor-pointer">
+                              <input 
+                                type="checkbox" 
+                                className="sr-only peer"
+                                checked={item.enabled}
+                                onChange={(e) => handleAdapterChange(adapter.id, item.id, 'enabled', e.target.checked)}
+                              />
+                              <div className="w-10 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+                            </label>
+                            <button 
+                              onClick={() => handleDeleteItem(adapter.id, item.id)}
+                              className="w-9 h-9 inline-flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all"
+                              title="删除此项"
+                            >
+                              <span className="material-symbols-outlined text-xl">delete</span>
+                            </button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -1236,13 +1244,13 @@ const Settings: React.FC = () => {
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex gap-1 p-1 bg-slate-100 dark:bg-white/5 rounded-xl w-fit">
+      <div className="flex gap-1 p-1 bg-slate-100 dark:bg-white/5 rounded-xl w-full overflow-x-auto no-scrollbar">
         {tabs.map(tab => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
             className={`
-              flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all
+              flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all whitespace-nowrap
               ${activeTab === tab.id 
                 ? 'bg-white dark:bg-white/10 text-primary shadow-sm' 
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'}
@@ -1264,13 +1272,13 @@ const Settings: React.FC = () => {
             transition={{ duration: 0.2 }}
             className="bg-white dark:bg-surface-dark rounded-2xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-sm"
           >
-            <div className="px-8 py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02]">
+            <div className="px-4 py-5 md:px-8 md:py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02]">
               <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-1">{activeSection.title}</h3>
               <p className="text-slate-500 dark:text-slate-400 text-sm">{activeSection.description}</p>
             </div>
             
-            <div className="p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="p-4 md:p-8 space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
                 {activeSection.fields.map((field) => (
                   <React.Fragment key={field.key}>
                     {renderField(field)}

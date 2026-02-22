@@ -191,14 +191,14 @@ const TaskManagement: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 className="text-slate-900 dark:text-white text-3xl font-bold tracking-tight">任务调度</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">管理自动化数据抓取与智能体工作流</p>
         </div>
         <button 
           onClick={openAdd}
-          className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg transition-all shadow-md shadow-primary/20"
+          className="flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white text-sm font-bold px-4 py-2 rounded-lg transition-all shadow-md shadow-primary/20 w-full sm:w-auto"
         >
           <span className="material-symbols-outlined text-[20px]">add</span>
           <span>新增任务</span>
@@ -222,9 +222,9 @@ const TaskManagement: React.FC = () => {
               <thead>
                 <tr className="bg-slate-50 dark:bg-white/5 border-b border-slate-200 dark:border-white/5 text-xs uppercase text-slate-500 dark:text-slate-400 font-semibold tracking-wider">
                   <th className="px-6 py-4">任务名称</th>
-                  <th className="px-6 py-4">Cron 表达式</th>
-                  <th className="px-6 py-4">类型</th>
-                  <th className="px-6 py-4">上次运行</th>
+                  <th className="px-6 py-4 hidden md:table-cell">Cron 表达式</th>
+                  <th className="px-6 py-4 hidden sm:table-cell">类型</th>
+                  <th className="px-6 py-4 hidden lg:table-cell">上次运行</th>
                   <th className="px-6 py-4">状态</th>
                   <th className="px-6 py-4">开关</th>
                   <th className="px-6 py-4 text-right">操作</th>
@@ -242,15 +242,16 @@ const TaskManagement: React.FC = () => {
                         <div className="flex flex-col">
                           <span className="font-medium text-slate-900 dark:text-white">{schedule.name}</span>
                           <span className="text-xs text-slate-400">{getTargetDisplayName(schedule.type, schedule.targetId)}</span>
+                          <span className="text-[10px] text-primary md:hidden mt-1">{schedule.cron}</span>
                         </div>
                       </td>
-                      <td className="px-6 py-4 font-mono text-xs text-primary">{schedule.cron}</td>
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 font-mono text-xs text-primary hidden md:table-cell">{schedule.cron}</td>
+                      <td className="px-6 py-4 hidden sm:table-cell">
                         <span className="px-2 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-400">
                           {schedule.type}
                         </span>
                       </td>
-                      <td className="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs">
+                      <td className="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs hidden lg:table-cell">
                         {formatTime(schedule.lastRun)}
                       </td>
                       <td className="px-6 py-4">

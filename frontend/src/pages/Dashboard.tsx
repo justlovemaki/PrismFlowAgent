@@ -266,14 +266,14 @@ const Dashboard: React.FC = () => {
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         <div>
           <h2 className="text-slate-900 dark:text-white text-3xl font-bold tracking-tight mb-1">仪表盘概览</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">实时监控 AI 趋势聚合与处理状态</p>
         </div>
         <button 
           onClick={fetchData}
-          className="group flex items-center gap-2 bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 text-slate-700 dark:text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+          className="group flex items-center justify-center gap-2 bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 text-slate-700 dark:text-white text-sm font-medium px-4 py-2 rounded-lg transition-all w-full lg:w-auto"
         >
           <span className="material-symbols-outlined text-[20px] group-hover:rotate-180 transition-transform duration-500">refresh</span>
           <span>刷新状态</span>

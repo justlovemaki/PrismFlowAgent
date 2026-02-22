@@ -80,17 +80,17 @@ const History: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="size-10 rounded-xl bg-primary/10 dark:bg-primary/20 flex items-center justify-center text-primary">
             <span className="material-symbols-outlined text-2xl">archive</span>
           </div>
           <h2 className="text-slate-900 dark:text-white text-2xl font-bold tracking-tight">历史存档</h2>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="relative">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
+          <div className="relative w-full">
             <input 
-              className="bg-white dark:bg-surface-dark border border-slate-200 dark:border-transparent text-slate-900 dark:text-white text-sm rounded-lg pl-10 pr-4 py-2 w-64 shadow-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all" 
+              className="bg-white dark:bg-surface-dark border border-slate-200 dark:border-transparent text-slate-900 dark:text-white text-sm rounded-lg pl-10 pr-4 py-2 w-full sm:w-64 shadow-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-all" 
               placeholder="搜索报告..." 
               type="text"
               value={searchQuery}
@@ -116,8 +116,8 @@ const History: React.FC = () => {
               <tr className="bg-slate-50 dark:bg-surface-dark-lighter/50 border-b border-slate-200 dark:border-surface-dark-lighter text-xs uppercase tracking-wider text-slate-500 dark:text-text-secondary">
                 <th className="px-6 py-4 font-semibold">日期</th>
                 <th className="px-6 py-4 font-semibold">平台</th>
-                <th className="px-6 py-4 font-semibold">提交时间</th>
-                <th className="px-6 py-4 font-semibold text-center">状态</th>
+                <th className="px-4 py-4 font-semibold hidden sm:table-cell">提交时间</th>
+                <th className="px-4 py-4 font-semibold text-center hidden md:table-cell">状态</th>
                 <th className="px-6 py-4 font-semibold text-right">操作</th>
               </tr>
             </thead>
@@ -144,23 +144,23 @@ const History: React.FC = () => {
                   <td className="px-6 py-4 text-sm text-slate-700 dark:text-white">
                     {commit.platform}
                   </td>
-                  <td className="px-6 py-4 text-sm text-slate-500 dark:text-text-secondary whitespace-nowrap">
+                  <td className="px-4 py-4 text-sm text-slate-500 dark:text-text-secondary whitespace-nowrap hidden sm:table-cell">
                     {formatDateTime(commit.commitTime)}
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td className="px-4 py-4 text-center hidden md:table-cell">
                     <div className="flex items-center justify-center gap-2">
                       <span className="size-2 rounded-full bg-accent-success shadow-[0_0_8px_rgba(34,197,94,0.4)]"></span>
                       <span className="text-sm text-slate-700 dark:text-white">已提交</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                    <div className="flex items-center justify-end gap-1 sm:gap-2">
                       {commit.fullContent && (
                         <button
                           onClick={() => setPreviewContent(commit.fullContent!)}
-                          className="text-slate-600 dark:text-text-secondary font-bold text-xs hover:bg-slate-100 dark:hover:bg-surface-dark-lighter px-3 py-1.5 rounded-md transition-colors inline-flex items-center justify-center gap-1 w-20"
+                          className="text-slate-600 dark:text-text-secondary font-bold text-xs hover:bg-slate-100 dark:hover:bg-surface-dark-lighter px-2 sm:px-3 py-1.5 rounded-md transition-colors inline-flex items-center justify-center gap-1 min-w-[50px] sm:w-20"
                         >
-                          <span>预览</span>
+                          <span className="hidden xs:inline">预览</span>
                           <span className="material-symbols-outlined text-[14px]">visibility</span>
                         </button>
                       )}
@@ -169,18 +169,18 @@ const History: React.FC = () => {
                           href={commit.viewUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-primary font-bold text-xs hover:bg-primary/10 px-3 py-1.5 rounded-md transition-colors inline-flex items-center justify-center gap-1 w-20"
+                          className="text-primary font-bold text-xs hover:bg-primary/10 px-2 sm:px-3 py-1.5 rounded-md transition-colors inline-flex items-center justify-center gap-1 min-w-[50px] sm:w-20"
                         >
-                          <span>查看</span>
+                          <span className="hidden xs:inline">查看</span>
                           <span className="material-symbols-outlined text-[14px]">open_in_new</span>
                         </a>
                       ) : (
-                        <span className="text-slate-400 text-xs px-3 py-1.5 w-20 inline-flex justify-center">无链接</span>
+                        <span className="text-slate-400 text-xs px-2 sm:px-3 py-1.5 min-w-[50px] sm:w-20 inline-flex justify-center">无</span>
                       )}
                       <button
                         onClick={() => handleDelete(commit.id)}
                         disabled={deleting === commit.id}
-                        className="text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 px-2 py-1.5 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="text-slate-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 px-1.5 py-1.5 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         title="删除记录"
                       >
                         {deleting === commit.id ? (

@@ -495,18 +495,17 @@ const Generation: React.FC = () => {
         </div>
       </div>
 
-      <div className="flex-1 flex min-h-0 overflow-hidden rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-background-dark shadow-sm">
+      <div className="flex-1 flex flex-col md:flex-row min-h-0 overflow-hidden rounded-xl border border-slate-200 dark:border-border-dark bg-white dark:bg-background-dark shadow-sm">
         {/* Left: Selected Content */}
-        <div className="flex-1 flex flex-col min-w-[320px] border-r border-slate-200 dark:border-border-dark bg-slate-50 dark:bg-surface-darker/50">
-          <div className="flex items-center justify-between px-4 py-2 h-12 border-b border-slate-200 dark:border-border-dark bg-slate-100 dark:bg-surface-darker">
+        <div className="w-full md:w-80 flex flex-col border-b md:border-b-0 md:border-r border-slate-200 dark:border-border-dark bg-slate-50 dark:bg-surface-darker/50 h-48 md:h-auto shrink-0">
+          <div className="flex items-center justify-between px-4 py-2 h-10 border-b border-slate-200 dark:border-border-dark bg-slate-100 dark:bg-surface-darker shrink-0">
             <div className="flex items-center gap-2 text-slate-500 dark:text-text-secondary">
-              <span className="material-symbols-outlined text-[18px]">list_alt</span>
-              <span className="text-xs font-mono font-medium uppercase tracking-wider">待处理内容 ({selectedItems?.length || 0})</span>
+              <span className="material-symbols-outlined text-[16px]">list_alt</span>
+              <span className="text-[10px] font-mono font-medium uppercase tracking-wider">待处理内容 ({selectedItems?.length || 0})</span>
             </div>
             {selectedItems && selectedItems.length > 0 && (
               <button 
                 onClick={() => {
-                  // 移除 selected, id, description 字段，且如果存在 ai_summary 则移除 content_html
                   const cleanedItems = selectedItems.map(({ selected, id, description, ...rest }: any) => {
                     if (rest.metadata?.ai_summary) {
                       const { content_html, ...restMetadata } = rest.metadata;
@@ -519,134 +518,122 @@ const Generation: React.FC = () => {
                 className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-dark transition"
                 title="复制素材 JSON"
               >
-                <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                <span className="material-symbols-outlined text-[14px]">content_copy</span>
               </button>
             )}
           </div>
-          <div className="flex-1 overflow-auto p-4 space-y-4">
+          <div className="flex-1 overflow-auto p-3 space-y-3">
             {selectedItems && selectedItems.length > 0 ? (
               selectedItems.map((item: any, idx: number) => (
                 <div 
                   key={idx} 
                   onClick={() => setPreviewItem(item)}
-                  className="bg-white dark:bg-surface-dark p-3 rounded-lg border border-slate-200 dark:border-border-dark shadow-sm group relative cursor-pointer hover:border-primary/50 transition-colors"
+                  className="bg-white dark:bg-surface-dark p-2.5 rounded-lg border border-slate-200 dark:border-border-dark shadow-sm group relative cursor-pointer hover:border-primary/50 transition-colors"
                 >
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
                       handleRemoveItem(idx);
                     }}
-                    className="absolute top-2 right-2 p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-md opacity-0 group-hover:opacity-100 transition-all z-10"
+                    className="absolute top-1.5 right-1.5 p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-md opacity-0 group-hover:opacity-100 transition-all z-10"
                     title="移除"
                   >
-                    <span className="material-symbols-outlined text-[16px]">close</span>
+                    <span className="material-symbols-outlined text-[14px]">close</span>
                   </button>
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                       {item.category.toUpperCase()}
                     </span>
                   </div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1 line-clamp-1">{item.metadata?.translated_title || item.title}</h3>
-                  <p className="text-xs text-slate-500 dark:text-text-secondary line-clamp-2">{item.metadata?.translated_description || item.description}</p>
+                  <h3 className="text-xs font-bold text-slate-900 dark:text-white mb-0.5 line-clamp-1">{item.metadata?.translated_title || item.title}</h3>
+                  <p className="text-[10px] text-slate-500 dark:text-text-secondary line-clamp-1">{item.metadata?.translated_description || item.description}</p>
                 </div>
               ))
             ) : (
-              <div className="h-full flex items-center justify-center text-slate-400 italic text-center px-4">
-                暂无选择内容，请返回筛选页面
+              <div className="h-full flex items-center justify-center text-slate-400 italic text-center px-4 text-xs">
+                暂无选择内容
               </div>
             )}
           </div>
         </div>
 
         {/* Right: Markdown Preview */}
-        <div className="flex-1 flex flex-col min-w-[320px]">
-          <div className="grid grid-cols-[1fr_auto_1fr] items-center px-4 py-2 h-12 border-b border-slate-200 dark:border-border-dark bg-slate-100 dark:bg-surface-darker">
+        <div className="flex-1 flex flex-col min-w-0 min-h-0">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center px-4 py-2 h-12 border-b border-slate-200 dark:border-border-dark bg-slate-100 dark:bg-surface-darker shrink-0">
             {/* Left Section: Title and History */}
-            <div className="flex items-center gap-2 text-slate-500 dark:text-text-secondary min-w-0">
-              <span className="material-symbols-outlined text-[18px] shrink-0">markdown</span>
-              <span className="text-xs font-mono font-medium uppercase tracking-wider whitespace-nowrap shrink-0">生成预览</span>
+            <div className="flex items-center gap-1 text-slate-500 dark:text-text-secondary min-w-0">
+              <span className="material-symbols-outlined text-[18px] shrink-0 hidden sm:block">markdown</span>
+              <span className="text-[10px] font-mono font-medium uppercase tracking-wider whitespace-nowrap shrink-0">生成预览</span>
               
               {/* 撤回/重做按钮 */}
-              <div className="flex items-center gap-0.5 ml-2 pl-2 border-l border-slate-200 dark:border-border-dark shrink-0">
+              <div className="flex items-center gap-0.5 ml-1 pl-1 border-l border-slate-200 dark:border-border-dark shrink-0">
                 <button 
                   onClick={handleUndo}
                   disabled={historyState.index <= 0}
                   className="p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-dark disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  title="撤回 (Undo)"
+                  title="撤回"
                 >
-                  <span className="material-symbols-outlined text-[18px]">undo</span>
+                  <span className="material-symbols-outlined text-[16px]">undo</span>
                 </button>
                 <button 
                   onClick={handleRedo}
                   disabled={historyState.index >= historyState.list.length - 1}
                   className="p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-dark disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                  title="重做 (Redo)"
+                  title="重做"
                 >
-                  <span className="material-symbols-outlined text-[18px]">redo</span>
+                  <span className="material-symbols-outlined text-[16px]">redo</span>
                 </button>
-                {historyState.list.length > 0 && (
-                  <span className="text-[11px] text-slate-400 dark:text-slate-500 ml-2 font-mono bg-slate-200/50 dark:bg-white/5 px-2 py-0.5 rounded-full whitespace-nowrap">
-                    {historyState.index + 1} / {historyState.list.length}
-                  </span>
-                )}
               </div>
             </div>
             
             {/* Center Section: View Mode Tabs */}
-            <div className="flex justify-center px-2">
+            <div className="flex justify-center px-1">
               <div className="flex bg-slate-100 dark:bg-surface-dark rounded p-0.5 border border-slate-200 dark:border-border-dark shrink-0">
                 <button 
                   onClick={() => setPreviewMode('preview')}
-                  className={`px-3 py-0.5 text-[10px] font-medium rounded-sm transition-colors ${previewMode === 'preview' ? 'bg-primary text-white' : 'text-slate-500 hover:text-slate-700 dark:text-text-secondary dark:hover:text-white'}`}
+                  className={`px-2 py-0.5 text-[9px] font-medium rounded-sm transition-colors ${previewMode === 'preview' ? 'bg-primary text-white' : 'text-slate-500 hover:text-slate-700 dark:text-text-secondary dark:hover:text-white'}`}
                 >
                   预览
                 </button>
                 <button 
                   onClick={() => setPreviewMode('markdown')}
-                  className={`px-3 py-0.5 text-[10px] font-medium rounded-sm transition-colors ${previewMode === 'markdown' ? 'bg-primary text-white' : 'text-slate-500 hover:text-slate-700 dark:text-text-secondary dark:hover:text-white'}`}
+                  className={`px-2 py-0.5 text-[9px] font-medium rounded-sm transition-colors ${previewMode === 'markdown' ? 'bg-primary text-white' : 'text-slate-500 hover:text-slate-700 dark:text-text-secondary dark:hover:text-white'}`}
                 >
-                  源码/编辑
+                  编辑
                 </button>
               </div>
             </div>
 
             {/* Right Section: Stats and Actions */}
-            <div className="flex items-center justify-end gap-3 min-w-0">
+            <div className="flex items-center justify-end gap-1.5 min-w-0">
               {result && (
-                <div className="flex gap-2 text-slate-400 dark:text-text-secondary text-xs font-mono items-center whitespace-nowrap overflow-hidden">
-                  <span className="material-symbols-outlined text-[14px] shrink-0">schedule</span>
-                  <span className="truncate">约 {result.daily_summary_markdown?.length || 0} 字符</span>
-                </div>
+                <button 
+                  onClick={() => copyToClipboard(result.daily_summary_markdown)}
+                  className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-dark transition shrink-0"
+                  title="复制"
+                >
+                  <span className="material-symbols-outlined text-[16px]">content_copy</span>
+                </button>
               )}
               {result && (
-                <>
-                  <button 
-                    onClick={() => copyToClipboard(result.daily_summary_markdown)}
-                    className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-dark transition shrink-0"
-                    title="复制内容"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">content_copy</span>
-                  </button>
-                  <button 
-                    onClick={() => {
-                      if (confirm('确定要清除生成的预览内容吗？')) {
-                        setResult(null);
-                        setHistoryState({ list: [], index: -1 });
-                        setStatus('内容已清除');
-                        // 同时清除当前日期的缓存
-                        clearCache(CACHE_KEYS.GENERATION_RESULT, date);
-                      }
-                    }}
-                    className="text-slate-400 hover:text-red-500 p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-dark transition shrink-0"
-                    title="清除内容"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">delete</span>
-                  </button>
-                </>
+                <button 
+                  onClick={() => {
+                    if (confirm('确定要清除生成的预览内容吗？')) {
+                      setResult(null);
+                      setHistoryState({ list: [], index: -1 });
+                      setStatus('内容已清除');
+                      clearCache(CACHE_KEYS.GENERATION_RESULT, date);
+                    }
+                  }}
+                  className="text-slate-400 hover:text-red-500 p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-dark transition shrink-0"
+                  title="清除"
+                >
+                  <span className="material-symbols-outlined text-[16px]">delete</span>
+                </button>
               )}
             </div>
           </div>
-          <div className={`flex-1 overflow-auto ${previewMode === 'preview' ? 'p-8 max-w-3xl mx-auto w-full' : 'p-4 flex flex-col'}`}>
+          <div className={`flex-1 overflow-auto ${previewMode === 'preview' ? 'p-4 md:p-8 max-w-3xl mx-auto w-full' : 'p-3 flex flex-col'}`}>
             {result ? (
               previewMode === 'preview' ? (
                 <ContentRenderer 
@@ -656,22 +643,22 @@ const Generation: React.FC = () => {
                 />
               ) : (
                 <div className="flex-1 flex flex-col relative">
-                  <div className="absolute right-4 top-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded bg-slate-200/50 dark:bg-white/5 backdrop-blur-sm pointer-events-none">
+                  <div className="absolute right-2 top-2 z-10 flex items-center gap-1.5 px-2 py-1 rounded bg-slate-200/50 dark:bg-white/5 backdrop-blur-sm pointer-events-none">
                     <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <span className="text-[10px] text-slate-500 dark:text-text-secondary font-medium uppercase tracking-wider">编辑模式 (已自动保存)</span>
+                    <span className="text-[9px] text-slate-500 dark:text-text-secondary font-medium uppercase tracking-wider">编辑模式</span>
                   </div>
                   <textarea 
                     value={result.daily_summary_markdown}
                     onChange={(e) => setResult({ ...result, daily_summary_markdown: e.target.value })}
-                    className="flex-1 w-full font-mono text-xs text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/30 p-4 rounded-lg border border-slate-100 dark:border-white/5 focus:ring-1 focus:ring-primary outline-none resize-none leading-relaxed"
+                    className="flex-1 w-full font-mono text-[11px] text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/30 p-3 rounded-lg border border-slate-100 dark:border-white/5 focus:ring-1 focus:ring-primary outline-none resize-none leading-relaxed"
                     spellCheck={false}
                   />
                 </div>
               )
             ) : (
               <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center">
-                <span className="material-symbols-outlined text-4xl mb-2">auto_awesome_mosaic</span>
-                <p>{generating ? 'AI 正在努力生成中...' : '待生成预览内容'}</p>
+                <span className="material-symbols-outlined text-3xl mb-2">auto_awesome_mosaic</span>
+                <p className="text-sm">{generating ? 'AI 正在努力生成中...' : '待生成预览内容'}</p>
               </div>
             )}
           </div>

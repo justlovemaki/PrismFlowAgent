@@ -3,7 +3,11 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
 import { useAuth } from '../../context/AuthContext';
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+  onMobileClose?: () => void;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ onMobileClose }) => {
   const { theme, toggleTheme } = useTheme();
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -11,6 +15,11 @@ const Sidebar: React.FC = () => {
   const handleLogout = () => {
     logout();
     navigate('/login');
+    if (onMobileClose) onMobileClose();
+  };
+
+  const handleNavClick = () => {
+    if (onMobileClose) onMobileClose();
   };
 
   const navItems = [
@@ -25,7 +34,7 @@ const Sidebar: React.FC = () => {
   ];
 
   return (
-    <aside className="w-64 flex-shrink-0 border-r border-slate-200 dark:border-white/5 bg-white dark:bg-background-dark hidden md:flex flex-col h-screen transition-colors">
+    <aside className="w-64 flex-shrink-0 border-r border-slate-200 dark:border-white/5 bg-white dark:bg-background-dark flex flex-col h-screen transition-colors">
       <div className="p-6 pb-2">
         <div className="flex items-center gap-3 mb-8">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-blue-600 text-white shadow-lg shadow-primary/20">
@@ -42,6 +51,7 @@ const Sidebar: React.FC = () => {
             <NavLink
               key={item.path}
               to={item.path}
+              onClick={handleNavClick}
               className={({ isActive }) =>
                 `flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors group ${
                   isActive
