@@ -144,3 +144,4 @@ export const defaultSettings: SystemSettings = {
     { id: 'socialMedia', label: '社交媒体', icon: 'forum' }
   ]
 };
+

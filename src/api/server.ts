@@ -16,7 +16,7 @@ import { getISODate } from '../utils/helpers.js';
 
 import { LogService } from '../services/LogService.js';
 import { ServiceContext } from '../services/ServiceContext.js';
-import { ToolRegistry } from '../services/agents/ToolRegistry.js';
+import { ToolRegistry } from '../registries/ToolRegistry.js';
 import { AdapterRegistry } from '../registries/AdapterRegistry.js';
 import { PublisherRegistry } from '../registries/PublisherRegistry.js';
 import { StorageRegistry } from '../registries/StorageRegistry.js';
@@ -194,6 +194,71 @@ export async function createServer(existingStore?: LocalStore) {
     }
   });
 
+
+  // --- Helper for unified AI execution ---
+  const executeAI = async (agentId: string, input: string, date?: string) => {
+    if (agentId.startsWith('workflow:')) {
+      if (!context.workflowEngine) throw new Error('工作流引擎未初始化');
+      const workflowId = agentId.replace('workflow:', '');
+      const result = await context.workflowEngine.runWorkflow(workflowId, input, date);
+      return {
+        content: typeof result === 'string' ? result : JSON.stringify(result),
+        data: typeof result === 'object' ? result : { result }
+      };
+    } else {
+      if (!context.agentService) throw new Error('智能体服务未初始化');
+      const actualAgentId = agentId.startsWith('agent:') ? agentId.replace('agent:', '') : agentId;
+      return await context.agentService.runAgent(actualAgentId, input, date);
+    }
+  };
+
+  fastify.post('/api/content/:id/regenerate', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      const { agentId, prompt, type, date } = request.body as any;
+      
+      if (!agentId) {
+        return reply.status(400).send({ error: 'Missing agentId' });
+      }
+
+      // 1. 确定输入内容
+      let input: string;
+      let item: any = null;
+
+      if (type === 'cover') {
+        input = prompt || '请为文章生成一张封面图';
+      } else {
+        item = await store.getSourceData(id);
+        if (!item) {
+          return reply.status(404).send({ error: 'Content item not found' });
+        }
+        input = `请为以下内容生成简短的 AI 摘要（ai_summary）：\n标题：${item.title}\n描述：${item.metadata?.content_html || item.description}\n来源：${item.source}\n作者：${item.author || '未知'}`;
+      }
+
+      // 2. 执行 AI (Agent 或 Workflow)
+      const result = await executeAI(agentId, input, date);
+
+      // 3. 处理结果
+      if (type === 'cover') {
+        const urlMatch = result.data?.url || result.content.match(/https?:\/\/[^\s)]+/i)?.[0];
+        if (urlMatch) {
+          return { status: 'success', url: urlMatch };
+        }
+        throw new Error('AI 未能成功生成图片 URL');
+      }
+
+      // 更新摘要
+      const newSummary = result.content;
+      if (item) {
+        item.metadata = { ...(item.metadata || {}), ai_summary: newSummary };
+        await store.updateSourceDataMetadata(id, item.metadata);
+      }
+      
+      return { status: 'success', ai_summary: newSummary };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
 
   fastify.get('/api/content', async (request, reply) => {
     try {
@@ -586,35 +651,7 @@ export async function createServer(existingStore?: LocalStore) {
     }
   });
 
-  fastify.post('/api/ai/generate-image', async (request, reply) => {
-    try {
-      const { prompt, agentId } = request.body as any;
-      
-      if (!agentId || !context.agentService) {
-        throw new Error('缺少 agentId 或 Agent 服务未初始化');
-      }
 
-      // 运行 Agent。提示它为文章生成一张封面图。
-      // 它应该会根据其关联的工具调用 generate_image 工具。
-      const instruction = `${prompt}`;
-      const result = await context.agentService.runAgent(agentId, instruction);
-      
-      // 如果 Agent 成功运行了工具，结果通常在 data 中
-      if (result && result.data && result.data.url) {
-        return { url: result.data.url };
-      }
-
-      // 备选方案：尝试从内容中解析 URL (以防 Agent 只是回复了 URL)
-      const urlMatch = result.content.match(/https?:\/\/[^\s)]+\.(?:png|jpg|jpeg|webp)/i);
-      if (urlMatch) {
-        return { url: urlMatch[0] };
-      }
-
-      throw new Error('Agent 未能成功生成图片 URL');
-    } catch (error: any) {
-      reply.status(500).send({ error: error.message });
-    }
-  });
 
   fastify.post('/api/wechat/upload-material', async (request, reply) => {
     try {

@@ -3,6 +3,7 @@ import { open, Database } from 'sqlite';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import type { UnifiedData } from '../types/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -131,9 +132,20 @@ export class LocalStore {
       await this.db.exec(`
         CREATE TABLE IF NOT EXISTS schedules (
           id TEXT PRIMARY KEY,
-          data TEXT NOT NULL
+          data TEXT NOT NULL,
+          updated_at INTEGER
         )
       `);
+
+      // 检查并添加 updated_at 字段（如果不存在）
+      const schedulesTableInfo = await this.db.all("PRAGMA table_info(schedules)");
+      const hasUpdatedAt = schedulesTableInfo.some(column => column.name === "updated_at");
+      if (!hasUpdatedAt) {
+        await this.db.exec("ALTER TABLE schedules ADD COLUMN updated_at INTEGER");
+        // 初始化已有数据的 updated_at 为当前时间
+        await this.db.exec(`UPDATE schedules SET updated_at = ${Date.now()}`);
+        console.log("Added updated_at column to schedules table and initialized values");
+      }
 
       // 创建执行日志记录表
       await this.db.exec(`
@@ -145,10 +157,62 @@ export class LocalStore {
           end_time TEXT,
           duration INTEGER,
           status TEXT NOT NULL,
+          progress INTEGER DEFAULT 0,
           message TEXT,
           result_count INTEGER
         )
       `);
+
+      // 检查并添加 progress 字段（如果不存在）
+      const taskLogsTableInfo = await this.db.all("PRAGMA table_info(task_logs)");
+      const hasProgress = taskLogsTableInfo.some(column => column.name === "progress");
+      if (!hasProgress) {
+        await this.db.exec("ALTER TABLE task_logs ADD COLUMN progress INTEGER DEFAULT 0");
+        console.log("Added progress column to task_logs table");
+      }
+
+      // 创建数据源数据存储表
+      await this.db.exec(`
+        CREATE TABLE IF NOT EXISTS source_data (
+          id TEXT PRIMARY KEY,
+          title TEXT NOT NULL,
+          url TEXT,
+          description TEXT,
+          published_date TEXT,
+          source TEXT NOT NULL,
+          category TEXT,
+          author TEXT,
+          metadata TEXT,
+          fetched_at INTEGER NOT NULL,
+          ingestion_date TEXT,
+          adapter_name TEXT,
+          status TEXT DEFAULT 'unread'
+        )
+      `);
+
+      // 检查并添加 ingestion_date 字段（如果不存在）
+      const sourceDataTableInfo = await this.db.all("PRAGMA table_info(source_data)");
+      const hasIngestionDate = sourceDataTableInfo.some(column => column.name === "ingestion_date");
+      if (!hasIngestionDate) {
+        await this.db.exec("ALTER TABLE source_data ADD COLUMN ingestion_date TEXT");
+        console.log("Added ingestion_date column to source_data table");
+      }
+
+      // 检查并添加 adapter_name 字段（如果不存在）
+      const hasAdapterName = sourceDataTableInfo.some(column => column.name === "adapter_name");
+      if (!hasAdapterName) {
+        await this.db.exec("ALTER TABLE source_data ADD COLUMN adapter_name TEXT");
+        console.log("Added adapter_name column to source_data table");
+      }
+
+      // 创建索引
+      await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_source ON source_data(source)`);
+      await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_fetched_at ON source_data(fetched_at)`);
+      await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_status ON source_data(status)`);
+      await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_ingestion_date ON source_data(ingestion_date)`);
+      
+      // 系统启动时，将所有运行中的任务状态设置为中断
+      await this.db.exec(`UPDATE task_logs SET status = 'interrupted', message = '系统重启导致任务中断' WHERE status = 'running'`);
 
       console.log('Database initialized successfully');
 
@@ -396,7 +460,12 @@ export class LocalStore {
   // --- Schedule CRUD ---
 
   async saveSchedule(schedule: any): Promise<void> {
-    await this.db?.run('INSERT OR REPLACE INTO schedules (id, data) VALUES (?, ?)', schedule.id, JSON.stringify(schedule));
+    const now = Date.now();
+    schedule.updatedAt = now;
+    await this.db?.run(
+      'INSERT OR REPLACE INTO schedules (id, data, updated_at) VALUES (?, ?, ?)',
+      schedule.id, JSON.stringify(schedule), now
+    );
   }
 
   async getSchedule(id: string): Promise<any> {
@@ -405,7 +474,7 @@ export class LocalStore {
   }
 
   async listSchedules(): Promise<any[]> {
-    const rows = await this.db?.all('SELECT data FROM schedules');
+    const rows = await this.db?.all('SELECT data FROM schedules ORDER BY updated_at DESC');
     return (rows || []).map(row => JSON.parse(row.data));
   }
 
@@ -417,14 +486,15 @@ export class LocalStore {
 
   async saveTaskLog(log: any): Promise<number> {
     const result = await this.db?.run(
-      `INSERT INTO task_logs (task_id, task_name, start_time, end_time, duration, status, message, result_count)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO task_logs (task_id, task_name, start_time, end_time, duration, status, progress, message, result_count)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       log.taskId,
       log.taskName,
       log.startTime,
       log.endTime,
       log.duration,
       log.status,
+      log.progress || 0,
       log.message,
       log.resultCount
     );
@@ -433,10 +503,11 @@ export class LocalStore {
 
   async updateTaskLog(log: any): Promise<void> {
     await this.db?.run(
-      `UPDATE task_logs SET end_time = ?, duration = ?, status = ?, message = ?, result_count = ? WHERE id = ?`,
+      `UPDATE task_logs SET end_time = ?, duration = ?, status = ?, progress = ?, message = ?, result_count = ? WHERE id = ?`,
       log.endTime,
       log.duration,
       log.status,
+      log.progress,
       log.message,
       log.resultCount,
       log.id
@@ -465,7 +536,252 @@ export class LocalStore {
     }
     
     const rows = await this.db?.all(query, ...params);
-    return rows || [];
+    return (rows || []).map(row => ({
+      id: row.id,
+      taskId: row.task_id,
+      taskName: row.task_name,
+      startTime: row.start_time,
+      endTime: row.end_time,
+      duration: row.duration,
+      status: row.status,
+      progress: row.progress,
+      message: row.message,
+      resultCount: row.result_count
+    }));
+  }
+
+  // --- Source Data CRUD ---
+
+  /**
+   * 保存或更新单条原始数据
+   */
+  async saveSourceData(item: UnifiedData, ingestionDate?: string, adapterName?: string): Promise<void> {
+    await this.db?.run(
+      `INSERT OR REPLACE INTO source_data (
+        id, title, url, description, published_date, source, category, 
+        author, metadata, fetched_at, ingestion_date, adapter_name
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      item.id,
+      item.title,
+      item.url,
+      item.description,
+      item.published_date,
+      item.source,
+      item.category,
+      item.author || null,
+      item.metadata ? JSON.stringify(item.metadata) : null,
+      Date.now(),
+      ingestionDate || null,
+      adapterName || null
+    );
+  }
+
+  /**
+   * 批量保存原始数据
+   */
+  async saveSourceDataBatch(items: UnifiedData[], ingestionDate?: string, adapterName?: string): Promise<void> {
+    if (!items.length) return;
+    
+    // 使用事务提高性能
+    await this.db?.run('BEGIN TRANSACTION');
+    try {
+      for (const item of items) {
+        await this.saveSourceData(item, ingestionDate, adapterName);
+      }
+      await this.db?.run('COMMIT');
+    } catch (err) {
+      await this.db?.run('ROLLBACK');
+      throw err;
+    }
+  }
+
+  /**
+   * 获取原始数据列表
+   */
+  async listSourceData(options?: {
+    source?: string;
+    category?: string;
+    status?: string;
+    ingestionDate?: string;
+    ingestionDates?: string[];
+    adapterName?: string;
+    limit?: number;
+    offset?: number;
+    search?: string;
+  }): Promise<{ items: UnifiedData[]; total: number }> {
+    let query = 'SELECT * FROM source_data WHERE 1=1';
+    let countQuery = 'SELECT COUNT(*) as total FROM source_data WHERE 1=1';
+    const params: any[] = [];
+    const countParams: any[] = [];
+
+    if (options?.source) {
+      query += ' AND source = ?';
+      countQuery += ' AND source = ?';
+      params.push(options.source);
+      countParams.push(options.source);
+    }
+
+    if (options?.category) {
+      query += ' AND category = ?';
+      countQuery += ' AND category = ?';
+      params.push(options.category);
+      countParams.push(options.category);
+    }
+
+    if (options?.status) {
+      query += ' AND status = ?';
+      countQuery += ' AND status = ?';
+      params.push(options.status);
+      countParams.push(options.status);
+    }
+
+    if (options?.ingestionDate) {
+      query += ' AND ingestion_date = ?';
+      countQuery += ' AND ingestion_date = ?';
+      params.push(options.ingestionDate);
+      countParams.push(options.ingestionDate);
+    }
+
+    if (options?.ingestionDates && options.ingestionDates.length > 0) {
+      const placeholders = options.ingestionDates.map(() => '?').join(',');
+      query += ` AND ingestion_date IN (${placeholders})`;
+      countQuery += ` AND ingestion_date IN (${placeholders})`;
+      params.push(...options.ingestionDates);
+      countParams.push(...options.ingestionDates);
+    }
+
+    if (options?.adapterName) {
+      query += ' AND adapter_name = ?';
+      countQuery += ' AND adapter_name = ?';
+      params.push(options.adapterName);
+      countParams.push(options.adapterName);
+    }
+
+    if (options?.search) {
+      const pattern = `%${options.search}%`;
+      query += ' AND (title LIKE ? OR description LIKE ?)';
+      countQuery += ' AND (title LIKE ? OR description LIKE ?)';
+      params.push(pattern, pattern);
+      countParams.push(pattern, pattern);
+    }
+
+    query += ' ORDER BY fetched_at DESC';
+
+    if (options?.limit) {
+      query += ' LIMIT ?';
+      params.push(options.limit);
+    }
+
+    if (options?.offset) {
+      query += ' OFFSET ?';
+      params.push(options.offset);
+    }
+
+    const [rows, countResult] = await Promise.all([
+      this.db?.all(query, ...params),
+      this.db?.get(countQuery, ...countParams)
+    ]);
+
+    return {
+      items: (rows || []).map(row => ({
+        id: row.id,
+        title: row.title,
+        url: row.url,
+        description: row.description,
+        published_date: row.published_date,
+        source: row.source,
+        category: row.category,
+        author: row.author,
+        metadata: row.metadata ? JSON.parse(row.metadata) : {},
+        status: row.status
+      })),
+      total: countResult?.total || 0
+    };
+  }
+
+  /**
+   * 获取单条原始数据
+   */
+  async getSourceData(id: string): Promise<UnifiedData | null> {
+    const row = await this.db?.get('SELECT * FROM source_data WHERE id = ?', id);
+    if (!row) return null;
+    
+    return {
+      id: row.id,
+      title: row.title,
+      url: row.url,
+      description: row.description,
+      published_date: row.published_date,
+      source: row.source,
+      category: row.category,
+      author: row.author,
+      metadata: row.metadata ? JSON.parse(row.metadata) : {},
+      status: row.status
+    };
+  }
+
+  /**
+   * 更新数据状态
+   */
+  async updateSourceDataStatus(id: string, status: string): Promise<void> {
+    await this.db?.run('UPDATE source_data SET status = ? WHERE id = ?', status, id);
+  }
+
+  /**
+   * 更新数据的元数据
+   */
+  async updateSourceDataMetadata(id: string, metadata: any): Promise<void> {
+    await this.db?.run(
+      'UPDATE source_data SET metadata = ? WHERE id = ?',
+      JSON.stringify(metadata),
+      id
+    );
+  }
+
+  /**
+   * 删除原始数据
+   */
+  async deleteSourceData(id: string): Promise<void> {
+    await this.db?.run('DELETE FROM source_data WHERE id = ?', id);
+  }
+
+  /**
+   * 根据筛选条件删除原始数据
+   */
+  async deleteSourceDataByFilter(options: {
+    source?: string;
+    category?: string;
+    ingestionDate?: string;
+    adapterName?: string;
+  }): Promise<void> {
+    let query = 'DELETE FROM source_data WHERE 1=1';
+    const params: any[] = [];
+
+    if (options.source) {
+      query += ' AND source = ?';
+      params.push(options.source);
+    }
+
+    if (options.category) {
+      query += ' AND category = ?';
+      params.push(options.category);
+    }
+
+    if (options.ingestionDate) {
+      query += ' AND ingestion_date = ?';
+      params.push(options.ingestionDate);
+    }
+
+    if (options.adapterName) {
+      query += ' AND adapter_name = ?';
+      params.push(options.adapterName);
+    }
+
+    if (params.length === 0) {
+      throw new Error('Must provide at least one filter to delete source data');
+    }
+
+    await this.db?.run(query, ...params);
   }
 }
 

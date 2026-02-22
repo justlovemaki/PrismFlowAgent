@@ -43,15 +43,20 @@ export class TaskService {
       const targetDate = getISODate();
       
       for (const adapter of this.adapters) {
-        // 仅从特定的 日期-分类-适配器名 路径获取数据
-        const adapterData = await this.store.get(`${targetDate}-${adapter.category}-${adapter.name}`);
+        // 从新表中查询今日该适配器抓取的数据
+        const { total } = await this.store.listSourceData({
+          adapterName: adapter.name,
+          category: adapter.category,
+          ingestionDate: targetDate,
+          limit: 1
+        });
         
-        if (adapterData && Array.isArray(adapterData)) {
+        if (total > 0) {
           this.adapterStatus[adapter.name] = {
             ...this.adapterStatus[adapter.name],
             lastActive: '今日已同步',
             status: 'success',
-            count: adapterData.length
+            count: total
           };
         }
       }
@@ -62,12 +67,17 @@ export class TaskService {
     }
   }
 
-  async runDailyIngestion(date?: string, config?: { foloCookie?: string }) {
+  async runDailyIngestion(date?: string, config?: { foloCookie?: string }, onProgress?: (progress: number) => Promise<void>) {
     const targetDate = date || getISODate();
     LogService.info(`Starting ingestion for ${targetDate}`);
 
-    for (const adapter of this.adapters) {
+    const totalAdapters = this.adapters.length;
+    for (let i = 0; i < totalAdapters; i++) {
+      const adapter = this.adapters[i];
       await this.runAdapter(adapter, config, targetDate);
+      if (onProgress) {
+        await onProgress(Math.round(((i + 1) / totalAdapters) * 100));
+      }
     }
     
     LogService.info(`Ingestion completed for ${targetDate}`);
@@ -77,15 +87,17 @@ export class TaskService {
   /**
    * 运行单个适配器并更新存储
    */
-  async runSingleAdapterIngestion(adapterName: string, date?: string, config?: any) {
+  async runSingleAdapterIngestion(adapterName: string, date?: string, config?: any, onProgress?: (progress: number) => Promise<void>) {
     const targetDate = date || getISODate();
     const adapter = this.adapters.find(a => a.name === adapterName);
     if (!adapter) throw new Error(`Adapter ${adapterName} not found`);
 
     LogService.info(`Manually triggering adapter: ${adapterName} with extra config: ${JSON.stringify(config)}`);
     
+    if (onProgress) await onProgress(10);
     // 运行适配器，它会更新自己的存储键
     await this.runAdapter(adapter, config, targetDate);
+    if (onProgress) await onProgress(100);
 
     return this.getAggregatedData(targetDate);
   }
@@ -98,8 +110,11 @@ export class TaskService {
     const adapter = this.adapters.find(a => a.name === adapterName);
     if (!adapter) throw new Error(`Adapter ${adapterName} not found`);
 
-    const storageKey = `${targetDate}-${adapter.category}-${adapter.name}`;
-    await this.store.delete(storageKey);
+    await this.store.deleteSourceDataByFilter({
+      adapterName: adapterName,
+      category: adapter.category,
+      ingestionDate: targetDate
+    });
     
     // 更新内存中的状态
     this.adapterStatus[adapterName] = {
@@ -136,22 +151,15 @@ export class TaskService {
 
       const newData = await adapter.fetchAndTransform(adapterConfig);
       
-      // 按日期-分类-适配器名 存储抓取的数据
-      const storageKey = `${date}-${adapter.category}-${adapter.name}`;
-      const oldData = await this.store.get(storageKey);
+      // 使用新表存储数据
+      await this.store.saveSourceDataBatch(newData, date, adapter.name);
       
-      // 合并并去重
-      const mergedData = this.mergeAndDeduplicate(oldData || [], newData);
-      
-      await this.store.put(storageKey, mergedData);
-      
-      LogService.info(`[TaskService] Adapter ${adapter.name} finished. Total items for today: ${mergedData.length} (New items in this run: ${newData.length})`);
-
+      LogService.info(`[TaskService] Adapter ${adapter.name} finished. New items in this run: ${newData.length}`);
 
       this.adapterStatus[adapter.name] = {
         lastActive: new Date().toISOString(),
         status: 'success',
-        count: mergedData.length,
+        count: newData.length, // 注意：这里现在显示的是本次抓取的数量
         category: adapter.category
       };
 
@@ -168,22 +176,6 @@ export class TaskService {
       };
       throw error;
     }
-  }
-
-  private mergeAndDeduplicate(oldData: UnifiedData[], newData: UnifiedData[]): UnifiedData[] {
-    const map = new Map<string, UnifiedData>();
-    
-    // 先放旧数据
-    for (const item of oldData) {
-      map.set(item.id, item);
-    }
-    
-    // 新数据覆盖或新增
-    for (const item of newData) {
-      map.set(item.id, item);
-    }
-    
-    return Array.from(map.values());
   }
 
   async getStats() {
@@ -205,17 +197,18 @@ export class TaskService {
         yesterdayCount: this.statsCache.yesterdayCount,
         aiStatus: 'healthy',
         lastCommit: lastCommitTime,
-        lastCommitPlatform: lastCommitPlatform
+        lastCommitPlatform: lastCommitPlatform,
+        uptime: process.uptime()
       };
     }
 
     // 重新计算
-    const allTodayData = await this.getAggregatedData(today);
+    const allTodayData = await this.getAggregatedData(today, { includePreviousDay: false });
     
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayDate = yesterday.toISOString().split('T')[0];
-    const allYesterdayData = await this.getAggregatedData(yesterdayDate);
+    const allYesterdayData = await this.getAggregatedData(yesterdayDate, { includePreviousDay: false });
 
     const stats = {
       todayCount: Object.entries(allTodayData)
@@ -233,7 +226,8 @@ export class TaskService {
       ...stats,
       aiStatus: 'healthy',
       lastCommit: lastCommitTime,
-      lastCommitPlatform: lastCommitPlatform
+      lastCommitPlatform: lastCommitPlatform,
+      uptime: process.uptime()
     };
   }
 
@@ -269,17 +263,33 @@ export class TaskService {
   /**
    * 聚合指定日期的所有适配器数据
    */
-  async getAggregatedData(date: string): Promise<Record<string, UnifiedData[]>> {
+  async getAggregatedData(date: string, options: { includePreviousDay?: boolean } = { includePreviousDay: true }): Promise<Record<string, UnifiedData[]>> {
+    const dates = [date];
+    if (options.includePreviousDay) {
+      const targetDate = new Date(date);
+      const yesterday = new Date(targetDate);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toISOString().split('T')[0];
+      dates.unshift(yesterdayStr);
+    }
+
     const data: Record<string, UnifiedData[]> = {};
     for (const adapter of this.adapters) {
-      const adapterData = await this.store.get(`${date}-${adapter.category}-${adapter.name}`);
-      if (adapterData && Array.isArray(adapterData)) {
+      const { items } = await this.store.listSourceData({
+        adapterName: adapter.name,
+        category: adapter.category,
+        ingestionDates: dates,
+        limit: options.includePreviousDay ? 2000 : 1000
+      });
+      
+      if (items && items.length > 0) {
         if (!data[adapter.category]) data[adapter.category] = [];
-        data[adapter.category].push(...adapterData);
+        data[adapter.category].push(...items);
       }
     }
 
     // 加入历史记录作为一种特殊的数据源
+
     // 这里不按当前 date 过滤，避免“某日无提交”时历史存档页签为空
     const historyResult = await this.store.getCommitHistory({ limit: 30 });
     if (historyResult.records.length > 0) {

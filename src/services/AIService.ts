@@ -1,5 +1,4 @@
 import type { AIProvider } from './AIProvider.js';
-import { removeMarkdownCodeBlock } from '../utils/helpers.js';
 
 export class AIService {
   private ai: AIProvider;

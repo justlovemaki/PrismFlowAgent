@@ -9,6 +9,7 @@ export interface ScheduleTask {
   lastRun?: string;     // Last execution time (ISO string)
   lastStatus?: 'success' | 'error';
   lastError?: string;   // Error message if failed
+  updatedAt?: number;   // Last update timestamp
 }
 
 export interface TaskLog {
@@ -18,7 +19,8 @@ export interface TaskLog {
   startTime: string;
   endTime?: string;
   duration?: number;    // In milliseconds
-  status: 'running' | 'success' | 'error';
+  status: 'running' | 'success' | 'error' | 'interrupted';
+  progress?: number;    // 0-100
   message?: string;
   resultCount?: number; // Number of items ingested (if applicable)
 }

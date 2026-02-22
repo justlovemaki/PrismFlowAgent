@@ -151,6 +151,7 @@ const TaskManagement: React.FC = () => {
       case 'success': return 'text-accent-success bg-accent-success/10';
       case 'error': return 'text-accent-error bg-accent-error/10';
       case 'running': return 'text-accent-warning bg-accent-warning/10 animate-pulse';
+      case 'interrupted': return 'text-slate-500 bg-slate-500/10';
       default: return 'text-slate-500 bg-slate-500/10';
     }
   };
@@ -314,6 +315,7 @@ const TaskManagement: React.FC = () => {
                   <th className="px-6 py-3">任务</th>
                   <th className="px-6 py-3">开始时间</th>
                   <th className="px-6 py-3">状态</th>
+                  <th className="px-6 py-3">进度</th>
                   <th className="px-6 py-3">耗时</th>
                   <th className="px-6 py-3">结果</th>
                   <th className="px-6 py-3">消息</th>
@@ -322,16 +324,27 @@ const TaskManagement: React.FC = () => {
               <tbody className="divide-y divide-slate-100 dark:divide-white/5 text-xs">
                 {logs.map(log => (
                   <tr key={log.id} className="hover:bg-slate-50 dark:hover:bg-white/[0.01]">
-                    <td className="px-6 py-3 font-medium text-slate-700 dark:text-slate-300">{log.task_name}</td>
-                    <td className="px-6 py-3 text-slate-500">{formatTime(log.start_time)}</td>
+                    <td className="px-6 py-3 font-medium text-slate-700 dark:text-slate-300">{log.taskName}</td>
+                    <td className="px-6 py-3 text-slate-500">{formatTime(log.startTime)}</td>
                     <td className="px-6 py-3">
                       <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full ${getStatusColor(log.status)}`}>
                         {log.status === 'running' && <span className="material-symbols-outlined text-[10px] animate-spin">progress_activity</span>}
-                        {log.status === 'success' ? '成功' : log.status === 'error' ? '失败' : '执行中'}
+                        {log.status === 'success' ? '成功' : log.status === 'error' ? '失败' : log.status === 'interrupted' ? '已中断' : '执行中'}
                       </span>
                     </td>
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="w-16 h-1.5 bg-slate-100 dark:bg-white/5 rounded-full overflow-hidden">
+                          <div 
+                            className="h-full bg-primary transition-all duration-500" 
+                            style={{ width: `${log.progress || 0}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-slate-400 w-6">{log.progress || 0}%</span>
+                      </div>
+                    </td>
                     <td className="px-6 py-3 text-slate-500">{log.duration ? `${(log.duration / 1000).toFixed(1)}s` : '-'}</td>
-                    <td className="px-6 py-3 text-slate-500">{log.result_count ?? '-'} 条</td>
+                    <td className="px-6 py-3 text-slate-500">{log.resultCount ?? '-'} 条</td>
                     <td className="px-6 py-3 text-slate-500 truncate max-w-xs" title={log.message}>{log.message}</td>
                   </tr>
                 ))}
@@ -435,20 +448,21 @@ const TaskManagement: React.FC = () => {
                           onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
                           className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
                         >
-                          <option value="">请选择智能体</option>
-                          {availableAgents.map(agent => (
-                            <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>
-                          ))}
-                        </select>
-                      ) : (
-                        <input 
-                          required
-                          value={currentSchedule.targetId}
-                          onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
-                          className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
-                          placeholder="all"
-                        />
-                      )}
+                        <option value="">请选择智能体</option>
+                        {availableAgents.map(agent => (
+                          <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input 
+                        required
+                        value={currentSchedule.targetId}
+                        onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
+                        className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
+                        placeholder="all"
+                      />
+                    )}
+
                     </div>
                   )}
 

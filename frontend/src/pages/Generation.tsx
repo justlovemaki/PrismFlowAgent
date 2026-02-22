@@ -178,35 +178,27 @@ const Generation: React.FC = () => {
   }, [selectedItems, date]);
 
   useEffect(() => {
-    const loadSettings = async () => {
+    const loadInitialData = async () => {
       try {
-        const settings = await getSettings();
+        const [settings, metadata] = await Promise.all([
+          getSettings(),
+          request('/api/plugins/metadata')
+        ]);
+
         if (settings?.IMAGE_PROXY) {
           setImageProxy(settings.IMAGE_PROXY);
         }
-      } catch (e) {
-        console.error('Failed to load settings:', e);
-      }
-    };
-    loadSettings();
-    
-    // 加载发布器元数据
-    const loadPublishers = async () => {
-      try {
-        const [data, settings] = await Promise.all([
-          request('/api/plugins/metadata'),
-          getSettings()
-        ]);
-        if (data && data.publishers) {
+
+        if (metadata && metadata.publishers) {
           const closedPlugins = settings?.CLOSED_PLUGINS || [];
-          const filteredPublishers = data.publishers.filter((p: any) => !closedPlugins.includes(p.id));
+          const filteredPublishers = metadata.publishers.filter((p: any) => !closedPlugins.includes(p.id));
           setPublishers(filteredPublishers);
         }
       } catch (e) {
-        console.error('Failed to load publishers:', e);
+        console.error('Failed to load initial data:', e);
       }
     };
-    loadPublishers();
+    loadInitialData();
   }, []);
 
   const commitTargets = publishers.length > 0 ? publishers.map(p => ({
@@ -253,15 +245,23 @@ const Generation: React.FC = () => {
       // 摘要默认为空
       setWechatDigest('');
 
-      // 加载 Agent 列表以供封面生成使用
+      // 加载 Agent 和工作流列表以供封面生成使用
       try {
-        const ags = await agentService.getAgents();
+        const [ags, wfs] = await Promise.all([
+          agentService.getAgents(),
+          agentService.getWorkflows(),
+        ]);
         setAgents(ags || []);
+        setWorkflows(wfs || []);
+        
+        // 优先选择第一个 Agent 作为默认值
         if (ags && ags.length > 0) {
-          setSelectedCoverAgentId(ags[0].id);
+          setSelectedCoverAgentId(`agent:${ags[0].id}`);
+        } else if (wfs && wfs.length > 0) {
+          setSelectedCoverAgentId(`workflow:${wfs[0].id}`);
         }
       } catch (e) {
-        console.error('Failed to load agents for cover generation:', e);
+        console.error('Failed to load agents/workflows for cover generation:', e);
       }
 
       setShowWechatModal(true);
@@ -312,7 +312,7 @@ const Generation: React.FC = () => {
     
     setIsGeneratingCover(true);
     try {
-      const res = await generateCoverImage(wechatCoverPrompt, selectedCoverAgentId);
+      const res = await generateCoverImage(wechatCoverPrompt, selectedCoverAgentId, date);
       
       if (res.url) {
         setWechatCoverUrl(res.url);
@@ -405,7 +405,13 @@ const Generation: React.FC = () => {
     setStatus(`正在通过工作流 "${wf.name}" 生成内容...`);
     try {
       const inputPayload = selectedItems
-        ? JSON.stringify(selectedItems.map(({ selected, id, description, ...rest }: any) => rest))
+        ? JSON.stringify(selectedItems.map(({ selected, id, description, ...rest }: any) => {
+            if (rest.metadata?.ai_summary) {
+              const { content_html, ...restMetadata } = rest.metadata;
+              return { ...rest, metadata: restMetadata };
+            }
+            return rest;
+          }))
         : JSON.stringify(selectedIds);
       const res = await agentService.runWorkflow(wf.id, inputPayload, date);
       const content = res?.content || (typeof res === 'string' ? res : JSON.stringify(res, null, 2));
@@ -427,7 +433,13 @@ const Generation: React.FC = () => {
     setStatus(`正在通过 Agent "${agent.name}" 生成内容...`);
     try {
       const inputText = selectedItems
-        ? JSON.stringify(selectedItems.map(({ selected, id, description, ...rest }: any) => rest))
+        ? JSON.stringify(selectedItems.map(({ selected, id, description, ...rest }: any) => {
+            if (rest.metadata?.ai_summary) {
+              const { content_html, ...restMetadata } = rest.metadata;
+              return { ...rest, metadata: restMetadata };
+            }
+            return rest;
+          }))
         : JSON.stringify(selectedIds);
       const res = await agentService.runAgent(agent.id, inputText, date);
       const content = res?.content || (typeof res === 'string' ? res : JSON.stringify(res, null, 2));
@@ -494,8 +506,14 @@ const Generation: React.FC = () => {
             {selectedItems && selectedItems.length > 0 && (
               <button 
                 onClick={() => {
-                  // 移除 selected, id, description 字段
-                  const cleanedItems = selectedItems.map(({ selected, id, description, ...rest }: any) => rest);
+                  // 移除 selected, id, description 字段，且如果存在 ai_summary 则移除 content_html
+                  const cleanedItems = selectedItems.map(({ selected, id, description, ...rest }: any) => {
+                    if (rest.metadata?.ai_summary) {
+                      const { content_html, ...restMetadata } = rest.metadata;
+                      return { ...rest, metadata: restMetadata };
+                    }
+                    return rest;
+                  });
                   copyToClipboard(JSON.stringify(cleanedItems, null, 2));
                 }}
                 className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-dark transition"
@@ -528,8 +546,8 @@ const Generation: React.FC = () => {
                       {item.category.toUpperCase()}
                     </span>
                   </div>
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1 line-clamp-1">{item.title}</h3>
-                  <p className="text-xs text-slate-500 dark:text-text-secondary line-clamp-2">{item.description}</p>
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white mb-1 line-clamp-1">{item.metadata?.translated_title || item.title}</h3>
+                  <p className="text-xs text-slate-500 dark:text-text-secondary line-clamp-2">{item.metadata?.translated_description || item.description}</p>
                 </div>
               ))
             ) : (
@@ -711,7 +729,7 @@ const Generation: React.FC = () => {
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                   {previewItem.category?.toUpperCase()}
                 </span>
-                <h3 className="text-lg font-bold text-slate-900 dark:text-white truncate max-w-[400px]">{previewItem.title}</h3>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white truncate max-w-[400px]">{previewItem.metadata?.translated_title || previewItem.title}</h3>
               </div>
               <button onClick={() => setPreviewItem(null)} className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all">
                 <span className="material-symbols-outlined text-xl">close</span>
@@ -773,11 +791,11 @@ const Generation: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {previewItem.description && !previewItem.metadata?.description && (
+                {(previewItem.metadata?.translated_description || previewItem.description) && !previewItem.metadata?.description && (
                   <div>
                     <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">基本描述</h4>
                     <div className="text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/50 p-4 rounded-xl border border-slate-100 dark:border-white/5">
-                      <ContentRenderer content={previewItem.description} imageProxy={imageProxy} />
+                      <ContentRenderer content={previewItem.metadata?.translated_description || previewItem.description} imageProxy={imageProxy} />
                     </div>
                   </div>
                 )}
@@ -854,15 +872,22 @@ const Generation: React.FC = () => {
                   <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">封面图</label>
                   <div className="flex items-center gap-3">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase">智能体:</span>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase">执行器:</span>
                       <select 
                         value={selectedCoverAgentId}
                         onChange={(e) => setSelectedCoverAgentId(e.target.value)}
                         className="text-[10px] bg-slate-100 dark:bg-white/5 border-none rounded px-2 py-1 text-primary focus:ring-1 focus:ring-primary/30 cursor-pointer"
                       >
-                        {agents.map(agent => (
-                          <option key={agent.id} value={agent.id}>{agent.name}</option>
-                        ))}
+                        <optgroup label="智能体 (Agents)">
+                          {agents.map(agent => (
+                            <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>
+                          ))}
+                        </optgroup>
+                        <optgroup label="工作流 (Workflows)">
+                          {workflows.map(wf => (
+                            <option key={wf.id} value={`workflow:${wf.id}`}>{wf.name}</option>
+                          ))}
+                        </optgroup>
                       </select>
                     </div>
                     <button 

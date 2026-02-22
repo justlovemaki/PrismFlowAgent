@@ -1,7 +1,7 @@
 import { AgentDefinition, SkillDefinition, AgentExecutionResult } from '../../types/agent.js';
 import { LocalStore } from '../LocalStore.js';
 import { AIProvider, createAIProvider } from '../AIProvider.js';
-import { ToolRegistry } from './ToolRegistry.js';
+import { ToolRegistry } from '../../registries/ToolRegistry.js';
 import { LogService } from '../LogService.js';
 import { SkillService } from './SkillService.js';
 

@@ -189,7 +189,6 @@ const Settings: React.FC = () => {
             .map((p: any) => ({ label: p.name, value: p.id })), 
           defaultValue: 'default-gemini' 
         },
-        { label: '开启自动翻译', key: 'TRANSLATE_ENABLED', type: 'select', options: ['true', 'false'], defaultValue: 'true' },
         { label: 'AI 提供商列表', key: 'AI_PROVIDERS', type: 'custom' },
       ]
     },
@@ -225,7 +224,6 @@ const Settings: React.FC = () => {
       title: '数据源管理',
       description: '管理数据适配器及其子数据源项',
       fields: [
-        { label: '定时任务抓取频率', key: 'FETCH_INTERVAL', type: 'select', options: ['每小时', '每 4 小时', '每天', '手动'], defaultValue: '每天' },
         { label: '适配器配置', key: 'ADAPTERS', type: 'custom' },
       ]
     },
@@ -1029,6 +1027,16 @@ const Settings: React.FC = () => {
                                 className="w-3 h-3 rounded border-slate-300 dark:border-white/20 text-primary focus:ring-primary/20 bg-transparent"
                               />
                               <span className="text-[9px] font-bold text-slate-400 group-hover:text-primary transition-colors uppercase tracking-wider">代理</span>
+                            </label>
+
+                            <label className="flex items-center gap-1.5 cursor-pointer group">
+                              <input 
+                                type="checkbox"
+                                checked={item.enableTranslation ?? false}
+                                onChange={(e) => handleAdapterChange(adapter.id, item.id, 'enableTranslation', e.target.checked)}
+                                className="w-3 h-3 rounded border-slate-300 dark:border-white/20 text-primary focus:ring-primary/20 bg-transparent"
+                              />
+                              <span className="text-[9px] font-bold text-slate-400 group-hover:text-primary transition-colors uppercase tracking-wider">翻译</span>
                             </label>
                           </div>
                           <div className="flex flex-wrap gap-4 items-end">

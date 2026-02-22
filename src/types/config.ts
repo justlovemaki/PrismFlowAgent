@@ -30,6 +30,7 @@ export interface AdapterItemConfig {
   listId?: string;
   feedId?: string;
   fetchPages?: number;
+  enableTranslation?: boolean;
 }
 
 export interface AdapterConfig {

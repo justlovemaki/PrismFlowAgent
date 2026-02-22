@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getStats, getAdapters, getLogs, triggerIngestion, syncAdapter, clearAdapterData, testAI } from '../services/dashboardService';
+import { getStats, getAdapters, getLogs, triggerIngestion, syncAdapter, clearAdapterData } from '../services/dashboardService';
 import { getSettings } from '../services/settingsService';
 import { getTodayShanghai } from '../utils/dateUtils';
 import { clearCache, CACHE_KEYS } from '../utils/cacheUtils';
@@ -14,6 +14,7 @@ interface Stats {
   aiStatus: string;
   lastCommit: string | null;
   lastCommitPlatform: string | null;
+  uptime?: number;
 }
 
 interface Adapter {
@@ -51,7 +52,6 @@ const Dashboard: React.FC = () => {
   const [syncForm, setSyncForm] = useState<Record<string, any>>({});
   const [syncDate, setSyncDate] = useState<string>(getTodayShanghai());
   const [showSyncModal, setShowSyncModal] = useState<string | null>(null);
-  const [testingAI, setTestingAI] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
 
   const openSyncModal = (name: string) => {
@@ -163,25 +163,6 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleTestAI = async () => {
-    if (testingAI) return;
-    setTestingAI(true);
-    try {
-      const result = await testAI();
-      if (result.status === 'healthy') {
-        toastSuccess('✅ AI 服务连接正常');
-      } else {
-        toastError(`❌ AI 服务连接失败: ${result.message}`);
-      }
-      await fetchData();
-    } catch (error: any) {
-      console.error('AI test failed:', error);
-      toastError(`❌ AI 服务测试失败: ${error.message || '未知错误'}`);
-    } finally {
-      setTestingAI(false);
-    }
-  };
-
   const formatLastActive = (dateStr: string) => {
     if (dateStr === '从未运行') return dateStr;
     try {
@@ -229,6 +210,20 @@ const Dashboard: React.FC = () => {
     }
   };
 
+  const formatUptime = (seconds?: number) => {
+    if (seconds === undefined) return '未知';
+    const d = Math.floor(seconds / (3600 * 24));
+    const h = Math.floor((seconds % (3600 * 24)) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    
+    const parts = [];
+    if (d > 0) parts.push(`${d}天`);
+    if (h > 0) parts.push(`${h}小时`);
+    if (m > 0 || parts.length === 0) parts.push(`${m}分钟`);
+    
+    return parts.join(' ');
+  };
+
   const stats = [
     { 
       label: '今日聚合条目', 
@@ -241,12 +236,12 @@ const Dashboard: React.FC = () => {
       textColor: 'text-primary' 
     },
     { 
-      label: 'AI 服务状态', 
-      value: statsData?.aiStatus === 'healthy' ? '正常' : statsData?.aiStatus === 'error' ? '异常' : '未知', 
-      subValue: statsData?.aiStatus === 'healthy' ? '所有模型 API 响应正常' : '检查 API 状态', 
-      trend: statsData?.aiStatus === 'healthy' ? '在线' : '警告', 
-      icon: 'bolt', 
-      textColor: statsData?.aiStatus === 'healthy' ? 'text-accent-success' : 'text-accent-error' 
+      label: '系统运行时间', 
+      value: formatUptime(statsData?.uptime), 
+      subValue: '自上次启动以来的时长', 
+      trend: '在线', 
+      icon: 'timer', 
+      textColor: 'text-accent-success' 
     },
     { 
       label: '上次提交', 
@@ -312,23 +307,6 @@ const Dashboard: React.FC = () => {
                   <div className="flex flex-col gap-1">
                     <div className="flex items-baseline gap-2">
                       <p className="text-slate-900 dark:text-white text-3xl font-bold tabular-nums">{stat.value}</p>
-                      {/* AI 服务状态卡片添加测试图标 */}
-                      {idx === 1 && (
-                        <button
-                          onClick={handleTestAI}
-                          disabled={testingAI}
-                          title={testingAI ? '测试中...' : '测试 AI 连接'}
-                          className={`flex items-center justify-center w-5 h-5 rounded transition-all ${
-                            testingAI 
-                              ? 'text-primary cursor-not-allowed' 
-                              : 'text-slate-400 hover:text-primary hover:bg-slate-100 dark:hover:bg-white/10'
-                          }`}
-                        >
-                          <span className={`material-symbols-outlined text-[16px] ${testingAI ? 'animate-spin' : ''}`}>
-                            {testingAI ? 'progress_activity' : 'play_circle'}
-                          </span>
-                        </button>
-                      )}
                       {stat.trend.includes('%') && (
                         <span className={`flex items-center gap-0.5 text-xs font-bold ${
                           parseFloat(stat.trend) < 0 ? 'text-accent-error' : 

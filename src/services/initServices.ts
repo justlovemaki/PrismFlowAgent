@@ -8,7 +8,7 @@ import { GeminiProvider, OpenAIProvider, AnthropicProvider, OllamaProvider, AIPr
 import { AgentService } from './agents/AgentService.js';
 
 import { SkillService } from './agents/SkillService.js';
-import { ToolRegistry } from './agents/ToolRegistry.js';
+import { ToolRegistry } from '../registries/ToolRegistry.js';
 import { WorkflowEngine } from './agents/WorkflowEngine.js';
 import { ProxyAgent } from 'undici';
 import { SystemSettings } from '../types/config.js';
@@ -18,11 +18,14 @@ import { PublisherRegistry } from '../registries/PublisherRegistry.js';
 import { StorageRegistry } from '../registries/StorageRegistry.js';
 import { IPublisher, IStorageProvider } from '../types/plugin.js';
 
+import { TranslationService } from './TranslationService.js';
+
 export interface AppServices {
   settings: SystemSettings;
   configService: ConfigService;
   aiProvider: AIProvider | undefined;
   aiService: AIService | null;
+  translationService: TranslationService;
   promptService: PromptService;
   taskService: TaskService;
   schedulerService: SchedulerService;
@@ -55,9 +58,10 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
 
   // 3. Initialize Core Services
   const aiService = aiProvider ? new AIService(aiProvider, settings) : null;
+  const translationService = new TranslationService(aiProvider);
 
   // 4. Initialize Adapters & Publishers & Storages
-  const adapterInstances = initAdapters(settings, proxyAgent);
+  const adapterInstances = initAdapters(settings, proxyAgent, translationService);
   const publisherInstances = initPublishers(settings);
   const storageInstances = initStorages(settings);
 
@@ -69,13 +73,11 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
 
   await skillService.init();
 
-  // Initialize Tool Registry from Global Registry
-  const { ToolRegistry: GlobalToolRegistry } = await import('../registries/ToolRegistry.js');
+  // Initialize Tool Registry instances from loaded classes
   const toolRegistry = ToolRegistry.getInstance();
-  const globalToolRegistry = GlobalToolRegistry.getInstance();
-  for (const toolId of globalToolRegistry.getAll()) {
-    const ToolClass = globalToolRegistry.get(toolId);
-    const metadata = globalToolRegistry.getMetadata(toolId);
+  for (const toolId of toolRegistry.getAll()) {
+    const ToolClass = toolRegistry.get(toolId);
+    const metadata = toolRegistry.getMetadata(toolId);
     if (ToolClass) {
       const instance = new (ToolClass as any)();
       if (metadata) {
@@ -111,6 +113,7 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
     configService,
     aiProvider,
     aiService,
+    translationService,
     promptService,
     taskService,
     schedulerService,
@@ -161,7 +164,7 @@ function initAIProvider(settings: SystemSettings, proxyAgent?: ProxyAgent) {
   }
 }
 
-function initAdapters(settings: SystemSettings, proxyAgent?: ProxyAgent): any[] {
+function initAdapters(settings: SystemSettings, proxyAgent?: ProxyAgent, translationService?: TranslationService): any[] {
   const instances: any[] = [];
   const configs = settings.ADAPTERS || [];
   const registry = AdapterRegistry.getInstance();
@@ -209,6 +212,13 @@ function initAdapters(settings: SystemSettings, proxyAgent?: ProxyAgent): any[] 
         adapter.apiUrl = config.apiUrl;
         if (config.foloCookie) adapter.foloCookie = config.foloCookie;
         adapter.dispatcher = item.useProxy ? proxyAgent : undefined;
+        
+        // 注入翻译服务和翻译配置
+        if (translationService) {
+          adapter.translationService = translationService;
+          adapter.enableTranslation = item.enableTranslation;
+        }
+
         instances.push(adapter);
       } catch (e) {
         console.error(`Failed to init adapter ${item.name} of type ${config.adapterType}:`, e);
@@ -281,19 +291,36 @@ async function seedDefaultAgents(store: LocalStore, agentService: AgentService, 
   const activeProviderConfig = settings.AI_PROVIDERS.find(p => p.id === settings.ACTIVE_AI_PROVIDER_ID);
   const defaultModel = activeProviderConfig?.models?.[0] || '';
 
-  await store.saveAgent({
-    id: 'default_summarizer',
-    name: '基础摘要员',
-    description: '负责生成每日资讯摘要',
-    systemPrompt: '你是一个专业的科技博主，请根据提供的资讯内容生成简洁、有深度的每日摘要。',
-    providerId: settings.ACTIVE_AI_PROVIDER_ID,
-    model: defaultModel,
-    temperature: 1.0,
-    toolIds: [],
-    skillIds: [],
-    mcpServerIds: []
-  });
-  
+  if (!agents.find(a => a.id === 'default_summarizer')) {
+    await store.saveAgent({
+      id: 'default_summarizer',
+      name: '基础摘要员',
+      description: '负责生成每日资讯摘要',
+      systemPrompt: '你是一个专业的科技博主，请根据提供的资讯内容生成简洁、有深度的每日摘要。',
+      providerId: settings.ACTIVE_AI_PROVIDER_ID,
+      model: defaultModel,
+      temperature: 1.0,
+      toolIds: [],
+      skillIds: [],
+      mcpServerIds: []
+    });
+  }
+
+  if (!agents.find(a => a.id === 'ai_summary_agent')) {
+    const aiSummaryPrompt = PromptService.getInstance().getPrompt('ai_summary_agent');
+    await store.saveAgent({
+      id: 'ai_summary_agent',
+      name: 'AI内容主编',
+      description: '负责将Markdown文本重塑为结构化的中文AI资讯摘要，并进行多维度打分。',
+      systemPrompt: aiSummaryPrompt,
+      providerId: settings.ACTIVE_AI_PROVIDER_ID,
+      model: defaultModel,
+      temperature: 0.7,
+      toolIds: [],
+      skillIds: [],
+      mcpServerIds: []
+    });
+  }
 }
 
 async function seedDefaultSchedules(store: LocalStore, adapters: any[]) {

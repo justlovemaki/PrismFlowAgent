@@ -11,18 +11,20 @@ export interface ScheduleTask {
   lastRun?: string;
   lastStatus?: 'success' | 'error';
   lastError?: string;
+  updatedAt?: number;
 }
 
 export interface TaskLog {
   id: number;
-  task_id: string;
-  task_name: string;
-  start_time: string;
-  end_time?: string;
+  taskId: string;
+  taskName: string;
+  startTime: string;
+  endTime?: string;
   duration?: number;
-  status: 'running' | 'success' | 'error';
+  status: 'running' | 'success' | 'error' | 'interrupted';
+  progress?: number;
   message?: string;
-  result_count?: number;
+  resultCount?: number;
 }
 
 export const getSchedules = (): Promise<ScheduleTask[]> => 

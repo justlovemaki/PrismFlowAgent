@@ -7,9 +7,12 @@ export interface UnifiedData {
   source: string;
   category: string;
   author?: string;
-  tags?: string[];
-  ai_summary?: string; // AI 处理后的摘要或评论
-  metadata?: Record<string, any>;
+  status?: string;
+  metadata?: Record<string, any> & {
+    tags?: string[];
+    ai_summary?: string;
+    ai_score?: number;
+  };
 }
 
 

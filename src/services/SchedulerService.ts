@@ -6,7 +6,7 @@ import { AgentService } from './agents/AgentService.js';
 import { AIService } from './AIService.js';
 import { LogService } from './LogService.js';
 import { ScheduleTask, TaskLog } from '../types/schedule.js';
-import { getISODate } from '../utils/helpers.js';
+import { getISODate, removeMarkdownCodeBlock } from '../utils/helpers.js';
 
 export class SchedulerService {
   private store: LocalStore;
@@ -124,6 +124,7 @@ export class SchedulerService {
    */
   private async processItemsIteratively(
     schedule: ScheduleTask,
+    logId: number,
     processor: (item: any, date: string) => Promise<string>
   ) {
     const today = getISODate();
@@ -134,46 +135,111 @@ export class SchedulerService {
     const dates = [yesterday, today];
     let processedTotal = 0;
 
+    // 获取需要更新的目标字段列表
+    const targetFields: string[] = schedule.config?.targetFields || 
+      [schedule.config?.targetField || 'ai_summary'];
+
     // 1. 收集所有待处理的条目
-    const itemsToProcess: { item: any, date: string, storageKey: string }[] = [];
-    const storageMap = new Map<string, any[]>();
+    const itemsToProcess: { item: any, date: string, adapterName: string }[] = [];
 
     for (const date of dates) {
       for (const adapter of this.taskService.getAdapters()) {
-        const storageKey = `${date}-${adapter.category}-${adapter.name}`;
-        const items: any[] = await this.store.get(storageKey) || [];
+        const { items } = await this.store.listSourceData({
+          adapterName: adapter.name,
+          category: adapter.category,
+          ingestionDate: date,
+          limit: 1000
+        });
         
         if (items.length === 0) continue;
-        storageMap.set(storageKey, items);
 
         for (const item of items) {
-          // 只处理没有 AI 摘要的条目
-          if (!item.ai_summary) {
-            itemsToProcess.push({ item, date, storageKey });
+          // 检查是否有任何一个目标字段缺失
+          const needsProcessing = targetFields.some(field => !(item.metadata as any)?.[field]);
+          
+          if (needsProcessing) {
+            itemsToProcess.push({ item, date, adapterName: adapter.name });
           }
         }
       }
     }
 
-    if (itemsToProcess.length === 0) return 0;
+    if (itemsToProcess.length === 0) {
+      await this.store.updateTaskLog({ id: logId, progress: 100, status: 'running' });
+      return 0;
+    }
 
     // 2. 并行处理，最大 5 个线程 (并发限制)
     const CONCURRENCY_LIMIT = 5;
-    const updatedKeys = new Set<string>();
+    const updatedItemsByGroup = new Map<string, any[]>();
     let nextIndex = 0;
+    const totalItems = itemsToProcess.length;
 
     const workers = Array(Math.min(CONCURRENCY_LIMIT, itemsToProcess.length)).fill(null).map(async () => {
       while (nextIndex < itemsToProcess.length) {
-        const task = itemsToProcess[nextIndex++];
+        const idx = nextIndex++;
+        const task = itemsToProcess[idx];
         if (!task) break;
 
-        const { item, date, storageKey } = task;
-        LogService.info(`Processing item [${schedule.type}]: ${item.title}`);
+        const { item, date, adapterName } = task;
+        LogService.info(`Processing item [${schedule.type} -> ${targetFields.join(',')}]: ${item.title}`);
         try {
           const result = await processor(item, date);
-          item.ai_summary = result;
-          updatedKeys.add(storageKey);
+          
+          try {
+            // 尝试提取并解析 JSON
+            const cleanedResult = removeMarkdownCodeBlock(result);
+            const jsonStr = cleanedResult.match(/\{[\s\S]*\}/)?.[0];
+            if (!jsonStr) throw new Error('AI 返回内容不包含有效的 JSON 对象');
+            
+            const parsed = JSON.parse(jsonStr);
+            
+            // 确保 metadata 存在
+            if (!item.metadata) item.metadata = {};
+
+            // 映射已知字段
+            const summary = parsed.ai_summary || parsed.ai_summary;
+            if (summary) {
+              item.metadata.ai_summary = summary;
+            }
+
+            const score = parsed.ai_score ?? parsed.score;
+            if (typeof score === 'number') {
+              item.metadata.ai_score = score;
+            }
+
+            const reason = parsed.ai_score_reason || parsed.reason;
+            if (reason) {
+              item.metadata.ai_score_reason = reason;
+            }
+
+            const tags = parsed.tags;
+            if (Array.isArray(tags)) {
+              item.metadata.tags = tags;
+            }
+
+            // 处理其他自定义字段
+            for (const field of targetFields) {
+              if (!['ai_summary', 'ai_score', 'tags'].includes(field) && parsed[field] !== undefined) {
+                (item.metadata as any)[field] = parsed[field];
+              }
+            }
+
+          } catch (e: any) {
+            LogService.warn(`[SchedulerService] 解析 AI 响应失败 (ID: ${item.id}): ${e.message}`);
+          }
+
+          const groupKey = `${date}|${adapterName}`;
+          if (!updatedItemsByGroup.has(groupKey)) {
+            updatedItemsByGroup.set(groupKey, []);
+          }
+          updatedItemsByGroup.get(groupKey)!.push(item);
           processedTotal++;
+          
+          // 更新进度
+          const progress = Math.round((processedTotal / totalItems) * 100);
+          await this.store.updateTaskLog({ id: logId, progress, status: 'running' });
+          
         } catch (err) {
           LogService.error(`Failed to process item ${item.id} in ${schedule.name}: ${err}`);
         }
@@ -183,11 +249,9 @@ export class SchedulerService {
     await Promise.all(workers);
 
     // 3. 批量保存更新后的数据
-    for (const storageKey of updatedKeys) {
-      const items = storageMap.get(storageKey);
-      if (items) {
-        await this.store.put(storageKey, items);
-      }
+    for (const [groupKey, items] of updatedItemsByGroup.entries()) {
+      const [date, adapterName] = groupKey.split('|');
+      await this.store.saveSourceDataBatch(items, date, adapterName);
     }
 
     return processedTotal;
@@ -204,38 +268,44 @@ export class SchedulerService {
       taskId: schedule.id,
       taskName: schedule.name,
       startTime,
-      status: 'running'
+      status: 'running',
+      progress: 0
     });
 
     try {
       let resultCount = 0;
       let message = '';
+      const targetFields: string[] = schedule.config?.targetFields || 
+        [schedule.config?.targetField || 'ai_summary'];
+
+      const onProgress = async (p: number) => {
+        await this.store.updateTaskLog({ id: logId, progress: p, status: 'running' });
+      };
 
       switch (schedule.type) {
         
         case 'FULL_INGESTION':
-          await this.taskService.runDailyIngestion(undefined, schedule.config);
+          await this.taskService.runDailyIngestion(undefined, schedule.config, onProgress);
           break;
 
         case 'ADAPTER':
-          await this.taskService.runSingleAdapterIngestion(schedule.targetId, undefined, schedule.config);
+          await this.taskService.runSingleAdapterIngestion(schedule.targetId, undefined, schedule.config, onProgress);
           const status = this.taskService.getAdapterStatus();
           resultCount = status[schedule.targetId]?.count || 0;
           break;
 
         case 'WORKFLOW':
           if (this.workflowEngine) {
-            resultCount = await this.processItemsIteratively(schedule, async (item, date) => {
+            resultCount = await this.processItemsIteratively(schedule, logId, async (item, date) => {
               const itemContent = this.formatItemForPrompt(item);
               const workflowInput = {
                 content: itemContent, // 注入统一格式化的文本输入
                 date
               };
               const result = await this.workflowEngine!.runWorkflow(schedule.targetId, workflowInput, date);
-              // 如果工作流返回的是对象，尝试提取内容
               return result;
             });
-            message = `Workflow executed iteratively for ${resultCount} items`;
+            message = `Workflow executed iteratively for ${resultCount} items (Fields: ${targetFields.join(',')})`;
           } else {
             throw new Error('Workflow Engine not initialized');
           }
@@ -243,14 +313,14 @@ export class SchedulerService {
 
         case 'AGENT_DEAL':
           if (this.agentService) {
-            resultCount = await this.processItemsIteratively(schedule, async (item, date) => {
+            resultCount = await this.processItemsIteratively(schedule, logId, async (item, date) => {
               const itemContent = this.formatItemForPrompt(item);
-              const input = `${itemContent}`;
+              const input = itemContent;
               const agentId = schedule.targetId || 'default_summarizer';
               const result = await this.agentService!.runAgent(agentId, input, date, { silent: true });
               return result.content;
             });
-            message = `AI Processing completed for ${resultCount} items`;
+            message = `AI Processing completed for ${resultCount} items (Fields: ${targetFields.join(',')})`;
           } else {
             throw new Error('Agent Service not initialized');
           }
@@ -263,11 +333,13 @@ export class SchedulerService {
       const endTime = new Date().toISOString();
       const duration = new Date(endTime).getTime() - new Date(startTime).getTime();
 
+
       await this.store.updateTaskLog({
         id: logId,
         endTime,
         duration,
         status: 'success',
+        progress: 100,
         message: message || 'Completed successfully',
         resultCount
       });

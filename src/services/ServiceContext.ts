@@ -39,6 +39,10 @@ export class ServiceContext {
     return this.services.schedulerService;
   }
 
+  public get translationService() {
+    return this.services.translationService;
+  }
+
   public get aiProvider(): AIProvider | undefined {
     return this.services.aiProvider;
   }
