@@ -6,4 +6,4 @@ config.json
 dist/
 app.log
 .env
-
+src/plugins/custom

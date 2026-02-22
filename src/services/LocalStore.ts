@@ -557,7 +557,7 @@ export class LocalStore {
    */
   async saveSourceData(item: UnifiedData, ingestionDate?: string, adapterName?: string): Promise<void> {
     await this.db?.run(
-      `INSERT OR REPLACE INTO source_data (
+      `INSERT OR IGNORE INTO source_data (
         id, title, url, description, published_date, source, category, 
         author, metadata, fetched_at, ingestion_date, adapter_name
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,

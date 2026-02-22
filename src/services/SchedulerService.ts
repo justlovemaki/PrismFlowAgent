@@ -6,7 +6,7 @@ import { AgentService } from './agents/AgentService.js';
 import { AIService } from './AIService.js';
 import { LogService } from './LogService.js';
 import { ScheduleTask, TaskLog } from '../types/schedule.js';
-import { getISODate, removeMarkdownCodeBlock } from '../utils/helpers.js';
+import { getISODate, removeMarkdownCodeBlock, sleep } from '../utils/helpers.js';
 
 export class SchedulerService {
   private store: LocalStore;
@@ -169,20 +169,26 @@ export class SchedulerService {
       return 0;
     }
 
-    // 2. 并行处理，最大 5 个线程 (并发限制)
-    const CONCURRENCY_LIMIT = 5;
+    // 2. 并行处理，最大 CONCURRENCY_LIMIT 个线程 (并发限制)
+    // 从配置中获取并发数和延迟，默认 3 线程，500ms 延迟
+    const CONCURRENCY_LIMIT = schedule.config?.concurrency || 3;
+    const REQUEST_DELAY = schedule.config?.delay || 500;
+
     const updatedItemsByGroup = new Map<string, any[]>();
     let nextIndex = 0;
     const totalItems = itemsToProcess.length;
 
-    const workers = Array(Math.min(CONCURRENCY_LIMIT, itemsToProcess.length)).fill(null).map(async () => {
+    const workers = Array(Math.min(CONCURRENCY_LIMIT, itemsToProcess.length)).fill(null).map(async (_, i) => {
+      // 错开启动时间，避免瞬间高并发
+      if (i > 0) await sleep(i * 200);
+
       while (nextIndex < itemsToProcess.length) {
         const idx = nextIndex++;
         const task = itemsToProcess[idx];
         if (!task) break;
 
         const { item, date, adapterName } = task;
-        LogService.info(`Processing item [${schedule.type} -> ${targetFields.join(',')}]: ${item.title}`);
+        LogService.info(`[${idx + 1}/${totalItems}] Processing item [${schedule.type} -> ${targetFields.join(',')}]: ${item.title}`);
         try {
           const result = await processor(item, date);
           
@@ -240,6 +246,11 @@ export class SchedulerService {
           const progress = Math.round((processedTotal / totalItems) * 100);
           await this.store.updateTaskLog({ id: logId, progress, status: 'running' });
           
+          // 迭代延迟，避免频率过高导致 429
+          if (REQUEST_DELAY > 0 && nextIndex < itemsToProcess.length) {
+            await sleep(REQUEST_DELAY);
+          }
+
         } catch (err) {
           LogService.error(`Failed to process item ${item.id} in ${schedule.name}: ${err}`);
         }
