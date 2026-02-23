@@ -16,6 +16,7 @@ RUN npm install
 
 # Copy backend source and build
 COPY src ./src
+COPY scripts ./scripts
 RUN npm run build
 
 # Build Frontend
