@@ -87,7 +87,7 @@ export class MCPService {
         const client = await this.getOrCreateClient(config);
         const response = await client.listTools();
         
-        const tools = (response.tools || []).map(tool => {
+        const tools = (response.tools || []).map((tool: any) => {
           // 清理 schema 以兼容 Claude API
           const cleanedSchema = cleanMCPSchema(tool.inputSchema);
           
