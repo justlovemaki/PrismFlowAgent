@@ -411,7 +411,7 @@ export class LocalStore {
   }
 
   async listSkills(): Promise<any[]> {
-    const rows = await this.db?.all('SELECT data FROM skills');
+    const rows = await this.db?.all('SELECT data FROM skills ORDER BY rowid DESC');
     return (rows || []).map(row => JSON.parse(row.data));
   }
 
@@ -429,7 +429,7 @@ export class LocalStore {
   }
 
   async listWorkflows(): Promise<any[]> {
-    const rows = await this.db?.all('SELECT data FROM workflows');
+    const rows = await this.db?.all('SELECT data FROM workflows ORDER BY rowid DESC');
     return (rows || []).map(row => JSON.parse(row.data));
   }
 
@@ -558,12 +558,13 @@ export class LocalStore {
    * @param ingestionDate 抓取日期
    * @param adapterName 适配器名称
    * @param overwrite 是否覆盖已存在的数据（默认为 false，即已存在就不写入）
+   * @returns 返回是否成功插入了新数据（如果已存在且未覆盖则返回 false）
    */
-  async saveSourceData(item: UnifiedData, ingestionDate?: string, adapterName?: string, overwrite: boolean = false): Promise<void> {
+  async saveSourceData(item: UnifiedData, ingestionDate?: string, adapterName?: string, overwrite: boolean = false): Promise<boolean> {
     if (!overwrite) {
       const existing = await this.db?.get('SELECT id FROM source_data WHERE id = ?', item.id);
       if (existing) {
-        return;
+        return false;
       }
     }
 
@@ -577,7 +578,7 @@ export class LocalStore {
           author, metadata, fetched_at, ingestion_date, adapter_name
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
 
-    await this.db?.run(
+    const result = await this.db?.run(
       sql,
       item.id,
       item.title,
@@ -592,21 +593,29 @@ export class LocalStore {
       ingestionDate || null,
       adapterName || null
     );
+
+    // 对于 INSERT OR IGNORE, changes 为 1 表示插入成功，0 表示忽略
+    // 对于 INSERT OR REPLACE, changes 为 1 表示插入或替换成功
+    return (result?.changes || 0) > 0;
   }
 
   /**
    * 批量保存原始数据
+   * @returns 返回本次批量操作中实际新增的条目数
    */
-  async saveSourceDataBatch(items: UnifiedData[], ingestionDate?: string, adapterName?: string, overwrite: boolean = false): Promise<void> {
-    if (!items.length) return;
+  async saveSourceDataBatch(items: UnifiedData[], ingestionDate?: string, adapterName?: string, overwrite: boolean = false): Promise<number> {
+    if (!items.length) return 0;
     
+    let addedCount = 0;
     // 使用事务提高性能
     await this.db?.run('BEGIN TRANSACTION');
     try {
       for (const item of items) {
-        await this.saveSourceData(item, ingestionDate, adapterName, overwrite);
+        const inserted = await this.saveSourceData(item, ingestionDate, adapterName, overwrite);
+        if (inserted) addedCount++;
       }
       await this.db?.run('COMMIT');
+      return addedCount;
     } catch (err) {
       await this.db?.run('ROLLBACK');
       throw err;

@@ -1,10 +1,10 @@
-import type { UnifiedData, AIResponse } from '../types/index.js';
+import type { UnifiedData, AIResponse, AIMessage } from '../types/index.js';
 
 export interface AIProvider {
   name: string;
   dispatcher?: any;
   generateContent(prompt: string, systemInstruction?: string): Promise<AIResponse>;
-  generateWithTools(prompt: string, tools: any[], systemInstruction?: string): Promise<AIResponse>;
+  generateWithTools(prompt: string | AIMessage[], tools: any[], systemInstruction?: string): Promise<AIResponse>;
   listModels?(): Promise<string[]>;
 }
 
@@ -58,11 +58,49 @@ export class GeminiProvider implements AIProvider {
     return result;
   }
 
-  async generateWithTools(prompt: string, tools: any[], systemInstruction?: string): Promise<AIResponse> {
+  async generateWithTools(prompt: string | AIMessage[], tools: any[], systemInstruction?: string): Promise<AIResponse> {
     const url = `${this.apiUrl}/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`;
     console.log(`[Gemini] API Request (Tools): ${url}, Using Proxy: ${!!this.dispatcher}`);
+    
+    let contents: any[] = [];
+    if (Array.isArray(prompt)) {
+      contents = prompt.map(m => {
+        const parts: any[] = [];
+        if (m.content) {
+          parts.push({ text: m.content });
+        }
+        if (m.tool_calls) {
+          m.tool_calls.forEach(tc => {
+            parts.push({
+              functionCall: {
+                name: tc.name,
+                args: tc.arguments
+              }
+            });
+          });
+        }
+        if (m.role === 'tool') {
+          return {
+            role: 'function',
+            parts: [{
+              functionResponse: {
+                name: m.name,
+                response: { content: m.content }
+              }
+            }]
+          };
+        }
+        return {
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts
+        };
+      });
+    } else {
+      contents = [{ parts: [{ text: prompt }] }];
+    }
+
     const payload: any = {
-      contents: [{ parts: [{ text: prompt }] }],
+      contents
     };
 
     if (tools && tools.length > 0) {
@@ -199,14 +237,35 @@ export class OpenAIProvider implements AIProvider {
     return result;
   }
 
-  async generateWithTools(prompt: string, tools: any[], systemInstruction?: string): Promise<AIResponse> {
+  async generateWithTools(prompt: string | AIMessage[], tools: any[], systemInstruction?: string): Promise<AIResponse> {
     const url = `${this.apiUrl}/v1/chat/completions`;
     console.log(`[OpenAI] API Request (Tools): ${url}, Using Proxy: ${!!this.dispatcher}`);
-    const messages: any[] = [];
-    if (systemInstruction) {
-      messages.push({ role: 'system', content: systemInstruction });
+    let messages: any[] = [];
+
+    if (Array.isArray(prompt)) {
+      messages = prompt.map(m => {
+        const msg: any = { role: m.role, content: m.content };
+        if (m.tool_calls) {
+          msg.tool_calls = m.tool_calls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: {
+              name: tc.name,
+              arguments: JSON.stringify(tc.arguments)
+            }
+          }));
+        }
+        if (m.tool_call_id) {
+          msg.tool_call_id = m.tool_call_id;
+        }
+        return msg;
+      });
+    } else {
+      if (systemInstruction) {
+        messages.push({ role: 'system', content: systemInstruction });
+      }
+      messages.push({ role: 'user', content: prompt });
     }
-    messages.push({ role: 'user', content: prompt });
 
     const body: any = {
       model: this.model,
@@ -336,13 +395,53 @@ export class AnthropicProvider implements AIProvider {
     return result;
   }
 
-  async generateWithTools(prompt: string, tools: any[], systemInstruction?: string): Promise<AIResponse> {
+  async generateWithTools(prompt: string | AIMessage[], tools: any[], systemInstruction?: string): Promise<AIResponse> {
     const url = `${this.apiUrl}/v1/messages`;
     console.log(`[Anthropic] API Request (Tools): ${url}, Using Proxy: ${!!this.dispatcher}`);
+    
+    let messages: any[] = [];
+    let system = systemInstruction;
+
+    if (Array.isArray(prompt)) {
+      messages = prompt.filter(m => m.role !== 'system').map(m => {
+        if (m.role === 'tool') {
+          return {
+            role: 'user',
+            content: [{
+              type: 'tool_result',
+              tool_use_id: m.tool_call_id,
+              content: m.content
+            }]
+          };
+        }
+        
+        const content: any[] = [];
+        if (m.content) {
+          content.push({ type: 'text', text: m.content });
+        }
+        if (m.tool_calls) {
+          m.tool_calls.forEach(tc => {
+            content.push({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.name,
+              input: tc.arguments
+            });
+          });
+        }
+        return { role: m.role, content };
+      });
+      
+      const sysMsg = prompt.find(m => m.role === 'system');
+      if (sysMsg) system = sysMsg.content || systemInstruction;
+    } else {
+      messages = [{ role: 'user', content: prompt }];
+    }
+
     const payload: any = {
       model: this.model,
       max_tokens: 4096,
-      messages: [{ role: 'user', content: prompt }]
+      messages
     };
 
     if (tools && tools.length > 0) {
@@ -354,8 +453,8 @@ export class AnthropicProvider implements AIProvider {
       payload.tool_choice = { type: 'auto' };
     }
 
-    if (systemInstruction) {
-      payload.system = systemInstruction;
+    if (system) {
+      payload.system = system;
     }
 
     const response = await fetch(url, {
@@ -475,13 +574,29 @@ export class OllamaProvider implements AIProvider {
     return result;
   }
 
-  async generateWithTools(prompt: string, tools: any[], systemInstruction?: string): Promise<AIResponse> {
+  async generateWithTools(prompt: string | AIMessage[], tools: any[], systemInstruction?: string): Promise<AIResponse> {
     const url = `${this.apiUrl}/api/chat`;
-    const messages: any[] = [];
-    if (systemInstruction) {
-      messages.push({ role: 'system', content: systemInstruction });
+    let messages: any[] = [];
+    
+    if (Array.isArray(prompt)) {
+      messages = prompt.map(m => {
+        const msg: any = { role: m.role, content: m.content };
+        if (m.tool_calls) {
+          msg.tool_calls = m.tool_calls.map(tc => ({
+            function: {
+              name: tc.name,
+              arguments: tc.arguments
+            }
+          }));
+        }
+        return msg;
+      });
+    } else {
+      if (systemInstruction) {
+        messages.push({ role: 'system', content: systemInstruction });
+      }
+      messages.push({ role: 'user', content: prompt });
     }
-    messages.push({ role: 'user', content: prompt });
 
     const payload: any = {
       model: this.model,
@@ -554,7 +669,11 @@ export class OllamaProvider implements AIProvider {
       // ignore and fallback
     }
 
-    return await this.generateContent(prompt, systemInstruction);
+    if (typeof prompt === 'string') {
+      return await this.generateContent(prompt, systemInstruction);
+    }
+    
+    return { content: 'Ollama generateWithTools failed with message history' };
   }
 
   async listModels(): Promise<string[]> {

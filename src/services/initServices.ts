@@ -6,6 +6,8 @@ import { PromptService } from './PromptService.js';
 import { SchedulerService } from './SchedulerService.js';
 import { GeminiProvider, OpenAIProvider, AnthropicProvider, OllamaProvider, AIProvider } from './AIProvider.js';
 import { AgentService } from './agents/AgentService.js';
+import { MCPService } from './agents/MCPService.js';
+import { SkillStoreService } from './agents/SkillStoreService.js';
 
 import { SkillService } from './agents/SkillService.js';
 import { ToolRegistry } from '../registries/ToolRegistry.js';
@@ -30,9 +32,11 @@ export interface AppServices {
   taskService: TaskService;
   schedulerService: SchedulerService;
   agentService: AgentService | null;
+  mcpService: MCPService;
 
   workflowEngine: WorkflowEngine | null;
   skillService: SkillService;
+  skillStoreService: SkillStoreService;
   adapterInstances: any[];
   publisherInstances: IPublisher[];
   storageInstances: IStorageProvider[];
@@ -70,10 +74,12 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   
   // 6. Initialize Agent Ecosystem
   const skillService = new SkillService();
-
   await skillService.init();
 
+  const skillStoreService = new SkillStoreService(settings.SKILL_STORE_API_KEY || '', proxyAgent);
+
   // Initialize Tool Registry instances from loaded classes
+
   const toolRegistry = ToolRegistry.getInstance();
   for (const toolId of toolRegistry.getAll()) {
     const ToolClass = toolRegistry.get(toolId);
@@ -87,7 +93,8 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
     }
   }
 
-  const agentService = aiProvider ? new AgentService(store, aiProvider, skillService, proxyAgent) : null;
+  const mcpService = new MCPService(proxyAgent);
+  const agentService = aiProvider ? new AgentService(store, aiProvider, skillService, mcpService, proxyAgent) : null;
   const workflowEngine = (agentService && aiProvider) ? new WorkflowEngine(store, agentService, aiProvider) : null;
 
   // 6.1. Initialize Scheduler Service (Now that WorkflowEngine exists)
@@ -118,8 +125,10 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
     taskService,
     schedulerService,
     agentService,
+    mcpService,
     workflowEngine,
     skillService,
+    skillStoreService,
     adapterInstances,
     publisherInstances,
     storageInstances,

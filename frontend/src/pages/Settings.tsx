@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSettings, saveSettings, getModels, getPluginMetadata } from '../services/settingsService';
+import { getSettings, saveSettings, getModels, getPluginMetadata, testProvider } from '../services/settingsService';
 import IconPicker from '../components/UI/IconPicker';
 import { useToast } from '../context/ToastContext.js';
 
@@ -13,6 +13,7 @@ const Settings: React.FC = () => {
   const [isSaving, setIsSaving] = useState(false);
   const [providerModels, setProviderModels] = useState<Record<string, string[]>>({});
   const [isFetchingModels, setIsFetchingModels] = useState<Record<string, boolean>>({});
+  const [isTestingProvider, setIsTestingProvider] = useState<Record<string, boolean>>({});
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
@@ -88,6 +89,28 @@ const Settings: React.FC = () => {
       toastError('获取模型列表失败: ' + error.message);
     } finally {
       setIsFetchingModels(prev => ({ ...prev, [provider.id]: false }));
+    }
+  };
+
+  const handleTestProvider = async (provider: any) => {
+    if (!provider.apiUrl || (!provider.apiKey && provider.type !== 'OLLAMA')) {
+      toastInfo('请先填写 API 地址和 API Key');
+      return;
+    }
+
+    try {
+      setIsTestingProvider(prev => ({ ...prev, [provider.id]: true }));
+      const result = await testProvider(provider);
+      if (result.status === 'healthy') {
+        toastSuccess('连接成功: ' + result.message);
+      } else {
+        toastError('连接失败: ' + result.message);
+      }
+    } catch (error: any) {
+      console.error('Failed to test provider:', error);
+      toastError('测试连接失败: ' + error.message);
+    } finally {
+      setIsTestingProvider(prev => ({ ...prev, [provider.id]: false }));
     }
   };
 
@@ -246,14 +269,17 @@ const Settings: React.FC = () => {
     },
     {
       id: 'security',
-      title: '安全设置',
-      description: '管理系统访问权限与密码',
+      title: '安全与 API 密钥',
+      description: '管理系统访问权限、密码以及第三方平台 API 密钥',
       fields: [
         { label: '系统访问密码', key: 'SYSTEM_PASSWORD', type: 'password', placeholder: '在此设置新的系统密码' },
         { label: '登录过期时间', key: 'AUTH_EXPIRE_TIME', type: 'text', placeholder: '例如: 7d, 24h, 1h' },
+        { label: 'Skill Store API Key', key: 'SKILL_STORE_API_KEY', type: 'password', placeholder: '用于在线安装技能' },
+        { label: 'Global GitHub Token', key: 'GLOBAL_GITHUB_TOKEN', type: 'password', placeholder: '全局 GitHub 访问令牌，用于 GitHub 导入及发布' },
       ]
     }
   ];
+
 
 
   const handleAdapterChange = (adapterId: string, itemId: string | null, field: string, value: any) => {
@@ -703,10 +729,24 @@ const Settings: React.FC = () => {
                     </div>
 
                     <div className="flex items-center gap-3">
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleTestProvider(provider);
+                        }}
+                        disabled={isTestingProvider[provider.id]}
+                        className="flex items-center gap-1.5 px-3 py-1 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-full text-[10px] font-bold uppercase tracking-wider transition-all disabled:opacity-50 h-7"
+                      >
+                        <span className={`material-symbols-outlined text-[14px] ${isTestingProvider[provider.id] ? 'animate-spin' : ''}`}>
+                          {isTestingProvider[provider.id] ? 'hourglass_top' : 'bolt'}
+                        </span>
+                        测试连接
+                      </button>
+                      <div className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-0.5"></div>
                       {isActive ? (
-                        <span className="flex items-center gap-1.5 px-3 py-1 bg-green-500/10 text-green-500 rounded-full text-[10px] font-bold uppercase tracking-wider">
+                        <span className="flex items-center gap-1.5 px-3 py-1 bg-green-500/10 text-green-500 rounded-full text-[10px] font-bold uppercase tracking-wider h-7">
                           <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
-                          Active
+                          已激活
                         </span>
                       ) : (
                         <button 
@@ -714,12 +754,12 @@ const Settings: React.FC = () => {
                             e.stopPropagation();
                             handleFieldChange('ACTIVE_AI_PROVIDER_ID', provider.id);
                           }}
-                          className="text-[10px] px-3 py-1 bg-slate-100 dark:bg-white/5 text-slate-500 hover:bg-primary hover:text-white rounded-full font-bold uppercase tracking-wider transition-all"
+                          className="flex items-center px-3 py-1 bg-slate-100 dark:bg-white/5 text-slate-500 hover:bg-primary hover:text-white rounded-full text-[10px] font-bold uppercase tracking-wider transition-all h-7"
                         >
                           设为默认
                         </button>
                       )}
-                      <div className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-1"></div>
+                      <div className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-0.5"></div>
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -750,14 +790,13 @@ const Settings: React.FC = () => {
                             
                             {/* Left: Connection Settings */}
                             <div className="lg:col-span-5 space-y-5">
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className="material-symbols-outlined text-sm text-primary">link</span>
-                                <h5 className="text-[11px] font-bold text-slate-900 dark:text-slate-200 uppercase tracking-wider">连接设置</h5>
-                              </div>
-                              
-                              <div className="space-y-4">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="material-symbols-outlined text-sm text-primary">link</span>
+                                  <h5 className="text-[11px] font-bold text-slate-900 dark:text-slate-200 uppercase tracking-wider">连接设置</h5>
+                                </div>
+<div className="space-y-4">
                                 <div className="space-y-1.5">
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.1em] ml-1">API Endpoint</label>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.1em] ml-1">API 地址</label>
                                   <input 
                                     type="text"
                                     value={provider.apiUrl || ''}
@@ -767,7 +806,7 @@ const Settings: React.FC = () => {
                                 </div>
                                 
                                 <div className="space-y-1.5">
-                                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.1em] ml-1">Access Token / Key</label>
+                                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.1em] ml-1">API 密钥 (API Key)</label>
                                   <div className="relative group">
                                     <input 
                                       type={showApiKeys[provider.id] ? "text" : "password"}
@@ -1127,7 +1166,7 @@ const Settings: React.FC = () => {
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">图标 (Material Icon Name)</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">图标名称</label>
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => setIconPickerState({ isOpen: true, catId: cat.id, currentIcon: cat.icon || 'label' })}

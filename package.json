@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "start": "node --loader ts-node/esm src/index.ts",
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx src/index.ts",
     "dev:frontend": "npm --prefix frontend run dev",
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:frontend\" --names \"backend,frontend\" --prefix-colors \"blue,green\"",
     "build": "tsc && node scripts/copy-assets.js",

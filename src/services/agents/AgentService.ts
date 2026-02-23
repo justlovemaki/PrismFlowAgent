@@ -1,21 +1,25 @@
 import { AgentDefinition, SkillDefinition, AgentExecutionResult } from '../../types/agent.js';
 import { LocalStore } from '../LocalStore.js';
 import { AIProvider, createAIProvider } from '../AIProvider.js';
+import { MCPService } from './MCPService.js';
 import { ToolRegistry } from '../../registries/ToolRegistry.js';
 import { LogService } from '../LogService.js';
 import { SkillService } from './SkillService.js';
+import { AIMessage } from '../../types/index.js';
 
 export class AgentService {
   private store: LocalStore;
   private aiProvider: AIProvider;
   private skillService: SkillService;
+  private mcpService: MCPService;
   private toolRegistry: ToolRegistry;
   private proxyAgent?: any;
 
-  constructor(store: LocalStore, aiProvider: AIProvider, skillService: SkillService, proxyAgent?: any) {
+  constructor(store: LocalStore, aiProvider: AIProvider, skillService: SkillService, mcpService: MCPService, proxyAgent?: any) {
     this.store = store;
     this.aiProvider = aiProvider;
     this.skillService = skillService;
+    this.mcpService = mcpService;
     this.toolRegistry = ToolRegistry.getInstance();
     this.proxyAgent = proxyAgent;
   }
@@ -65,7 +69,21 @@ export class AgentService {
     const tools = Array.from(toolIds)
       .filter(id => !closedPlugins.includes(id)) // 过滤已禁用的工具
       .map(id => this.toolRegistry.getTool(id))
-      .filter(Boolean);
+      .filter(Boolean) as any[];
+
+    // 2.1 Prepare MCP Tools
+    const mcpConfigs = [];
+    if (agentDef.mcpServerIds && agentDef.mcpServerIds.length > 0) {
+      for (const id of agentDef.mcpServerIds) {
+        const config = await this.store.getMCPConfig(id);
+        if (config) {
+          mcpConfigs.push(config);
+        }
+      }
+    }
+
+    const mcpTools = await this.mcpService.getTools(mcpConfigs);
+    const combinedTools = [...tools, ...mcpTools];
 
     // 3. Construct System Message
     let systemInstruction = `${combinedSkillInstructions}\n${agentDef.systemPrompt}`;
@@ -77,54 +95,96 @@ export class AgentService {
       LogService.info(`[Agent ${agentDef.name}] System Instruction: ${systemInstruction.slice(0, 500)}...`);
     }
 
-    // 4. Execution Loop (Simplified for now: max 3 rounds of tool calls)
-    let currentInput = input;
+    // 4. Execution Loop (Maintain message history to avoid repeated tool calls)
+    const messages: AIMessage[] = [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: input }
+    ];
+
     let finalContent = '';
     let lastToolResult: any = null;
     let rounds = 0;
-    const maxRounds = 3;
+    const maxRounds = 5; // Increased slightly as some complex tasks might need more steps
 
     while (rounds < maxRounds) {
       if (!options.silent) {
-        LogService.info(`[Agent ${agentDef.name}] Round ${rounds + 1} Input: ${currentInput.slice(0, 500)}${currentInput.length > 500 ? '...' : ''}`);
+        LogService.info(`[Agent ${agentDef.name}] Round ${rounds + 1} starting...`);
       }
 
-      const response = await provider.generateWithTools(currentInput, tools, systemInstruction);
+      const response = await provider.generateWithTools(messages, combinedTools);
       
       const responseContent = response.content || '';
-      if (!options.silent) {
+      if (!options.silent && responseContent) {
         LogService.info(`[Agent ${agentDef.name}] Round ${rounds + 1} AI Response: "${responseContent.slice(0, 500)}${responseContent.length > 500 ? '...' : ''}"`);
       }
+
+      // Add assistant response to history
+      messages.push({
+        role: 'assistant',
+        content: responseContent || null,
+        tool_calls: response.tool_calls
+      });
 
       if (response.tool_calls && response.tool_calls.length > 0) {
         if (!options.silent) {
           LogService.info(`Agent ${agentDef.name} calling tools: ${response.tool_calls.map(tc => tc.name).join(', ')}`);
         }
         
-        const toolResults = [];
         for (const tc of response.tool_calls) {
           try {
             if (!options.silent) {
               LogService.info(`[Agent ${agentDef.name}] Round ${rounds + 1} Tool Call: ${tc.name} with args: ${JSON.stringify(tc.arguments)}`);
             }
-            const result = await this.toolRegistry.callTool(tc.name, tc.arguments);
-            if (!options.silent) {
-              LogService.info(`[Agent ${agentDef.name}] Round ${rounds + 1} Tool Result: ${typeof result === 'string' ? result.slice(0, 500) : 'object'}`);
+            
+            let result: any;
+            
+            // 查找工具定义以确定是否为 MCP 工具
+            const toolDef = combinedTools.find(t => t.name === tc.name);
+            
+            if (toolDef && !toolDef.isBuiltin) {
+              // 是 MCP 工具。toolDef.id 包含 "configId:toolName" (原始名称)
+              const [configId, ...nameParts] = toolDef.id.split(':');
+              const originalToolName = nameParts.join(':');
+              const mcpConfig = mcpConfigs.find(cfg => cfg.id === configId);
+              
+              if (mcpConfig) {
+                result = await this.mcpService.callTool(mcpConfig, originalToolName, tc.arguments);
+              } else {
+                // 回退逻辑：如果找不到配置，尝试直接调用（可能 toolName 已经是原始名称）
+                result = await this.mcpService.callTool({ id: configId } as any, originalToolName, tc.arguments);
+              }
+            } else {
+              // 内置工具或插件工具
+              result = await this.toolRegistry.callTool(tc.name, tc.arguments);
             }
-            toolResults.push({ tool_call_id: tc.id, result });
-            lastToolResult = result; // 记录最后一个工具结果
+
+            if (!options.silent) {
+              LogService.info(`[Agent ${agentDef.name}] Round ${rounds + 1} Tool Result Success`);
+            }
+            
+            // Add tool result to history
+            messages.push({
+              role: 'tool',
+              tool_call_id: tc.id,
+              name: tc.name,
+              content: typeof result === 'string' ? result : JSON.stringify(result)
+            });
+            
+            lastToolResult = result;
           } catch (error: any) {
             LogService.error(`[Agent ${agentDef.name}] Tool ${tc.name} failed: ${error.message}`);
-            toolResults.push({ tool_call_id: tc.id, error: error.message });
+            messages.push({
+              role: 'tool',
+              tool_call_id: tc.id,
+              name: tc.name,
+              content: `Error: ${error.message}`
+            });
           }
         }
-
-        // Inform the AI about tool results and continue
-        currentInput = `Tool results:\n${JSON.stringify(toolResults)}\n\nPlease continue based on these results.`;
         rounds++;
       } else {
-        finalContent = responseContent;
-        if (!finalContent.trim()) {
+        finalContent = typeof responseContent === 'string' ? responseContent : JSON.stringify(responseContent);
+        if (!finalContent || (typeof finalContent === 'string' && !finalContent.trim())) {
           if (!options.silent) {
             LogService.warn(`[Agent ${agentDef.name}] Round ${rounds + 1} received empty content and no tool calls.`);
           }
@@ -134,24 +194,40 @@ export class AgentService {
     }
 
     // 如果 AI 没有返回最终内容，但有工具执行结果，尝试使用最后一个工具的结果作为内容
-    if (!finalContent.trim() && lastToolResult) {
+    let finalString = typeof finalContent === 'string' ? finalContent : JSON.stringify(finalContent);
+    
+    if (!finalString.trim() && lastToolResult) {
       if (!options.silent) {
         LogService.info(`[Agent ${agentDef.name}] Final content is empty, using last tool result as fallback.`);
       }
+      
       if (typeof lastToolResult === 'string') {
-        finalContent = lastToolResult;
+        finalString = lastToolResult;
       } else if (typeof lastToolResult === 'object' && lastToolResult !== null) {
-        // 某些工具可能返回 { content: '...' } 或 { html: '...' }
-        finalContent = lastToolResult.content || lastToolResult.html || lastToolResult.summary || JSON.stringify(lastToolResult);
+        // 处理标准 MCP 响应格式: { content: [{ type: 'text', text: '...' }] }
+        if (Array.isArray(lastToolResult.content)) {
+          finalString = lastToolResult.content
+            .filter((c: any) => c.type === 'text')
+            .map((c: any) => c.text)
+            .join('\n');
+          
+          if (!finalString.trim()) {
+            finalString = JSON.stringify(lastToolResult.content);
+          }
+        } else {
+          // 某些工具可能返回 { content: '...' } 或 { html: '...' }
+          const fallback = lastToolResult.content || lastToolResult.html || lastToolResult.summary || JSON.stringify(lastToolResult);
+          finalString = typeof fallback === 'string' ? fallback : JSON.stringify(fallback);
+        }
       }
     }
 
-    if (!finalContent.trim()) {
+    if (!finalString.trim()) {
       LogService.error(`[Agent ${agentDef.name}] Failed to generate any content after ${rounds + 1} rounds.`);
     }
 
     return { 
-      content: finalContent || 'No response generated (AI returned empty content)',
+      content: finalString || 'No response generated (AI returned empty content)',
       data: lastToolResult // 返回最后一个工具的执行结果
     };
   }

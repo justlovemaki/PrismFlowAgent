@@ -249,7 +249,7 @@ const Dashboard: React.FC = () => {
       subValue: statsData?.lastCommit 
         ? `已推送至 ${statsData.lastCommitPlatform || '平台'}` 
         : '等待首次提交', 
-      trend: statsData?.lastCommitPlatform || 'Platform', 
+      trend: statsData?.lastCommitPlatform || '平台', 
       icon: 'schedule', 
       textColor: 'text-purple-500' 
     },
@@ -416,6 +416,8 @@ const Dashboard: React.FC = () => {
                                 )}
                                 {adapter.status === 'idle' ? '未运行' :
                                  adapter.status === 'running' ? '运行中' :
+                                 adapter.status === 'success' ? '成功' :
+                                 adapter.status === 'error' ? '失败' :
                                  adapter.status}
                               </span>
                             </td>
@@ -479,7 +481,7 @@ const Dashboard: React.FC = () => {
                       log.level === 'ERROR' ? 'text-accent-error' : 
                       log.level === 'WARN' ? 'text-accent-warning' : 
                       'text-accent-success'
-                    }>{log.level}</span>: {log.message}
+                    }>{log.level === 'ERROR' ? '错误' : log.level === 'WARN' ? '警告' : '信息'}</span>: {log.message}
                   </p>
                 ))
               )}

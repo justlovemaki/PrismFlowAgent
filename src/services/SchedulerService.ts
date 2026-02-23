@@ -296,13 +296,13 @@ export class SchedulerService {
       switch (schedule.type) {
         
         case 'FULL_INGESTION':
-          await this.taskService.runDailyIngestion(undefined, schedule.config, onProgress);
+          const fullResult = await this.taskService.runDailyIngestion(undefined, schedule.config, onProgress);
+          resultCount = fullResult.count;
           break;
 
         case 'ADAPTER':
-          await this.taskService.runSingleAdapterIngestion(schedule.targetId, undefined, schedule.config, onProgress);
-          const status = await this.taskService.getAdapterStatus();
-          resultCount = status[schedule.targetId]?.count || 0;
+          const singleResult = await this.taskService.runSingleAdapterIngestion(schedule.targetId, undefined, schedule.config, onProgress);
+          resultCount = singleResult.count;
           break;
 
         case 'WORKFLOW':

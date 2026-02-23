@@ -248,7 +248,10 @@ const TaskManagement: React.FC = () => {
                       <td className="px-6 py-4 font-mono text-xs text-primary hidden md:table-cell">{schedule.cron}</td>
                       <td className="px-6 py-4 hidden sm:table-cell">
                         <span className="px-2 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-400">
-                          {schedule.type}
+                          {schedule.type === 'ADAPTER' ? '数据源适配器' :
+                           schedule.type === 'WORKFLOW' ? '工作流' :
+                           schedule.type === 'AGENT_DEAL' ? 'Agent 处理' :
+                           schedule.type === 'FULL_INGESTION' ? '全量同步' : schedule.type}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs hidden lg:table-cell">

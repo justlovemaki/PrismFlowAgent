@@ -222,11 +222,14 @@ export class WorkflowEngine {
     const inputText = typeof stepInput === 'string' ? stepInput : (JSON.stringify(stepInput) ?? '');
     LogService.info(`[Workflow ${step.id}] Input: ${inputText.slice(0, 1000)}${inputText.length > 1000 ? '...(truncated)' : ''}`);
 
-    // Execute Agent
+    // Execute based on step type or configured ID
     let output: any = null;
     if (step.agentId) {
       const agentResult = await this.agentService.runAgent(step.agentId, inputText, date, { silent: true });
       output = agentResult.content;
+    } else if (step.workflowId) {
+      // Sub-workflow execution
+      output = await this.runWorkflow(step.workflowId, stepInput, date);
     }
 
     const outputStr = typeof output === 'string' ? output : JSON.stringify(output);

@@ -78,7 +78,16 @@ const Agents: React.FC = () => {
   const [workflowTestInput, setWorkflowTestInput] = useState('');
   const [workflowTestResult, setWorkflowTestResult] = useState<Record<string, string>>({});
 
+  // Skill Store states
+  const [showStoreModal, setShowStoreModal] = useState(false);
+  const [storeSearchQuery, setStoreSearchQuery] = useState('');
+  const [isAISearch, setIsAISearch] = useState(false);
+  const [storeResults, setStoreResults] = useState<any[]>([]);
+  const [isStoreLoading, setIsStoreLoading] = useState(false);
+  const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
+
   useEffect(() => {
+
     loadData();
   }, []);
 
@@ -148,7 +157,63 @@ const Agents: React.FC = () => {
     }
   };
 
+  const handleStoreSearch = async () => {
+
+    if (!storeSearchQuery.trim()) return;
+    try {
+      setIsStoreLoading(true);
+      const result = isAISearch 
+        ? await agentService.aiSearchStoreSkills(storeSearchQuery)
+        : await agentService.searchStoreSkills(storeSearchQuery);
+      
+      // Handle different response formats from the store
+      let rawData = result.data || result || [];
+      
+      if (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) {
+        // Try known array properties in the data object
+        if (Array.isArray(rawData.skills)) {
+          rawData = rawData.skills;
+        } else if (Array.isArray(rawData.data)) {
+          rawData = rawData.data;
+        } else if (Array.isArray(rawData.items)) {
+          rawData = rawData.items;
+        }
+      }
+      
+      if (!Array.isArray(rawData)) {
+        rawData = [];
+      }
+
+      // Map vector search results to skill objects if present, filter out results without required metadata
+      const processedResults = rawData.map((item: any) => {
+        if (item.skill) return { ...item.skill, score: item.score };
+        return item;
+      }).filter((item: any) => item && typeof item === 'object' && item.id && item.name)
+        .sort((a: any, b: any) => (b.stars || 0) - (a.stars || 0));
+
+      setStoreResults(processedResults);
+    } catch (error: any) {
+      toastError(error.message || '搜索失败');
+    } finally {
+      setIsStoreLoading(false);
+    }
+  };
+
+  const handleInstallStoreSkill = async (skill: any) => {
+    try {
+      setInstallingSkillId(skill.id);
+      await agentService.installStoreSkill(skill);
+      await loadData();
+      toastSuccess(`技能 ${skill.name} 安装成功`);
+    } catch (error: any) {
+      toastError(error.message || '安装失败');
+    } finally {
+      setInstallingSkillId(null);
+    }
+  };
+
   const tabs = [
+
     { id: 'agents', label: '智能体 (Agents)', icon: 'smart_toy' },
     { id: 'tools', label: '工具箱 (Tools)', icon: 'construction' },
     { id: 'skills', label: '技能库 (Skills)', icon: 'bolt' },
@@ -194,7 +259,15 @@ const Agents: React.FC = () => {
               </div>
               <div className="flex gap-2">
                 <button 
-                  onClick={() => { setTestingAgentId(agent.id); setTestInput(''); }}
+                  onClick={() => { 
+                    setTestingAgentId(agent.id); 
+                    setTestInput(''); 
+                    setTestResults(prev => {
+                      const next = { ...prev };
+                      delete next[agent.id];
+                      return next;
+                    });
+                  }}
                   className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10 rounded-full transition-all"
                   title="测试"
                 >
@@ -252,7 +325,7 @@ const Agents: React.FC = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8"
+              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto no-scrollbar p-8"
             >
               <div className="flex justify-between items-center mb-8">
                 <h3 className="text-xl font-bold dark:text-white">配置智能体</h3>
@@ -386,7 +459,9 @@ const Agents: React.FC = () => {
                         key={skill.id}
                         onClick={() => {
                           const skillIds = editingAgent.skillIds || [];
-                          const ids = skillIds.includes(skill.id) ? [] : [skill.id];
+                          const ids = skillIds.includes(skill.id) 
+                            ? skillIds.filter(id => id !== skill.id) 
+                            : [...skillIds, skill.id];
                           setEditingAgent({...editingAgent, skillIds: ids});
                         }}
                         className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${
@@ -409,12 +484,10 @@ const Agents: React.FC = () => {
                         key={tool.id}
                         onClick={() => {
                           const toolIds = editingAgent.toolIds || [];
-                          const isSelected = toolIds.includes(tool.id);
-                          const hasRag = toolIds.includes('search_knowledge_base');
-                          const newIds = isSelected 
-                            ? (hasRag ? ['search_knowledge_base'] : []) 
-                            : (hasRag ? [tool.id, 'search_knowledge_base'] : [tool.id]);
-                          setEditingAgent({...editingAgent, toolIds: newIds});
+                          const ids = toolIds.includes(tool.id)
+                            ? toolIds.filter(id => id !== tool.id)
+                            : [...toolIds, tool.id];
+                          setEditingAgent({...editingAgent, toolIds: ids});
                         }}
                         className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border ${
                           (editingAgent.toolIds || []).includes(tool.id)
@@ -437,7 +510,9 @@ const Agents: React.FC = () => {
                           key={mcp.id}
                           onClick={() => {
                             const mcpIds = editingAgent.mcpServerIds || [];
-                            const ids = mcpIds.includes(mcp.id) ? [] : [mcp.id];
+                            const ids = mcpIds.includes(mcp.id)
+                              ? mcpIds.filter(id => id !== mcp.id)
+                              : [...mcpIds, mcp.id];
                             setEditingAgent({...editingAgent, mcpServerIds: ids});
                           }}
                           className={`px-3 py-1.5 rounded-lg text-[10px] font-bold transition-all border flex items-center gap-1.5 ${
@@ -549,7 +624,7 @@ const Agents: React.FC = () => {
                 </button>
 
                 {testResults[testingAgentId] && (
-                  <div className="p-4 bg-slate-50 dark:bg-black/20 rounded-xl text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto border border-slate-200 dark:border-white/5">
+                  <div className="w-full p-4 bg-slate-50 dark:bg-black/20 rounded-xl text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-pre-wrap break-words max-h-60 overflow-y-auto border border-slate-200 dark:border-white/5">
                     {testResults[testingAgentId]}
                   </div>
                 )}
@@ -576,6 +651,25 @@ const Agents: React.FC = () => {
     } finally {
       setIsUploading(false);
       if (skillFileRef.current) skillFileRef.current.value = '';
+    }
+  };
+
+  const handleImportFromGithub = async () => {
+    const url = prompt('请输入 GitHub 技能目录 URL (例如: https://github.com/facebook/react/tree/main/.claude/skills/flow)');
+    if (!url) return;
+    
+    try {
+      setIsUploading(true);
+      setUploadError(null);
+      await agentService.importSkillFromGithub(url);
+      await loadData();
+      toastSuccess('技能从 GitHub 导入成功');
+    } catch (error: any) {
+      const msg = error.message || '导入失败';
+      setUploadError(msg);
+      toastError(msg);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -656,8 +750,24 @@ const Agents: React.FC = () => {
             }}
           />
           <button
+            onClick={() => setShowStoreModal(true)}
+            disabled={isUploading || !!installingSkillId}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-xl hover:bg-slate-900 transition-all text-sm font-bold shadow-lg shadow-slate-500/20 disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined">search</span>
+            在线搜索
+          </button>
+          <button
+            onClick={handleImportFromGithub}
+            disabled={isUploading || !!installingSkillId}
+            className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white rounded-xl hover:bg-slate-200 dark:hover:bg-white/10 transition-all text-sm font-bold shadow-lg shadow-slate-500/10 disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined">link</span>
+            GitHub 导入
+          </button>
+          <button
             onClick={() => skillFileRef.current?.click()}
-            disabled={isUploading}
+            disabled={isUploading || !!installingSkillId}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all text-sm font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
           >
             <span className="material-symbols-outlined">{isUploading ? 'hourglass_top' : 'upload_file'}</span>
@@ -1006,7 +1116,7 @@ const Agents: React.FC = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-8"
+              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto no-scrollbar p-8"
             >
               <div className="flex justify-between items-center mb-8">
                 <div className="flex items-center gap-3">
@@ -1195,7 +1305,7 @@ const Agents: React.FC = () => {
     id: `wf_${Date.now().toString(36)}`,
     name: '',
     description: '',
-    steps: [{ id: 'step_1', agentId: '', inputMap: {}, nextStepIds: [], condition: '' }],
+    steps: [{ id: 'step_1', type: 'agent', agentId: '', inputMap: {}, nextStepIds: [], condition: '' }],
     initialStepId: 'step_1',
   });
 
@@ -1253,7 +1363,7 @@ const Agents: React.FC = () => {
     const existingIds = editingWorkflow.steps.map(s => s.id);
     let idx = editingWorkflow.steps.length + 1;
     while (existingIds.includes(`step_${idx}`)) idx++;
-    const newStep: WorkflowStep = { id: `step_${idx}`, agentId: '', inputMap: {}, nextStepIds: [], condition: '' };
+    const newStep: WorkflowStep = { id: `step_${idx}`, type: 'agent', agentId: '', inputMap: {}, nextStepIds: [], condition: '' };
     // inputMap kept empty — engine auto-derives input from DAG predecessors
     setEditingWorkflow({ ...editingWorkflow, steps: [...editingWorkflow.steps, newStep] });
   };
@@ -1286,6 +1396,10 @@ const Agents: React.FC = () => {
     if (step.agentId) {
       const agent = agents.find(a => a.id === step.agentId);
       return agent ? agent.name : step.agentId;
+    }
+    if (step.workflowId) {
+      const wf = workflows.find(w => w.id === step.workflowId);
+      return wf ? `工作流: ${wf.name}` : `工作流: ${step.workflowId}`;
     }
     return '未配置';
   };
@@ -1347,22 +1461,24 @@ const Agents: React.FC = () => {
     return layers;
   };
 
-  const buildWorkflowGraphLayout = (steps: WorkflowStep[], initialStepId: string, compact = false) => {
+  const buildWorkflowGraphLayout = (steps: WorkflowStep[], initialStepId: string, nodeHeight: number, compact = false) => {
     const layers = buildTopologicalLayers(steps, initialStepId);
-    const layerGap = compact ? 146 : 190;
+    const layerGap = compact ? 120 : 190;
     const nodeGap = compact ? 46 : 64;
-    const paddingX = compact ? 8 : 16;
-    const paddingY = compact ? 8 : 14;
+    const paddingX = compact ? 20 : 40;
+    const paddingY = compact ? 16 : 24;
+    const nodeWidth = compact ? 98 : 132;
 
+    // 1. Calculate rough positions (relative to first node of max layer)
     const roughPositions = new Map<string, { x: number; y: number; layerIndex: number }>();
-    let maxRows = 1;
+    let maxRows = 0;
+    layers.forEach(l => { if (l.length > maxRows) maxRows = l.length; });
 
     layers.forEach((layer, li) => {
-      maxRows = Math.max(maxRows, layer.length);
-      const startY = ((maxRows - layer.length) * nodeGap) / 2 + paddingY;
+      const startY = ((maxRows - layer.length) * nodeGap) / 2;
       layer.forEach((step, idx) => {
         roughPositions.set(step.id, {
-          x: paddingX + li * layerGap,
+          x: li * layerGap,
           y: startY + idx * nodeGap,
           layerIndex: li,
         });
@@ -1373,54 +1489,67 @@ const Agents: React.FC = () => {
     const idSet = new Set(steps.map(s => s.id));
     steps.forEach(step => {
       getNextStepIds(step).forEach(nextId => {
-        if (idSet.has(nextId)) {
-          edges.push({ from: step.id, to: nextId });
-        }
+        if (idSet.has(nextId)) edges.push({ from: step.id, to: nextId });
       });
     });
 
-    // 为抬升曲线预留顶部空间，避免被裁切，同时让预览区域高度自适应
-    let maxCurveLift = 0;
+    // 2. Calculate content bounding box (including curves)
+    let minX = 0, minY = 0, maxX = 0, maxY = 0;
+    const checkPoint = (x: number, y: number) => {
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+    };
+
+    roughPositions.forEach(pos => {
+      checkPoint(pos.x, pos.y);
+      checkPoint(pos.x + nodeWidth, pos.y + nodeHeight);
+    });
+
     edges.forEach(edge => {
       const from = roughPositions.get(edge.from);
       const to = roughPositions.get(edge.to);
-      if (!from || !to) return;
-      const layerSpan = Math.max(1, to.layerIndex - from.layerIndex);
-      if (layerSpan > 1) {
-        const lift = 24 + (layerSpan - 1) * 14;
-        maxCurveLift = Math.max(maxCurveLift, lift);
+      if (from && to) {
+        const y1 = from.y + nodeHeight / 2;
+        const y2 = to.y + nodeHeight / 2;
+        const layerSpan = Math.max(1, to.layerIndex - from.layerIndex);
+        if (layerSpan > 1) {
+          const lift = 24 + (layerSpan - 1) * 14;
+          checkPoint(from.x + nodeWidth + 20, y1 - lift);
+          checkPoint(to.x - 20, y2 - lift);
+        }
       }
     });
 
-    const topCurvePadding = Math.max(8, maxCurveLift + 8);
+    // 3. Determine final dimensions and centering offsets
+    const contentWidth = maxX - minX;
+    const contentHeight = maxY - minY;
+    
+    const minWidth = compact ? 180 : 300;
+    const minHeight = compact ? 100 : 160;
+    
+    const finalWidth = Math.max(minWidth, contentWidth + paddingX * 2);
+    const finalHeight = Math.max(minHeight, contentHeight + paddingY * 2);
+
+    const offsetX = (finalWidth - contentWidth) / 2 - minX;
+    const offsetY = (finalHeight - contentHeight) / 2 - minY;
+
     const positions = new Map<string, { x: number; y: number; layerIndex: number }>();
     roughPositions.forEach((pos, id) => {
-      positions.set(id, { ...pos, y: pos.y + topCurvePadding });
+      positions.set(id, { ...pos, x: pos.x + offsetX, y: pos.y + offsetY });
     });
 
-    const minWidth = compact ? 176 : 220;
-    const tailWidth = compact ? 132 : 170;
-    const minHeight = compact ? 76 : 96;
-    const bottomPadding = compact ? 24 : 36;
-
-    return {
-      positions,
-      edges,
-      width: Math.max(minWidth, paddingX * 2 + Math.max(0, layers.length - 1) * layerGap + tailWidth),
-      height: Math.max(minHeight, paddingY * 2 + Math.max(1, maxRows - 1) * nodeGap + bottomPadding + topCurvePadding),
-    };
+    return { positions, edges, width: finalWidth, height: finalHeight };
   };
 
   const renderWorkflowGraphPreview = (steps: WorkflowStep[], initialStepId: string, compact = false) => {
-    const layout = buildWorkflowGraphLayout(steps, initialStepId, compact);
-    const nodeWidth = compact ? 98 : 132;
     const nodeHeight = compact ? 24 : 34;
+    const layout = buildWorkflowGraphLayout(steps, initialStepId, nodeHeight, compact);
+    const nodeWidth = compact ? 98 : 132;
 
     return (
-      <div className="w-full overflow-hidden">
-        <div className="w-full flex justify-center">
-          <div className="relative" style={{ width: `${layout.width}px`, height: `${layout.height}px` }}>
-            <svg className="absolute inset-0 pointer-events-none" width={layout.width} height={layout.height}>
+      <div className="inline-flex min-w-full justify-center py-2">
+        <div className="relative shrink-0" style={{ width: `${layout.width}px`, height: `${layout.height}px` }}>
+          <svg className="absolute inset-0 pointer-events-none" width={layout.width} height={layout.height}>
             {layout.edges.map((edge, idx) => {
               const from = layout.positions.get(edge.from);
               const to = layout.positions.get(edge.to);
@@ -1460,30 +1589,39 @@ const Agents: React.FC = () => {
               return (
                 <div
                   key={`node_${step.id}`}
-                  className={`absolute inline-flex items-center gap-1.5 border font-bold ${
+                  className={`absolute inline-flex items-center gap-1.5 border font-bold shadow-sm transition-all ${
                     compact
-                      ? 'px-2 py-0.5 text-[9px] rounded-lg backdrop-blur-sm'
+                      ? 'px-2 py-0.5 text-[9px] rounded-lg'
                       : 'px-3 py-1.5 text-[10px] rounded-xl'
                   } ${
                     step.agentId
-                      ? 'bg-white/95 dark:bg-surface-dark text-slate-800 dark:text-slate-200 border-slate-200/90 dark:border-white/10 shadow-sm'
-                      : 'bg-slate-50/95 dark:bg-white/[0.03] text-slate-400 border-slate-200 dark:border-white/10'
+                      ? 'bg-blue-50/90 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200/50 dark:border-blue-500/20'
+                      : step.workflowId
+                      ? 'bg-emerald-50/90 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200/50 dark:border-emerald-500/20'
+                      : 'bg-slate-50/90 dark:bg-white/[0.03] text-slate-400 border-slate-200 dark:border-white/10'
                   } ${
                     step.id === initialStepId
-                      ? 'ring-1 ring-emerald-300 dark:ring-emerald-500/40'
+                      ? 'ring-2 ring-emerald-500/20 dark:ring-emerald-500/40'
                       : ''
                   }`}
                   style={{ left: `${pos.x}px`, top: `${pos.y}px`, width: `${nodeWidth}px`, minHeight: `${nodeHeight}px` }}
                   title={step.id}
                 >
-                  <span className="material-symbols-outlined text-[12px] text-primary">{step.agentId ? 'smart_toy' : 'help'}</span>
+                  <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                    step.agentId ? 'bg-blue-500/20 text-blue-500' : 
+                    step.workflowId ? 'bg-emerald-500/20 text-emerald-500' : 
+                    'bg-slate-500/20 text-slate-500'
+                  }`}>
+                    <span className="material-symbols-outlined text-[12px]">
+                      {step.agentId ? 'smart_toy' : step.workflowId ? 'account_tree' : 'help'}
+                    </span>
+                  </div>
                   <span className="truncate">{getStepLabel(step)}</span>
                 </div>
               );
             })}
           </div>
         </div>
-      </div>
     );
   };
 
@@ -1524,7 +1662,15 @@ const Agents: React.FC = () => {
                 </div>
                 <div className="flex gap-1">
                   <button
-                    onClick={() => { setTestingWorkflowId(wf.id); setWorkflowTestInput(''); }}
+                    onClick={() => { 
+                      setTestingWorkflowId(wf.id); 
+                      setWorkflowTestInput(''); 
+                      setWorkflowTestResult(prev => {
+                        const next = { ...prev };
+                        delete next[wf.id];
+                        return next;
+                      });
+                    }}
                     className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10 rounded-full transition-all"
                     title="运行"
                   >
@@ -1546,8 +1692,8 @@ const Agents: React.FC = () => {
               </div>
 
               {/* Step DAG preview */}
-              <div className="rounded-2xl border border-slate-200/90 dark:border-white/10 bg-gradient-to-b from-slate-50/90 to-slate-100/60 dark:from-white/[0.03] dark:to-white/[0.01] p-2 flex justify-center shadow-inner">
-                <div className="w-full">
+              <div className="rounded-2xl border border-slate-200/90 dark:border-white/10 bg-gradient-to-b from-slate-50/90 to-slate-100/60 dark:from-white/[0.03] dark:to-white/[0.01] p-2 flex items-center justify-center shadow-inner min-h-[120px] relative overflow-hidden">
+                <div className="w-full overflow-x-auto no-scrollbar py-2">
                   {renderWorkflowGraphPreview(wf.steps || [], wf.initialStepId, true)}
                 </div>
               </div>
@@ -1571,7 +1717,7 @@ const Agents: React.FC = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto p-8"
+              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-y-auto no-scrollbar p-8"
             >
               <div className="flex justify-between items-center mb-8">
                 <div className="flex items-center gap-3">
@@ -1616,7 +1762,7 @@ const Agents: React.FC = () => {
                 </div>
 
                 {/* Steps Editor */}
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div className="flex justify-between items-center">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">步骤编排</label>
                     <button
@@ -1628,28 +1774,35 @@ const Agents: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* DAG Mini Preview */}
-                  <div className="p-3 bg-slate-50 dark:bg-white/[0.02] rounded-2xl border border-slate-200 dark:border-white/5">
-                    <div className="flex items-center gap-1.5 mb-2">
-                      <span className="material-symbols-outlined text-xs text-emerald-500">account_tree</span>
-                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">执行流程预览</span>
-                    </div>
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-slate-400">
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 normal-case">
-                          <span className="material-symbols-outlined text-[10px]">play_arrow</span>start
-                        </span>
-                        <span className="text-slate-300 dark:text-white/20">→</span>
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-200 dark:bg-white/10 text-slate-500 normal-case">
-                          <span className="material-symbols-outlined text-[10px]">stop</span>end
-                        </span>
+                  {/* DAG Mini Preview - Non-sticky */}
+                  <div className="py-2 bg-white dark:bg-surface-dark -mx-1 px-1">
+                    <div className="p-4 bg-slate-50/50 dark:bg-white/[0.02] rounded-[24px] border border-slate-200/60 dark:border-white/5 shadow-sm backdrop-blur-md">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-6 h-6 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                            <span className="material-symbols-outlined text-sm text-emerald-500">account_tree</span>
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">执行流程预览</span>
+                        </div>
+                        <div className="flex gap-3">
+                          <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
+                            <span className="text-[9px] text-slate-400">Agent</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
+                            <span className="text-[9px] text-slate-400">工作流</span>
+                          </div>
+                        </div>
                       </div>
-                      {renderWorkflowGraphPreview(editingWorkflow.steps, editingWorkflow.initialStepId)}
+                      <div className="relative overflow-x-auto no-scrollbar pb-2">
+                        {renderWorkflowGraphPreview(editingWorkflow.steps, editingWorkflow.initialStepId)}
+                      </div>
                     </div>
                   </div>
 
                   {/* Step Cards */}
-                  <div className="space-y-3">
+                  <div className="space-y-4 pt-2">
                     {editingWorkflow.steps.map((step, idx) => {
                       const currentNextIds = getNextStepIds(step);
                       const isParallel = currentNextIds.length > 1;
@@ -1693,20 +1846,58 @@ const Agents: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Execution type: Agent */}
+                          {/* Execution Type Selector */}
                           <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">执行 Agent</label>
+                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">执行类型</label>
+                            <div className="flex gap-2">
+                              {(['agent', 'workflow'] as const).map(t => {
+                                const isSelected = step.type === t || (!step.type && t === 'agent' && step.agentId) || (!step.type && !step.agentId && !step.workflowId && t === 'agent');
+                                return (
+                                  <button
+                                    key={t}
+                                    onClick={() => updateWorkflowStep(idx, { type: t, agentId: '', workflowId: '' })}
+                                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all border ${
+                                      isSelected
+                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                        : 'bg-white dark:bg-white/5 text-slate-500 border-slate-200 dark:border-white/10 hover:border-emerald-300'
+                                    }`}
+                                  >
+                                    {t === 'agent' ? '智能体 (Agent)' : '工作流 (Workflow)'}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Execution ID Selector */}
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                              {step.type === 'workflow' ? '选择工作流' : '执行 Agent'}
+                            </label>
                             <div className="relative">
-                              <select
-                                value={step.agentId || ''}
-                                onChange={e => updateWorkflowStep(idx, { agentId: e.target.value })}
-                                className="w-full appearance-none px-3 py-2 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer dark:text-white"
-                              >
-                                <option value="">选择 Agent</option>
-                                {agents.map(a => (
-                                  <option key={a.id} value={a.id}>{a.name}</option>
-                                ))}
-                              </select>
+                              {step.type === 'workflow' ? (
+                                <select
+                                  value={step.workflowId || ''}
+                                  onChange={e => updateWorkflowStep(idx, { workflowId: e.target.value })}
+                                  className="w-full appearance-none px-3 py-2 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer dark:text-white"
+                                >
+                                  <option value="">选择工作流</option>
+                                  {workflows.filter(w => w.id !== editingWorkflow.id).map(w => (
+                                    <option key={w.id} value={w.id}>{w.name}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <select
+                                  value={step.agentId || ''}
+                                  onChange={e => updateWorkflowStep(idx, { agentId: e.target.value })}
+                                  className="w-full appearance-none px-3 py-2 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer dark:text-white"
+                                >
+                                  <option value="">选择 Agent</option>
+                                  {agents.map(a => (
+                                    <option key={a.id} value={a.id}>{a.name}</option>
+                                  ))}
+                                </select>
+                              )}
                               <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-sm">expand_more</span>
                             </div>
                           </div>
@@ -1837,7 +2028,7 @@ const Agents: React.FC = () => {
                 </button>
 
                 {workflowTestResult[testingWorkflowId] && (
-                  <div className="p-4 bg-slate-50 dark:bg-black/20 rounded-xl text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-pre-wrap max-h-60 overflow-y-auto border border-slate-200 dark:border-white/5">
+                  <div className="w-full p-4 bg-slate-50 dark:bg-black/20 rounded-xl text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-pre-wrap break-words max-h-60 overflow-y-auto border border-slate-200 dark:border-white/5">
                     {workflowTestResult[testingWorkflowId]}
                   </div>
                 )}
@@ -1854,7 +2045,7 @@ const Agents: React.FC = () => {
       <header className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
           <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight mb-2">
-            Multi-Agent <span className="text-primary font-medium text-lg ml-2 px-3 py-1 bg-primary/10 rounded-full">Orchestration</span>
+            多智能体 <span className="text-primary font-medium text-lg ml-2 px-3 py-1 bg-primary/10 rounded-full">编排系统</span>
           </h2>
           <p className="text-slate-500 dark:text-slate-400 font-medium">定义智能体、管理技能库并编排自动化工作流</p>
         </div>
@@ -1904,8 +2095,136 @@ const Agents: React.FC = () => {
           )}
         </motion.div>
       </AnimatePresence>
+
+      {/* Skill Store Modal */}
+      <AnimatePresence>
+        {showStoreModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col"
+            >
+              <div className="p-8 border-b border-slate-100 dark:border-white/5">
+                <div className="flex justify-between items-center mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 flex items-center justify-center">
+                      <span className="material-symbols-outlined text-3xl">store</span>
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold dark:text-white">在线技能商店</h3>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">发现并安装来自 <a href="https://skillsmp.com" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline font-bold">skillsmp.com</a> 的智能体技能</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowStoreModal(false)} className="w-10 h-10 inline-flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all">
+                    <span className="material-symbols-outlined">close</span>
+                  </button>
+                </div>
+
+                <div className="flex gap-3">
+                  <div className="relative flex-1">
+                    <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">search</span>
+                    <input 
+                      type="text"
+                      value={storeSearchQuery}
+                      onChange={e => setStoreSearchQuery(e.target.value)}
+                      placeholder={isAISearch ? "描述你需要的技能（如：帮我写一个爬虫）..." : "搜索技能关键字..."}
+                      className="w-full pl-12 pr-4 py-3.5 bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/10 rounded-2xl text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white"
+                      onKeyDown={e => e.key === 'Enter' && handleStoreSearch()}
+                    />
+                  </div>
+                  <button 
+                    onClick={() => setIsAISearch(!isAISearch)}
+                    className={`px-4 flex items-center gap-2 rounded-2xl font-bold text-xs transition-all border ${
+                      isAISearch 
+                        ? 'bg-indigo-500 text-white border-indigo-500 shadow-lg shadow-indigo-500/20' 
+                        : 'bg-white dark:bg-white/5 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-white/10'
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-lg">psychology</span>
+                    AI 搜索
+                  </button>
+                  <button 
+                    onClick={handleStoreSearch}
+                    disabled={isStoreLoading}
+                    className="px-8 bg-primary text-white rounded-2xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
+                  >
+                    {isStoreLoading ? '正在搜索...' : '搜索'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto no-scrollbar p-8">
+                {isStoreLoading ? (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4"></div>
+                    <p className="text-sm text-slate-500">正在为您检索最合适的技能...</p>
+                  </div>
+                ) : storeResults.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                    <span className="material-symbols-outlined text-6xl mb-4 opacity-20">manage_search</span>
+                    <p>没有找到相关技能，换个词试试？</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {storeResults.map((skill: any) => (
+                      <div key={skill.id} className="p-6 bg-slate-50 dark:bg-white/[0.02] border border-slate-200 dark:border-white/5 rounded-[24px] hover:border-primary/50 transition-all group">
+                        <div className="flex justify-between items-start mb-4">
+                          <div className="flex-1">
+                            <h4 className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">{skill.name}</h4>
+                            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mt-1">
+                              by {skill.author || '社区开发者'} • {skill.stars || 0} stars
+                            </p>
+                          </div>
+                          <button 
+                            onClick={() => handleInstallStoreSkill(skill)}
+                            disabled={installingSkillId === skill.id || skills.some(s => s.id === skill.id)}
+                            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                              skills.some(s => s.id === skill.id)
+                                ? 'bg-green-100 dark:bg-green-500/10 text-green-600 dark:text-green-400 cursor-default'
+                                : 'bg-primary text-white hover:bg-primary/90 shadow-lg shadow-primary/20 disabled:opacity-50'
+                            }`}
+                          >
+                            {installingSkillId === skill.id ? '安装中...' : 
+                             skills.some(s => s.id === skill.id) ? '已安装' : '安装技能'}
+                          </button>
+                        </div>
+                        <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed line-clamp-2 mb-4">
+                          {skill.description}
+                        </p>
+                        <div className="flex items-center gap-3">
+                          <span className="px-2 py-1 bg-white dark:bg-white/5 rounded-lg text-[10px] text-slate-500 border border-slate-100 dark:border-white/5">
+                            {skill.version || 'v1.0.0'}
+                          </span>
+                          <span className="text-[10px] text-slate-400">
+                            最后更新: {skill.updatedAt ? new Date(typeof skill.updatedAt === 'number' && skill.updatedAt < 10000000000 ? skill.updatedAt * 1000 : skill.updatedAt).toLocaleDateString() : '未知'}
+                          </span>
+                          {(skill.githubUrl || skill.url || skill.githuburl) && (
+                            <a 
+                              href={skill.githubUrl || skill.url || skill.githuburl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="ml-auto flex items-center gap-1 text-[10px] text-slate-400 hover:text-primary transition-colors font-bold"
+                              onClick={e => e.stopPropagation()}
+                            >
+                              <span className="material-symbols-outlined text-[14px]">code</span>
+                              查看源码
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
+
 };
 
 export default Agents;

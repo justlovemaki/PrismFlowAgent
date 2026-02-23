@@ -76,5 +76,7 @@ export interface SystemSettings {
   ADAPTERS: AdapterConfig[];
   CLOSED_PLUGINS?: string[];
   CATEGORIES: CategoryConfig[];
+  SKILL_STORE_API_KEY?: string;
+  GLOBAL_GITHUB_TOKEN?: string;
   [key: string]: any; // Allow for dynamic extension
 }

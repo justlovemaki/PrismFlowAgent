@@ -16,9 +16,11 @@ export class FetchDataTool extends BaseTool {
   async handler(args: { adapterName?: string; date?: string }) {
     const context = await ServiceContext.getInstance();
     if (args.adapterName) {
-      return await context.taskService.runSingleAdapterIngestion(args.adapterName, args.date);
+      const result = await context.taskService.runSingleAdapterIngestion(args.adapterName, args.date);
+      return result.data;
     } else {
-      return await context.taskService.runDailyIngestion(args.date);
+      const result = await context.taskService.runDailyIngestion(args.date);
+      return result.data;
     }
   }
 }

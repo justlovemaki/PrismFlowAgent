@@ -38,7 +38,9 @@ export interface Agent {
 
 export interface WorkflowStep {
   id: string;
+  type?: 'agent' | 'workflow';
   agentId?: string;
+  workflowId?: string;
   skillId?: string;
   inputMap: Record<string, string>;
   nextStepId?: string;
@@ -112,6 +114,19 @@ export const agentService = {
   saveSkillFileContent: (id: string, filePath: string, content: string) => request(`/api/skills/${id}/file/${filePath}`, {
     method: 'POST',
     body: JSON.stringify({ content })
+  }),
+  
+  searchStoreSkills: (q: string, page = 1, limit = 20, sortBy = 'recent') => 
+    request(`/api/skills/store/search?q=${encodeURIComponent(q)}&page=${page}&limit=${limit}&sortBy=${sortBy}`),
+  aiSearchStoreSkills: (q: string) => 
+    request(`/api/skills/store/ai-search?q=${encodeURIComponent(q)}`),
+  installStoreSkill: (skill: any) => request('/api/skills/import/github', {
+    method: 'POST',
+    body: JSON.stringify({ githubUrl: skill.githubUrl || skill.url })
+  }),
+  importSkillFromGithub: (githubUrl: string) => request('/api/skills/import/github', {
+    method: 'POST',
+    body: JSON.stringify({ githubUrl })
   }),
   
   getTools: () => request('/api/tools'),

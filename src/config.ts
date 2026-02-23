@@ -142,6 +142,8 @@ export const defaultSettings: SystemSettings = {
     { id: 'githubTrending', label: 'GitHub 热门', icon: 'code' },
     { id: 'paper', label: '学术论文', icon: 'school' },
     { id: 'socialMedia', label: '社交媒体', icon: 'forum' }
-  ]
+  ],
+  SKILL_STORE_API_KEY: ''
 };
+
 

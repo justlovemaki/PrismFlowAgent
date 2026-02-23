@@ -59,8 +59,16 @@ export class ServiceContext {
     return this.services.agentService;
   }
 
+  public get mcpService() {
+    return this.services.mcpService;
+  }
+
   public get skillService() {
     return this.services.skillService;
+  }
+
+  public get skillStoreService() {
+    return this.services.skillStoreService;
   }
 
   public get workflowEngine() {

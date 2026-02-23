@@ -182,3 +182,37 @@ export function formatDateToGMT8WithTime(date: Date | string): string {
   };
   return new Intl.DateTimeFormat('zh-CN', options).format(dateObj);
 }
+
+/**
+ * 解析 GitHub URL，获取 owner, repo, branch 和 path
+ */
+export function parseGithubUrl(url: string) {
+  try {
+    // 匹配 https://github.com/owner/repo/tree/branch/path 或 blob
+    const regex = /github\.com\/([^/]+)\/([^/]+)\/(tree|blob)\/([^/]+)\/(.+)/;
+    const match = url.match(regex);
+    if (match) {
+      return {
+        owner: match[1],
+        repo: match[2],
+        branch: match[4],
+        path: match[5]
+      };
+    }
+    
+    // 如果没有 tree/blob，可能是根目录
+    const rootRegex = /github\.com\/([^/]+)\/([^/]+)/;
+    const rootMatch = url.match(rootRegex);
+    if (rootMatch) {
+      return {
+        owner: rootMatch[1],
+        repo: rootMatch[2],
+        branch: 'main',
+        path: ''
+      };
+    }
+  } catch (e) {
+    return null;
+  }
+  return null;
+}

@@ -150,7 +150,11 @@ const PluginManagement: React.FC = () => {
               {enabled ? '已启用' : '已禁用'}
             </span>
             <span className="text-[9px] text-slate-400 bg-slate-100 dark:bg-white/5 px-2 py-0.5 rounded-full font-bold">
-              {type === 'aiProvider' ? 'AI PROVIDER' : type.toUpperCase()}
+              {type === 'adapter' ? '数据适配器' : 
+               type === 'publisher' ? '发布渠道' : 
+               type === 'storage' ? '存储插件' : 
+               type === 'tool' ? '功能工具' : 
+               type === 'aiProvider' ? 'AI 提供商' : '插件'}
             </span>
           </div>
         </div>

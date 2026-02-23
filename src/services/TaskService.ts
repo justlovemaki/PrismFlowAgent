@@ -67,27 +67,29 @@ export class TaskService {
     }
   }
 
-  async runDailyIngestion(date?: string, config?: { foloCookie?: string }, onProgress?: (progress: number) => Promise<void>) {
+  async runDailyIngestion(date?: string, config?: { foloCookie?: string }, onProgress?: (progress: number) => Promise<void>): Promise<{ count: number, data: Record<string, UnifiedData[]> }> {
     const targetDate = date || getISODate();
     LogService.info(`Starting ingestion for ${targetDate}`);
 
     const totalAdapters = this.adapters.length;
+    let totalCount = 0;
     for (let i = 0; i < totalAdapters; i++) {
       const adapter = this.adapters[i];
-      await this.runAdapter(adapter, config, targetDate);
+      totalCount += await this.runAdapter(adapter, config, targetDate);
       if (onProgress) {
         await onProgress(Math.round(((i + 1) / totalAdapters) * 100));
       }
     }
     
     LogService.info(`Ingestion completed for ${targetDate}`);
-    return this.getAggregatedData(targetDate);
+    const data = await this.getAggregatedData(targetDate);
+    return { count: totalCount, data };
   }
 
   /**
    * 运行单个适配器并更新存储
    */
-  async runSingleAdapterIngestion(adapterName: string, date?: string, config?: any, onProgress?: (progress: number) => Promise<void>) {
+  async runSingleAdapterIngestion(adapterName: string, date?: string, config?: any, onProgress?: (progress: number) => Promise<void>): Promise<{ count: number, data: Record<string, UnifiedData[]> }> {
     const targetDate = date || getISODate();
     const adapter = this.adapters.find(a => a.name === adapterName);
     if (!adapter) throw new Error(`Adapter ${adapterName} not found`);
@@ -96,10 +98,11 @@ export class TaskService {
     
     if (onProgress) await onProgress(10);
     // 运行适配器，它会更新自己的存储键
-    await this.runAdapter(adapter, config, targetDate);
+    const count = await this.runAdapter(adapter, config, targetDate);
     if (onProgress) await onProgress(100);
 
-    return this.getAggregatedData(targetDate);
+    const data = await this.getAggregatedData(targetDate);
+    return { count, data };
   }
 
   /**
@@ -129,7 +132,7 @@ export class TaskService {
     LogService.info(`Cleared data for adapter ${adapterName} on ${targetDate}`);
   }
 
-  private async runAdapter(adapter: BaseAdapter, extraConfig?: any, targetDate?: string) {
+  private async runAdapter(adapter: BaseAdapter, extraConfig?: any, targetDate?: string): Promise<number> {
     const date = targetDate || getISODate();
     LogService.info(`Running adapter: ${adapter.name}`);
 
@@ -161,9 +164,9 @@ export class TaskService {
       }
 
       // 使用新表存储数据
-      await this.store.saveSourceDataBatch(newData, date, adapter.name);
+      const addedCount = await this.store.saveSourceDataBatch(newData, date, adapter.name);
       
-      LogService.info(`[TaskService] Adapter ${adapter.name} finished. New items in this run: ${newData.length}`);
+      LogService.info(`[TaskService] Adapter ${adapter.name} finished. New items in this run: ${addedCount} (Total fetched: ${newData.length})`);
 
       // 更新内存中的状态
       const memStatus = this.adapterStatus[adapter.name];
@@ -175,6 +178,7 @@ export class TaskService {
 
       // 数据变动，清除缓存
       this.statsCache = null;
+      return addedCount;
     } catch (error: any) {
 
       LogService.error(`Adapter ${adapter.name} failed: ${error.message}`);

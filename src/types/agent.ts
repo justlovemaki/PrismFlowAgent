@@ -39,7 +39,9 @@ export interface AgentDefinition {
 
 export interface WorkflowStep {
   id: string;
+  type?: 'agent' | 'workflow';
   agentId?: string;
+  workflowId?: string;
   skillId?: string;
   inputMap: Record<string, string>; // Maps output from previous steps to current input
   nextStepId?: string;             // Single next step (backward-compatible)

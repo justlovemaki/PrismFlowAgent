@@ -12,7 +12,7 @@ import YAML from 'yaml';
 import { LocalStore } from '../services/LocalStore.js';
 import { AIService } from '../services/AIService.js';
 import { createAIProvider } from '../services/AIProvider.js';
-import { getISODate } from '../utils/helpers.js';
+import { getISODate, parseGithubUrl } from '../utils/helpers.js';
 
 import { LogService } from '../services/LogService.js';
 import { ServiceContext } from '../services/ServiceContext.js';
@@ -191,6 +191,24 @@ export async function createServer(existingStore?: LocalStore) {
       return models;
     } catch (error: any) {
       reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/ai/test', async (request, reply) => {
+    try {
+      const config = request.body as any;
+      const effectiveConfig = {
+        ...config,
+        model: config.model || (config.models && config.models[0])
+      };
+      const provider = createAIProvider(effectiveConfig);
+      if (!provider) {
+        return { status: 'error', message: '无效的提供商配置' };
+      }
+      const aiService = new AIService(provider, context.settings);
+      return await aiService.testConnection();
+    } catch (error: any) {
+      return { status: 'error', message: error.message };
     }
   });
 
@@ -437,7 +455,110 @@ export async function createServer(existingStore?: LocalStore) {
     return await store.listSkills();
   });
 
+  fastify.get('/api/skills/store/search', async (request, reply) => {
+    try {
+      const { q, page, limit, sortBy } = request.query as any;
+      return await context.skillStoreService.searchSkills(q, page, limit, sortBy);
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.get('/api/skills/store/ai-search', async (request, reply) => {
+    try {
+      const { q } = request.query as any;
+      return await context.skillStoreService.aiSearchSkills(q);
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/skills/import/github', async (request, reply) => {
+    try {
+      const { githubUrl } = request.body as any;
+      if (!githubUrl) {
+        return reply.status(400).send({ error: '缺少 githubUrl 参数' });
+      }
+
+      const params = parseGithubUrl(githubUrl);
+      if (!params) {
+        return reply.status(400).send({ error: '无效的 GitHub URL' });
+      }
+
+      // 尝试获取 GitHub Token
+      const githubToken = context.settings.GLOBAL_GITHUB_TOKEN || (context.publisherInstances.find(p => p.id === 'github') as any)?.config?.token;
+
+      // 使用直接从 GitHub API 获取内容的方法
+      const response = await context.skillStoreService.fetchGithubSkillContentsDirectly(params, githubToken);
+      const files = response.files;
+
+      if (!files || !Array.isArray(files) || files.length === 0) {
+        return reply.status(400).send({ error: '在指定的 GitHub 路径中未找到文件' });
+      }
+
+      // 查找 SKILL.md 以获取元数据
+      const skillMdFile = files.find(f => f.path === 'SKILL.md');
+      if (!skillMdFile) {
+        return reply.status(400).send({ error: '在指定的 GitHub 路径中未找到 SKILL.md' });
+      }
+
+      // 解析 SKILL.md 元数据
+      const skillMdContent = skillMdFile.content
+        .replace(/^\uFEFF/, '')
+        .replace(/\r\n/g, '\n')
+        .replace(/\r/g, '\n');
+      const frontmatterMatch = skillMdContent.match(/^---[ \t]*\n([\s\S]*?)\n---[ \t]*\n?([\s\S]*)$/);
+      
+      let metadata: any = {};
+      let instructions = '';
+      if (frontmatterMatch) {
+        try {
+          metadata = YAML.parse(frontmatterMatch[1]);
+          instructions = frontmatterMatch[2].trim();
+        } catch (e) {
+          LogService.error(`Failed to parse SKILL.md frontmatter: ${e}`);
+        }
+      }
+
+      const skillId = metadata.name || params.path.split('/').pop() || 'imported-skill';
+      const skillsDir = store.getSkillsDir();
+      const skillDir = path.join(skillsDir, skillId);
+
+      if (!fs.existsSync(skillDir)) {
+        fs.mkdirSync(skillDir, { recursive: true });
+      }
+
+      // 保存所有文件
+      for (const file of files) {
+        const filePath = path.join(skillDir, file.path);
+        const fileDir = path.dirname(filePath);
+        if (!fs.existsSync(fileDir)) {
+          fs.mkdirSync(fileDir, { recursive: true });
+        }
+        fs.writeFileSync(filePath, file.content, 'utf8');
+      }
+
+      const skill = {
+        id: skillId,
+        name: metadata.name || skillId,
+        description: metadata.description || '',
+        instructions: instructions || skillMdContent,
+        files: files.map(f => f.path).filter(p => p !== 'SKILL.md'),
+        dirPath: skillDir,
+      };
+
+      await store.saveSkill(skill);
+      await context.skillService.refreshSkills();
+
+      return { status: 'success', skill };
+    } catch (error: any) {
+      LogService.error(`GitHub skill import failed: ${error.message}`);
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.post('/api/skills', async (request, reply) => {
+
     try {
       const data = await request.file();
       if (!data) {

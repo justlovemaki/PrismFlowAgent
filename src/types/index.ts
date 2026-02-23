@@ -35,6 +35,14 @@ export interface AIResponse {
   };
 }
 
+export interface AIMessage {
+  role: 'user' | 'assistant' | 'system' | 'tool';
+  content: string | null;
+  tool_calls?: any[];
+  tool_call_id?: string;
+  name?: string;
+}
+
 export interface StoreOptions {
   expirationTtl?: number;
 }
