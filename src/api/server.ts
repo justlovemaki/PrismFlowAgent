@@ -114,7 +114,7 @@ export async function createServer(existingStore?: LocalStore) {
 
   fastify.get('/api/dashboard/adapters', async (request, reply) => {
     try {
-      return context.taskService.getAdapterStatus();
+      return await context.taskService.getAdapterStatus();
     } catch (error: any) {
       reply.status(500).send({ error: error.message });
     }

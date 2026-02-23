@@ -554,13 +554,31 @@ export class LocalStore {
 
   /**
    * 保存或更新单条原始数据
+   * @param item 数据条目
+   * @param ingestionDate 抓取日期
+   * @param adapterName 适配器名称
+   * @param overwrite 是否覆盖已存在的数据（默认为 false，即已存在就不写入）
    */
-  async saveSourceData(item: UnifiedData, ingestionDate?: string, adapterName?: string): Promise<void> {
+  async saveSourceData(item: UnifiedData, ingestionDate?: string, adapterName?: string, overwrite: boolean = false): Promise<void> {
+    if (!overwrite) {
+      const existing = await this.db?.get('SELECT id FROM source_data WHERE id = ?', item.id);
+      if (existing) {
+        return;
+      }
+    }
+
+    const sql = overwrite 
+      ? `INSERT OR REPLACE INTO source_data (
+          id, title, url, description, published_date, source, category, 
+          author, metadata, fetched_at, ingestion_date, adapter_name
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      : `INSERT OR IGNORE INTO source_data (
+          id, title, url, description, published_date, source, category, 
+          author, metadata, fetched_at, ingestion_date, adapter_name
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
     await this.db?.run(
-      `INSERT OR IGNORE INTO source_data (
-        id, title, url, description, published_date, source, category, 
-        author, metadata, fetched_at, ingestion_date, adapter_name
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      sql,
       item.id,
       item.title,
       item.url,
@@ -579,14 +597,14 @@ export class LocalStore {
   /**
    * 批量保存原始数据
    */
-  async saveSourceDataBatch(items: UnifiedData[], ingestionDate?: string, adapterName?: string): Promise<void> {
+  async saveSourceDataBatch(items: UnifiedData[], ingestionDate?: string, adapterName?: string, overwrite: boolean = false): Promise<void> {
     if (!items.length) return;
     
     // 使用事务提高性能
     await this.db?.run('BEGIN TRANSACTION');
     try {
       for (const item of items) {
-        await this.saveSourceData(item, ingestionDate, adapterName);
+        await this.saveSourceData(item, ingestionDate, adapterName, overwrite);
       }
       await this.db?.run('COMMIT');
     } catch (err) {

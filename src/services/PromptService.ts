@@ -1,6 +1,10 @@
 import fs from 'fs-extra';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { LogService } from './LogService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class PromptService {
   private static instance: PromptService;
@@ -8,7 +12,7 @@ export class PromptService {
   private promptsDir: string;
 
   private constructor() {
-    this.promptsDir = path.join(process.cwd(), 'src', 'prompts');
+    this.promptsDir = path.join(__dirname, '..', 'prompts');
   }
 
   public static getInstance(): PromptService {

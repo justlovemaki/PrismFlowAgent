@@ -160,7 +160,19 @@ const Selection: React.FC = () => {
         }
       });
 
-      console.log(`[Selection] 总共加载 ${flattened.length} 条数据`);
+      // 数据去重：确保每个 category + id 的组合是唯一的
+      const uniqueFlattened: ContentItem[] = [];
+      const seen = new Set<string>();
+      
+      flattened.forEach(item => {
+        const key = `${item.category}-${item.id}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          uniqueFlattened.push(item);
+        }
+      });
+
+      console.log(`[Selection] 总共加载 ${uniqueFlattened.length} 条数据 (去重前 ${flattened.length} 条)`);
       
       setItems(prev => {
         // 合并选中状态：如果当前已有选中的项目，保留其选中状态
@@ -174,7 +186,7 @@ const Selection: React.FC = () => {
           }
         });
 
-        const merged = flattened.map(item => {
+        const merged = uniqueFlattened.map(item => {
           const state = selectedMap.get(`${item.category}-${item.id}`);
           if (state) {
             return { ...item, ...state };
@@ -513,7 +525,7 @@ const Selection: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {columns.map((column, columnIndex) => (
-            <div key={columnIndex} className="flex flex-col gap-4">
+            <div key={`${columnCount}-${columnIndex}`} className="flex flex-col gap-4">
               {column.map((item) => (
                 <motion.div 
                   key={`${item.category}-${item.id}`}
@@ -649,6 +661,7 @@ const Selection: React.FC = () => {
       <AnimatePresence>
         {selectedCount > 0 && (
           <motion.div 
+            key="selection-bar"
             initial={{ y: 100, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: 100, opacity: 0 }}
@@ -672,7 +685,11 @@ const Selection: React.FC = () => {
       </AnimatePresence>
       <AnimatePresence>
         {showAgentSelector && (
-          <div 
+          <motion.div 
+            key="agent-selector-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
             onClick={() => !regenerating && setShowAgentSelector(false)}
           >
@@ -782,12 +799,16 @@ const Selection: React.FC = () => {
                 </div>
               )}
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
       <AnimatePresence>
         {previewItem && (
-          <div 
+          <motion.div 
+            key="preview-modal-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
             className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
             onClick={() => setPreviewItem(null)}
           >
@@ -899,7 +920,7 @@ const Selection: React.FC = () => {
                 </a>
               </div>
             </motion.div>
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
     </div>

@@ -170,8 +170,8 @@ export class SchedulerService {
     }
 
     // 2. 并行处理，最大 CONCURRENCY_LIMIT 个线程 (并发限制)
-    // 从配置中获取并发数和延迟，默认 3 线程，500ms 延迟
-    const CONCURRENCY_LIMIT = schedule.config?.concurrency || 3;
+    // 从配置中获取并发数和延迟，默认 1 线程，500ms 延迟
+    const CONCURRENCY_LIMIT = schedule.config?.concurrency || 1;
     const REQUEST_DELAY = schedule.config?.delay || 500;
 
     const updatedItemsByGroup = new Map<string, any[]>();
@@ -262,7 +262,7 @@ export class SchedulerService {
     // 3. 批量保存更新后的数据
     for (const [groupKey, items] of updatedItemsByGroup.entries()) {
       const [date, adapterName] = groupKey.split('|');
-      await this.store.saveSourceDataBatch(items, date, adapterName);
+      await this.store.saveSourceDataBatch(items, date, adapterName, true);
     }
 
     return processedTotal;
@@ -301,7 +301,7 @@ export class SchedulerService {
 
         case 'ADAPTER':
           await this.taskService.runSingleAdapterIngestion(schedule.targetId, undefined, schedule.config, onProgress);
-          const status = this.taskService.getAdapterStatus();
+          const status = await this.taskService.getAdapterStatus();
           resultCount = status[schedule.targetId]?.count || 0;
           break;
 
@@ -328,7 +328,7 @@ export class SchedulerService {
               const itemContent = this.formatItemForPrompt(item);
               const input = itemContent;
               const agentId = schedule.targetId || 'default_summarizer';
-              const result = await this.agentService!.runAgent(agentId, input, date, { silent: true });
+              const result = await this.agentService!.runAgent(agentId, input, date, { silent: false });
               return result.content;
             });
             message = `AI Processing completed for ${resultCount} items (Fields: ${targetFields.join(',')})`;

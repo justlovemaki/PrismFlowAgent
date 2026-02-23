@@ -13,6 +13,7 @@ export abstract class BaseAdapter {
   dispatcher?: any;
   translationService?: TranslationService;
   enableTranslation?: boolean;
+  appendDateToId?: boolean;
 
   abstract fetch(config: any): Promise<any>;
   abstract transform(rawData: any, config?: any): UnifiedData[];

@@ -35,6 +35,7 @@ export interface IAdapter {
   configFields: ConfigField[];
   fetch(config: any): Promise<any>;
   transform(rawData: any, config?: any): any[];
+  appendDateToId?: boolean;
 }
 
 export interface IAdapterConfig {

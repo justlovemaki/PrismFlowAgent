@@ -26,6 +26,7 @@ export class GitHubTrendingAdapter extends BaseAdapter {
     private since: string = 'daily'
   ) {
     super();
+    this.appendDateToId = true;
   }
 
   async fetch(config: { apiUrl: string, since?: string }): Promise<any> {

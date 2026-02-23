@@ -24,6 +24,6 @@ export class LogService {
   }
 
   static getLogs() {
-    return this.logs;
+    return [...this.logs].reverse();
   }
 }

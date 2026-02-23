@@ -149,19 +149,29 @@ export class TaskService {
       adapterConfig.apiUrl = extraConfig?.apiUrl || (adapter as any).apiUrl;
       adapterConfig.useProxy = extraConfig?.useProxy || (adapter as any).useProxy;
 
-      const newData = await adapter.fetchAndTransform(adapterConfig);
+      let newData = await adapter.fetchAndTransform(adapterConfig);
       
+      // 如果适配器配置了增加日期后缀，则处理 ID
+      if (adapter.appendDateToId) {
+        LogService.info(`[TaskService] Adapter ${adapter.name} has appendDateToId enabled. Appending date suffix to IDs.`);
+        newData = newData.map(item => ({
+          ...item,
+          id: `${item.id}-${date}`
+        }));
+      }
+
       // 使用新表存储数据
       await this.store.saveSourceDataBatch(newData, date, adapter.name);
       
       LogService.info(`[TaskService] Adapter ${adapter.name} finished. New items in this run: ${newData.length}`);
 
-      this.adapterStatus[adapter.name] = {
-        lastActive: new Date().toISOString(),
-        status: 'success',
-        count: newData.length, // 注意：这里现在显示的是本次抓取的数量
-        category: adapter.category
-      };
+      // 更新内存中的状态
+      const memStatus = this.adapterStatus[adapter.name];
+      if (memStatus) {
+        memStatus.lastActive = new Date().toISOString();
+        memStatus.status = 'success';
+        // 此处 count 将在下一次 getAdapterStatus 调用时从数据库中刷新最准确的今日总量
+      }
 
       // 数据变动，清除缓存
       this.statsCache = null;
@@ -235,10 +245,19 @@ export class TaskService {
     return this.adapters;
   }
 
-  getAdapterStatus() {
-
+  async getAdapterStatus() {
     const status: Record<string, any> = {};
+    const targetDate = getISODate();
+
     for (const adapter of this.adapters) {
+      // 实时查询今日该适配器抓取的数据总量，确保显示准确
+      const { total } = await this.store.listSourceData({
+        adapterName: adapter.name,
+        category: adapter.category,
+        ingestionDate: targetDate,
+        limit: 1
+      });
+
       // 获取当前适配器的实际配置值
       const currentConfig: Record<string, any> = {};
       if (adapter.configFields) {
@@ -247,14 +266,26 @@ export class TaskService {
         }
       }
 
+      const memStatus = this.adapterStatus[adapter.name];
+
       status[adapter.name] = {
-        ...this.adapterStatus[adapter.name],
+        ...memStatus,
+        count: total,
         type: (adapter as any).constructor.name,
         // 直接从适配器实例获取配置字段元数据
         configFields: adapter.configFields || [],
         // 包含当前配置值
         currentConfig
       };
+
+      // 同步更新内存中的 count，保证一致性
+      if (memStatus) {
+        memStatus.count = total;
+        if (total > 0 && memStatus.lastActive === '从未运行') {
+          memStatus.lastActive = '今日已同步';
+          memStatus.status = 'success';
+        }
+      }
     }
     return status;
   }
