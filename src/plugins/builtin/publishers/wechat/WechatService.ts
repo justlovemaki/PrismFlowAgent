@@ -12,6 +12,8 @@ export interface WechatConfig {
   appSecret: string;
   title?: string;
   author?: string;
+  baseUrl?: string;
+  fallbackLogoUrl?: string;
 }
 
 export interface PublishOptions {
@@ -42,6 +44,13 @@ export class WechatService {
   }
 
   /**
+   * 获取基础 URL
+   */
+  private getBaseUrl(): string {
+    return this.config.baseUrl || 'https://api.weixin.qq.com';
+  }
+
+  /**
    * 获取 Access Token
    */
   public async getAccessToken(): Promise<string> {
@@ -55,7 +64,7 @@ export class WechatService {
       throw new Error('WeChat AppID or AppSecret is missing');
     }
 
-    const url = `https://api.weixin.qq.com/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
+    const url = `${this.getBaseUrl()}/cgi-bin/token?grant_type=client_credential&appid=${appId}&secret=${appSecret}`;
     
     try {
       const response = await axios.get(url);
@@ -84,66 +93,78 @@ export class WechatService {
     let fileBuffer: Buffer;
     let filename: string;
     let contentType: string;
-
-    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-      const response = await axios.get(imagePath, { responseType: 'arraybuffer' });
-      fileBuffer = Buffer.from(response.data);
-      const urlPath = imagePath.split('?')[0];
-      filename = path.basename(urlPath) || 'image.jpg';
-      contentType = response.headers['content-type'] || 'image/jpeg';
-    } else {
-      const resolvedPath = path.isAbsolute(imagePath)
-        ? imagePath
-        : path.resolve(baseDir || process.cwd(), imagePath);
-
-      if (!fs.existsSync(resolvedPath)) {
-        throw new Error(`Image not found: ${resolvedPath}`);
-      }
-
-      fileBuffer = fs.readFileSync(resolvedPath);
-      filename = path.basename(resolvedPath);
-      const ext = path.extname(filename).toLowerCase();
-      const mimeTypes: Record<string, string> = {
-        '.jpg': 'image/jpeg',
-        '.jpeg': 'image/jpeg',
-        '.png': 'image/png',
-        '.gif': 'image/gif',
-        '.webp': 'image/webp',
-      };
-      contentType = mimeTypes[ext] || 'image/jpeg';
-    }
-
-    // 处理不支持的格式 (如 AVIF)，转换为 JPEG
-    if (contentType === 'image/avif' || filename.toLowerCase().endsWith('.avif')) {
-      LogService.info(`Converting AVIF to JPEG for WeChat: ${filename}`);
-      try {
-        fileBuffer = await sharp(fileBuffer).jpeg({ quality: 90 }).toBuffer();
-        filename = filename.replace(/\.avif$/i, '.jpg');
-        contentType = 'image/jpeg';
-      } catch (err: any) {
-        LogService.warn(`Failed to convert AVIF to JPEG: ${err.message}. Trying to upload as-is.`);
-      }
-    }
-
-    const boundary = `----WebKitFormBoundary${Date.now().toString(16)}`;
-    const header = `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="media"; filename="${filename}"\r\n` +
-      `Content-Type: ${contentType}\r\n\r\n`;
-    const footer = `\r\n--${boundary}--\r\n`;
-
-    const body = Buffer.concat([
-      Buffer.from(header, 'utf-8'),
-      fileBuffer,
-      Buffer.from(footer, 'utf-8'),
-    ]);
-
-    const url = `https://api.weixin.qq.com/cgi-bin/material/add_material?access_token=${accessToken}&type=image`;
+    let tempFilePath: string | null = null;
 
     try {
+      if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+        const response = await axios.get(imagePath, { responseType: 'arraybuffer', timeout: 60000 });
+        fileBuffer = Buffer.from(response.data);
+        const urlPath = imagePath.split('?')[0];
+        filename = path.basename(urlPath) || 'image.jpg';
+        if (!path.extname(filename)) {
+          filename += '.jpg';
+        }
+        contentType = response.headers['content-type'] || 'image/jpeg';
+
+        // 将下载的内容写入临时文件
+        const tempDir = os.tmpdir();
+        const hash = crypto.createHash('md5').update(imagePath).digest('hex');
+        tempFilePath = path.join(tempDir, `wechat_upload_${hash}_${filename}`);
+        fs.writeFileSync(tempFilePath, fileBuffer);
+        LogService.info(`Downloaded remote resource to temp file: ${tempFilePath}`);
+      } else {
+        const resolvedPath = path.isAbsolute(imagePath)
+          ? imagePath
+          : path.resolve(baseDir || process.cwd(), imagePath);
+
+        if (!fs.existsSync(resolvedPath)) {
+          throw new Error(`Image not found: ${resolvedPath}`);
+        }
+
+        fileBuffer = fs.readFileSync(resolvedPath);
+        filename = path.basename(resolvedPath);
+        const ext = path.extname(filename).toLowerCase();
+        const mimeTypes: Record<string, string> = {
+          '.jpg': 'image/jpeg',
+          '.jpeg': 'image/jpeg',
+          '.png': 'image/png',
+          '.gif': 'image/gif',
+          '.webp': 'image/webp',
+        };
+        contentType = mimeTypes[ext] || 'image/jpeg';
+      }
+
+      // 处理不支持的格式 (如 AVIF)，转换为 JPEG
+      if (contentType === 'image/avif' || filename.toLowerCase().endsWith('.avif')) {
+        LogService.info(`Converting AVIF to JPEG for WeChat: ${filename}`);
+        try {
+          fileBuffer = await sharp(fileBuffer).jpeg({ quality: 90 }).toBuffer();
+          filename = filename.replace(/\.avif$/i, '.jpg');
+          contentType = 'image/jpeg';
+        } catch (err: any) {
+          LogService.warn(`Failed to convert AVIF to JPEG: ${err.message}. Trying to upload as-is.`);
+        }
+      }
+
+      const boundary = `----WebKitFormBoundary${Date.now().toString(16)}`;
+      const header = `--${boundary}\r\n` +
+        `Content-Disposition: form-data; name="media"; filename="${filename}"\r\n` +
+        `Content-Type: ${contentType}\r\n\r\n`;
+      const footer = `\r\n--${boundary}--\r\n`;
+
+      const body = Buffer.concat([
+        Buffer.from(header, 'utf-8'),
+        fileBuffer,
+        Buffer.from(footer, 'utf-8'),
+      ]);
+
+      const url = `${this.getBaseUrl()}/cgi-bin/material/add_material?access_token=${accessToken}&type=image`;
+
       const response = await axios.post(url, body, {
         headers: {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
         },
+        timeout: 60000,
       });
 
       const data = response.data;
@@ -161,6 +182,16 @@ export class WechatService {
     } catch (error: any) {
       LogService.error(`Failed to upload image to WeChat: ${error.message}`);
       throw error;
+    } finally {
+      // 如果创建了临时文件，则删除它
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
+        try {
+          fs.unlinkSync(tempFilePath);
+          LogService.info(`Deleted temp file: ${tempFilePath}`);
+        } catch (e: any) {
+          LogService.warn(`Failed to delete temp file ${tempFilePath}: ${e.message}`);
+        }
+      }
     }
   }
 
@@ -291,7 +322,7 @@ export class WechatService {
    */
   public async publishToDraft(options: PublishOptions): Promise<{ media_id: string }> {
     const accessToken = await this.getAccessToken();
-    const url = `https://api.weixin.qq.com/cgi-bin/draft/add?access_token=${accessToken}`;
+    const url = `${this.getBaseUrl()}/cgi-bin/draft/add?access_token=${accessToken}`;
 
     LogService.info(`Publishing to WeChat draft: ${options.title}`);
 

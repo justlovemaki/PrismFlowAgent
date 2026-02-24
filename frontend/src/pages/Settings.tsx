@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSettings, saveSettings, getModels, getPluginMetadata, testProvider } from '../services/settingsService';
+import { getSettings, saveSettings, getModels, getPluginMetadata, testProvider, importOPML } from '../services/settingsService';
+import { agentService } from '../services/agentService';
 import IconPicker from '../components/UI/IconPicker';
 import { useToast } from '../context/ToastContext.js';
 
@@ -9,11 +10,14 @@ const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState('ai');
   const [settings, setSettings] = useState<Record<string, any>>({});
   const [pluginMetadata, setPluginMetadata] = useState<{ adapters: any[], publishers: any[], storages: any[], aiProviders: any[] }>({ adapters: [], publishers: [], storages: [], aiProviders: [] });
+  const [agents, setAgents] = useState<any[]>([]);
+  const [workflows, setWorkflows] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [providerModels, setProviderModels] = useState<Record<string, string[]>>({});
   const [isFetchingModels, setIsFetchingModels] = useState<Record<string, boolean>>({});
   const [isTestingProvider, setIsTestingProvider] = useState<Record<string, boolean>>({});
+  const [isImportingOPML, setIsImportingOPML] = useState(false);
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
@@ -33,9 +37,11 @@ const Settings: React.FC = () => {
   const loadSettings = async () => {
     try {
       setIsLoading(true);
-      const [data, metadata] = await Promise.all([
+      const [data, metadata, agentsData, workflowsData] = await Promise.all([
         getSettings(),
-        getPluginMetadata()
+        getPluginMetadata(),
+        agentService.getAgents(),
+        agentService.getWorkflows()
       ]);
       
       const closedPlugins = data?.CLOSED_PLUGINS || [];
@@ -49,6 +55,8 @@ const Settings: React.FC = () => {
 
       setPluginMetadata(filteredMetadata);
       setSettings(data || {});
+      setAgents(agentsData || []);
+      setWorkflows(workflowsData || []);
 
 
     } catch (error) {
@@ -70,6 +78,34 @@ const Settings: React.FC = () => {
       toastError('保存配置失败，请检查网络或控制台。');
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleImportOPML = (adapterId?: string) => async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsImportingOPML(true);
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const content = event.target?.result as string;
+          const result = await importOPML(content, adapterId);
+          toastSuccess(`导入成功！共发现 ${result.count} 个订阅源，新增 ${result.added} 个。`);
+          loadSettings(); // 重新加载以显示新导入的项
+        } catch (error: any) {
+          toastError('导入失败：' + (error.message || '格式不正确'));
+        } finally {
+          setIsImportingOPML(false);
+          // 清除 input
+          e.target.value = '';
+        }
+      };
+      reader.readAsText(file);
+    } catch (error) {
+      toastError('读取文件失败');
+      setIsImportingOPML(false);
     }
   };
 
@@ -276,6 +312,7 @@ const Settings: React.FC = () => {
         { label: '登录过期时间', key: 'AUTH_EXPIRE_TIME', type: 'text', placeholder: '例如: 7d, 24h, 1h' },
         { label: 'Skill Store API Key', key: 'SKILL_STORE_API_KEY', type: 'password', placeholder: '用于在线安装技能' },
         { label: 'Global GitHub Token', key: 'GLOBAL_GITHUB_TOKEN', type: 'password', placeholder: '全局 GitHub 访问令牌，用于 GitHub 导入及发布' },
+        { label: 'Ark API Key (豆包图片生成)', key: 'ARK_API_KEY', type: 'password', placeholder: '用于调用豆包图片生成接口' },
       ]
     }
   ];
@@ -366,6 +403,32 @@ const Settings: React.FC = () => {
       };
       return { ...prev, ADAPTERS: adapters };
     });
+  };
+
+  const handleAddAdapter = (type: string) => {
+    const meta = pluginMetadata.adapters.find(a => a.type === type);
+    if (!meta) return;
+
+    setSettings(prev => {
+      const adapters = [...(prev.ADAPTERS || [])];
+      const newAdapter = {
+        id: `adapter-${Math.random().toString(36).substr(2, 5)}`,
+        name: meta.name,
+        adapterType: type as any,
+        enabled: true,
+        apiUrl: '',
+        items: []
+      };
+      return { ...prev, ADAPTERS: [...adapters, newAdapter] };
+    });
+  };
+
+  const handleDeleteAdapter = (id: string) => {
+    if (!window.confirm('确定要删除整个适配器组及其所有子项吗？')) return;
+    setSettings(prev => ({
+      ...prev,
+      ADAPTERS: (prev.ADAPTERS || []).filter((a: any) => a.id !== id)
+    }));
   };
 
   const handleCategoryChange = (id: string, field: string, value: any) => {
@@ -498,29 +561,63 @@ const Settings: React.FC = () => {
       const isPassword = field.type === 'password';
       const showPassword = showPasswords[fieldId];
 
+      // 特殊处理：如果字段是 executorId，将其转换为选择框
+      let fieldType = field.type;
+      let fieldOptions = field.options;
+
+      if (field.type === 'executor') {
+        fieldType = 'select';
+        fieldOptions = [
+          '', 
+          ...agents.map((a: any) => `agent:${a.id}`),
+          ...workflows.map((w: any) => `workflow:${w.id}`)
+        ];
+      }
+
       return (
         <div key={field.key} className="space-y-1.5 flex-1 min-w-[150px]">
-          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
-            {field.label} {field.required && <span className="text-red-500">*</span>}
-          </label>
-          {field.type === 'select' ? (
+          <div className="flex items-center gap-1.5 ml-1">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+              {field.label} {field.required && <span className="text-red-500">*</span>}
+            </label>
+          </div>
+          {fieldType === 'select' ? (
             <select
               value={currentValues[field.key] ?? field.default ?? ''}
               onChange={(e) => onChange(field.key, e.target.value)}
               className="w-full px-3 py-1.5 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs text-slate-600 dark:text-slate-300 focus:ring-1 focus:ring-primary outline-none transition-all"
             >
-              {field.options?.map((opt: any) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
+              {fieldOptions?.map((opt: any) => {
+                let displayLabel = opt || '使用默认';
+                if (field.type === 'executor' && opt) {
+                  if (opt.startsWith('agent:')) {
+                    const id = opt.replace('agent:', '');
+                    const agent = agents.find(a => a.id === id);
+                    displayLabel = `[Agent] ${agent ? agent.name : id}`;
+                  } else if (opt.startsWith('workflow:')) {
+                    const id = opt.replace('workflow:', '');
+                    const workflow = workflows.find(w => w.id === id);
+                    displayLabel = `[工作流] ${workflow ? workflow.name : id}`;
+                  }
+                }
+                return <option key={opt} value={opt}>{displayLabel}</option>;
+              })}
             </select>
+          ) : fieldType === 'textarea' ? (
+            <textarea
+              value={currentValues[field.key] ?? field.default ?? ''}
+              onChange={(e) => onChange(field.key, e.target.value)}
+              rows={3}
+              className="w-full px-3 py-1.5 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs text-slate-600 dark:text-slate-300 focus:ring-1 focus:ring-primary outline-none transition-all resize-none"
+            />
           ) : (
             <div className="relative">
               <input
-                type={isPassword ? (showPassword ? 'text' : 'password') : (field.type === 'number' ? 'number' : 'text')}
+                type={isPassword ? (showPassword ? 'text' : 'password') : (fieldType === 'number' ? 'number' : 'text')}
                 value={currentValues[field.key] ?? field.default ?? ''}
                 onChange={(e) => {
                   const val = e.target.value;
-                  onChange(field.key, field.type === 'number' ? (val === '' ? 0 : parseInt(val)) : val);
+                  onChange(field.key, fieldType === 'number' ? (val === '' ? 0 : parseInt(val)) : val);
                 }}
                 className={`w-full px-3 py-1.5 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs text-slate-600 dark:text-slate-300 focus:ring-1 focus:ring-primary outline-none transition-all ${isPassword ? 'pr-9' : ''}`}
               />
@@ -661,13 +758,13 @@ const Settings: React.FC = () => {
           </div>
           
           <div className="space-y-6">
-            {providers.map((provider: any) => {
+            {providers.map((provider: any, idx: number) => {
               const isActive = settings.ACTIVE_AI_PROVIDER_ID === provider.id;
               const isExpanded = expandedProviders[provider.id] ?? isActive;
               
               return (
                 <div 
-                  key={provider.id} 
+                  key={`${provider.id}-${idx}`} 
                   className={`
                     relative bg-white dark:bg-surface-dark rounded-[24px] border transition-all duration-300
                     ${isActive 
@@ -971,9 +1068,9 @@ const Settings: React.FC = () => {
             <h4 className="text-sm font-bold text-slate-900 dark:text-white uppercase tracking-wider">适配器列表</h4>
           </div>
           <div className="grid gap-6">
-            {adapters.map((adapter: any) => (
+            {adapters.map((adapter: any, idx: number) => (
               <div 
-                key={adapter.id} 
+                key={`${adapter.id}-${idx}`} 
                 className={`
                   rounded-2xl border transition-all duration-300 overflow-hidden
                   ${adapter.enabled 
@@ -999,15 +1096,42 @@ const Settings: React.FC = () => {
                         {adapter.adapterType}
                       </span>
                     </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer"
-                        checked={adapter.enabled}
-                        onChange={(e) => handleAdapterChange(adapter.id, null, 'enabled', e.target.checked)}
-                      />
-                      <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
-                    </label>
+                    <div className="flex items-center gap-3">
+                      {adapter.adapterType === 'RSSAdapter' && (
+                        <label className={`
+                          flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer
+                          ${isImportingOPML ? 'opacity-50 cursor-not-allowed' : ''}
+                        `}>
+                          <span className="material-symbols-outlined text-sm">
+                            {isImportingOPML ? 'hourglass_top' : 'upload_file'}
+                          </span>
+                          {isImportingOPML ? '正在解析...' : '导入 OPML'}
+                          <input 
+                            type="file" 
+                            accept=".opml,.xml" 
+                            className="hidden" 
+                            onChange={handleImportOPML(adapter.id)}
+                            disabled={isImportingOPML}
+                          />
+                        </label>
+                      )}
+                      <button 
+                        onClick={() => handleDeleteAdapter(adapter.id)}
+                        className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all"
+                        title="删除整个适配器组"
+                      >
+                        <span className="material-symbols-outlined text-xl">delete</span>
+                      </button>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input 
+                          type="checkbox" 
+                          className="sr-only peer"
+                          checked={adapter.enabled}
+                          onChange={(e) => handleAdapterChange(adapter.id, null, 'enabled', e.target.checked)}
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary"></div>
+                      </label>
+                    </div>
                   </div>
                   {adapter.enabled && (
                     <div className="space-y-4">
@@ -1030,9 +1154,9 @@ const Settings: React.FC = () => {
                 
                 {adapter.enabled && adapter.items && (
                   <div className="p-6 space-y-4">
-                    {adapter.items.map((item: any) => (
+                    {adapter.items.map((item: any, idx: number) => (
                       <div 
-                        key={item.id} 
+                        key={`${item.id}-${idx}`} 
                         className={`
                           group flex flex-col md:flex-row md:items-center gap-4 p-4 rounded-xl border transition-all duration-200
                           ${item.enabled 
@@ -1130,6 +1254,30 @@ const Settings: React.FC = () => {
                 )}
               </div>
             ))}
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center gap-4 p-6 bg-slate-50/50 dark:bg-white/[0.02] border-2 border-dashed border-slate-200 dark:border-white/10 rounded-2xl">
+            <div className="text-sm font-medium text-slate-500 dark:text-slate-400">新增适配器组：</div>
+            <div className="flex flex-1 gap-2 w-full">
+              <select 
+                id="new-adapter-type"
+                className="flex-1 px-4 py-2 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              >
+                {pluginMetadata.adapters.map(meta => (
+                  <option key={meta.type} value={meta.type}>{meta.name} ({meta.type})</option>
+                ))}
+              </select>
+              <button 
+                onClick={() => {
+                  const select = document.getElementById('new-adapter-type') as HTMLSelectElement;
+                  if (select) handleAddAdapter(select.value);
+                }}
+                className="px-6 py-2 bg-primary hover:bg-primary/90 text-white font-bold rounded-xl shadow-md shadow-primary/20 transition-all active:scale-95 flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-lg">add</span>
+                添加
+              </button>
+            </div>
           </div>
         </div>
       );

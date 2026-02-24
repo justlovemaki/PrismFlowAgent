@@ -17,15 +17,16 @@ export class GitHubTrendingAdapter extends BaseAdapter {
   };
 
   configFields = GitHubTrendingAdapter.metadata.configFields;
+  private since: string = 'daily';
 
 
   constructor(
-
     public readonly name: string = 'GitHub Trending',
     public readonly category: string = 'githubTrending',
-    private since: string = 'daily'
+    itemConfig: any = {}
   ) {
     super();
+    this.since = itemConfig.since || 'daily';
     this.appendDateToId = true;
   }
 

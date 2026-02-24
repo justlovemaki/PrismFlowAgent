@@ -78,6 +78,11 @@ const Agents: React.FC = () => {
   const [workflowTestInput, setWorkflowTestInput] = useState('');
   const [workflowTestResult, setWorkflowTestResult] = useState<Record<string, string>>({});
 
+  const [executingTool, setExecutingTool] = useState<Tool | null>(null);
+  const [toolArguments, setToolArguments] = useState<Record<string, any>>({});
+  const [toolExecutionResult, setToolExecutionResult] = useState<any>(null);
+  const [isExecutingTool, setIsExecutingTool] = useState(false);
+
   // Skill Store states
   const [showStoreModal, setShowStoreModal] = useState(false);
   const [storeSearchQuery, setStoreSearchQuery] = useState('');
@@ -137,6 +142,20 @@ const Agents: React.FC = () => {
       toastSuccess('Agent 已删除');
     } catch (error) {
       toastError('删除失败');
+    }
+  };
+
+  const handleExecuteTool = async () => {
+    if (!executingTool) return;
+    try {
+      setIsExecutingTool(true);
+      setToolExecutionResult(null);
+      const result = await agentService.runTool(executingTool.id, toolArguments);
+      setToolExecutionResult(result);
+    } catch (error: any) {
+      setToolExecutionResult({ success: false, error: error.message });
+    } finally {
+      setIsExecutingTool(false);
     }
   };
 
@@ -1001,25 +1020,38 @@ const Agents: React.FC = () => {
         <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">工具列表</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {tools.map(tool => (
-            <div key={tool.id} className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-6 shadow-sm">
-              <div className="flex items-center gap-4 mb-4">
-                <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 text-slate-500 flex items-center justify-center">
-                  <span className="material-symbols-outlined text-2xl">construction</span>
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="font-bold text-slate-900 dark:text-white">{tool.name}</h4>
-                    {(tool as any).isBuiltin ? (
-                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider">内置</span>
-                    ) : (
-                      <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider">自定义</span>
-                    )}
+            <div key={tool.id} className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-6 shadow-sm flex flex-col">
+              <div className="flex justify-between items-start mb-4">
+                <div className="flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 text-slate-500 flex items-center justify-center">
+                    <span className="material-symbols-outlined text-2xl">construction</span>
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">ID: {tool.id}</p>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h4 className="font-bold text-slate-900 dark:text-white">{tool.name}</h4>
+                      {(tool as any).isBuiltin ? (
+                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider">内置</span>
+                      ) : (
+                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider">自定义</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">ID: {tool.id}</p>
+                  </div>
                 </div>
+                <button
+                  onClick={() => {
+                    setExecutingTool(tool);
+                    setToolArguments({});
+                    setToolExecutionResult(null);
+                  }}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 text-primary rounded-xl hover:bg-primary/20 transition-all text-[11px] font-bold"
+                >
+                  <span className="material-symbols-outlined text-sm">play_arrow</span>
+                  执行
+                </button>
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4">{tool.description}</p>
-              <div className="p-3 bg-slate-50 dark:bg-black/20 rounded-xl">
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4 flex-1">{tool.description}</p>
+              <div className="p-3 bg-slate-50 dark:bg-black/20 rounded-xl max-h-40 overflow-y-auto no-scrollbar">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">参数定义 (JSON Schema)</span>
                 <pre className="text-[10px] text-slate-500 font-mono whitespace-pre-wrap">{JSON.stringify(tool.parameters, null, 2)}</pre>
               </div>
@@ -1644,7 +1676,7 @@ const Agents: React.FC = () => {
             <span className="material-symbols-outlined text-4xl text-emerald-400">account_tree</span>
           </div>
           <h3 className="text-xl font-bold text-slate-400 dark:text-slate-500 mb-2">暂无工作流</h3>
-          <p className="text-sm text-slate-400/80 dark:text-slate-500/80">点击「创建工作流」编排多个 Agent / 工具的自动化任务流</p>
+          <p className="text-sm text-slate-400/80 dark:text-slate-500/80">点击「创建工作流」编排多个 Agent 的自动化任务流</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2094,6 +2126,122 @@ const Agents: React.FC = () => {
             </>
           )}
         </motion.div>
+      </AnimatePresence>
+      
+      {/* Tool Execution Modal */}
+      <AnimatePresence>
+        {executingTool && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-lg p-8 max-h-[90vh] overflow-y-auto no-scrollbar"
+            >
+              <div className="flex justify-between items-center mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    <span className="material-symbols-outlined text-2xl">construction</span>
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold dark:text-white">执行工具</h3>
+                    <p className="text-xs text-slate-400">{executingTool.name}</p>
+                  </div>
+                </div>
+                <button onClick={() => setExecutingTool(null)} className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all">
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {Object.entries(executingTool.parameters.properties || {}).map(([key, prop]: [string, any]) => {
+                  const isRequired = executingTool.parameters.required?.includes(key);
+                  const type = prop.type || 'string';
+                  
+                  return (
+                    <div key={key} className="space-y-1.5">
+                      <div className="flex justify-between items-center">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                          {prop.title || key} {isRequired && <span className="text-red-500">*</span>}
+                        </label>
+                        {prop.description && (
+                          <span className="text-[9px] text-slate-400 italic max-w-[60%] truncate" title={prop.description}>
+                            {prop.description}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {prop.enum ? (
+                        <div className="relative">
+                          <select
+                            value={toolArguments[key] || ''}
+                            onChange={e => setToolArguments({ ...toolArguments, [key]: e.target.value })}
+                            className="w-full appearance-none px-4 py-2.5 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white cursor-pointer"
+                          >
+                            <option value="">请选择...</option>
+                            {prop.enum.map((v: string) => <option key={v} value={v}>{v}</option>)}
+                          </select>
+                          <span className="material-symbols-outlined absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                            expand_more
+                          </span>
+                        </div>
+                      ) : type === 'boolean' ? (
+                        <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-white/[0.02] rounded-xl border border-slate-200 dark:border-white/5">
+                          <span className="text-xs text-slate-500">启用</span>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              className="sr-only peer"
+                              checked={!!toolArguments[key]}
+                              onChange={e => setToolArguments({ ...toolArguments, [key]: e.target.checked })}
+                            />
+                            <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-primary transition-all after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                          </label>
+                        </div>
+                      ) : type === 'number' || type === 'integer' ? (
+                        <input
+                          type="number"
+                          value={toolArguments[key] ?? ''}
+                          onChange={e => setToolArguments({ ...toolArguments, [key]: e.target.value === '' ? undefined : Number(e.target.value) })}
+                          placeholder={prop.default !== undefined ? `默认: ${prop.default}` : ''}
+                          className="w-full px-4 py-2.5 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white"
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={toolArguments[key] || ''}
+                          onChange={e => setToolArguments({ ...toolArguments, [key]: e.target.value })}
+                          placeholder={prop.default !== undefined ? `默认: ${prop.default}` : ''}
+                          className="w-full px-4 py-2.5 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white"
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+                
+                <button
+                  onClick={handleExecuteTool}
+                  disabled={isExecutingTool}
+                  className="w-full py-3 bg-primary text-white rounded-2xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2 mt-4"
+                >
+                  <span className="material-symbols-outlined text-xl">
+                    {isExecutingTool ? 'hourglass_top' : 'send'}
+                  </span>
+                  {isExecutingTool ? '执行中...' : '立即执行'}
+                </button>
+
+                {toolExecutionResult && (
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">执行结果</label>
+                    <div className={`w-full p-4 rounded-xl text-xs font-mono whitespace-pre-wrap break-words max-h-60 overflow-y-auto border ${toolExecutionResult.success === false ? 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400' : 'bg-slate-50 dark:bg-black/20 border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-300'}`}>
+                      {JSON.stringify(toolExecutionResult, null, 2)}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
       </AnimatePresence>
 
       {/* Skill Store Modal */}

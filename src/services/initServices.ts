@@ -4,7 +4,7 @@ import { TaskService } from './TaskService.js';
 import { AIService } from './AIService.js';
 import { PromptService } from './PromptService.js';
 import { SchedulerService } from './SchedulerService.js';
-import { GeminiProvider, OpenAIProvider, AnthropicProvider, OllamaProvider, AIProvider } from './AIProvider.js';
+import { GeminiProvider, OpenAIProvider, AnthropicProvider, OllamaProvider, AIProvider, createAIProvider } from './AIProvider.js';
 import { AgentService } from './agents/AgentService.js';
 import { MCPService } from './agents/MCPService.js';
 import { SkillStoreService } from './agents/SkillStoreService.js';
@@ -21,6 +21,7 @@ import { StorageRegistry } from '../registries/StorageRegistry.js';
 import { IPublisher, IStorageProvider } from '../types/plugin.js';
 
 import { TranslationService } from './TranslationService.js';
+import { ImportService } from './ImportService.js';
 
 export interface AppServices {
   settings: SystemSettings;
@@ -28,6 +29,7 @@ export interface AppServices {
   aiProvider: AIProvider | undefined;
   aiService: AIService | null;
   translationService: TranslationService;
+  importService: ImportService;
   promptService: PromptService;
   taskService: TaskService;
   schedulerService: SchedulerService;
@@ -63,22 +65,13 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   // 3. Initialize Core Services
   const aiService = aiProvider ? new AIService(aiProvider, settings) : null;
   const translationService = new TranslationService(aiProvider);
+  const importService = new ImportService(store);
 
-  // 4. Initialize Adapters & Publishers & Storages
-  const adapterInstances = initAdapters(settings, proxyAgent, translationService);
-  const publisherInstances = initPublishers(settings);
-  const storageInstances = initStorages(settings);
-
-  // 5. Initialize Task Service
-  const taskService = new TaskService(adapterInstances, store, aiProvider, publisherInstances);
-  
-  // 6. Initialize Agent Ecosystem
+  // 4. Initialize Agent Ecosystem
   const skillService = new SkillService();
   await skillService.init();
 
   const skillStoreService = new SkillStoreService(settings.SKILL_STORE_API_KEY || '', proxyAgent);
-
-  // Initialize Tool Registry instances from loaded classes
 
   const toolRegistry = ToolRegistry.getInstance();
   for (const toolId of toolRegistry.getAll()) {
@@ -97,6 +90,14 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   const agentService = aiProvider ? new AgentService(store, aiProvider, skillService, mcpService, proxyAgent) : null;
   const workflowEngine = (agentService && aiProvider) ? new WorkflowEngine(store, agentService, aiProvider) : null;
 
+  // 5. Initialize Adapters & Publishers & Storages
+  const adapterInstances = initAdapters(settings, proxyAgent, translationService, agentService, workflowEngine);
+  const publisherInstances = initPublishers(settings);
+  const storageInstances = initStorages(settings);
+
+  // 6. Initialize Task Service
+  const taskService = new TaskService(adapterInstances, store, aiProvider, publisherInstances);
+  
   // 6.1. Initialize Scheduler Service (Now that WorkflowEngine exists)
   const schedulerService = new SchedulerService(store, taskService, agentService, workflowEngine, aiService);
 
@@ -121,6 +122,7 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
     aiProvider,
     aiService,
     translationService,
+    importService,
     promptService,
     taskService,
     schedulerService,
@@ -173,7 +175,7 @@ function initAIProvider(settings: SystemSettings, proxyAgent?: ProxyAgent) {
   }
 }
 
-function initAdapters(settings: SystemSettings, proxyAgent?: ProxyAgent, translationService?: TranslationService): any[] {
+function initAdapters(settings: SystemSettings, proxyAgent?: ProxyAgent, translationService?: TranslationService, agentService?: AgentService | null, workflowEngine?: WorkflowEngine | null): any[] {
   const instances: any[] = [];
   const configs = settings.ADAPTERS || [];
   const registry = AdapterRegistry.getInstance();
@@ -198,24 +200,19 @@ function initAdapters(settings: SystemSettings, proxyAgent?: ProxyAgent, transla
       if (!item.enabled) continue;
       try {
         // 动态实例化适配器
-        // 构造函数参数：name, category, ...其他字段
-        // 由于不同适配器构造函数签名可能不同，这里通过 config 对象传递更灵活
-        // 但为了兼容现有实现，我们尝试映射参数
-        let adapter: any;
-        if (config.adapterType === 'GitHubTrendingAdapter') {
-          adapter = new (AdapterClass as any)(item.name, item.category || 'githubTrending', item.since || 'daily');
-        } else if (config.adapterType === 'FollowApiAdapter') {
-          adapter = new (AdapterClass as any)(
-            item.name, 
-            item.category || 'news', 
-            item.listId || '', 
-            item.feedId,
-            config.fetchDays || 3,
-            item.fetchPages || 1
-          );
-        } else {
-          // 通用实例化逻辑：尝试传入 item 配置对象
-          adapter = new (AdapterClass as any)(item.name, item.category, item);
+        // 统一构造函数参数：name, category, itemConfig
+        const adapter = new (AdapterClass as any)(
+          item.name, 
+          item.category, 
+          { ...item, fetchDays: config.fetchDays } // 合并全局配置到 itemConfig
+        );
+
+        // 注入依赖 (如果适配器需要)
+        if (typeof (adapter as any).setAgentService === 'function' && agentService) {
+          (adapter as any).setAgentService(agentService);
+        }
+        if (typeof (adapter as any).setWorkflowEngine === 'function' && workflowEngine) {
+          (adapter as any).setWorkflowEngine(workflowEngine);
         }
 
         adapter.apiUrl = config.apiUrl;

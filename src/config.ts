@@ -133,6 +133,26 @@ export const defaultSettings: SystemSettings = {
         { id: 'papers', name: '学术论文', category: 'paper', listId: '158437917409783808', fetchPages: 1, enabled: true, useProxy: false },
         { id: 'reddit', name: 'Reddit', category: 'socialMedia', listId: '167576006499975168', fetchPages: 1, enabled: true, useProxy: false },
       ]
+    },
+    {
+      id: 'ai-search',
+      name: 'AI 搜索',
+      adapterType: 'AISearchAdapter',
+      enabled: true,
+      apiUrl: '',
+      items: [
+        { id: 'ai-news', name: 'AI 资讯搜索', category: 'news', keyword: 'AI 行业最新动态', executorId: 'default_summarizer', enabled: true, useProxy: false }
+      ]
+    },
+    {
+      id: 'rss-adapter',
+      name: 'RSS 订阅',
+      adapterType: 'RSSAdapter',
+      enabled: true,
+      apiUrl: '',
+      items: [
+        { id: 'rss-example', name: '阮一峰的网络日志', category: 'rss', rssUrl: 'http://www.ruanyifeng.com/blog/atom.xml', limit: 10, enabled: true, useProxy: false }
+      ]
     }
   ],
   CLOSED_PLUGINS: [],
@@ -141,9 +161,11 @@ export const defaultSettings: SystemSettings = {
     { id: 'news', label: '新闻资讯', icon: 'newspaper' },
     { id: 'githubTrending', label: 'GitHub 热门', icon: 'code' },
     { id: 'paper', label: '学术论文', icon: 'school' },
-    { id: 'socialMedia', label: '社交媒体', icon: 'forum' }
+    { id: 'socialMedia', label: '社交媒体', icon: 'forum' },
+    { id: 'rss', label: 'RSS 订阅', icon: 'rss_feed' }
   ],
-  SKILL_STORE_API_KEY: ''
+  SKILL_STORE_API_KEY: '',
+  GLOBAL_GITHUB_TOKEN: ''
 };
 
 

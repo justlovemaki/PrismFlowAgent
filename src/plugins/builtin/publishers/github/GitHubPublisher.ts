@@ -8,6 +8,7 @@ export interface GitHubConfig {
   repo: string; // 格式为 owner/repo
   branch: string;
   pathPrefix: string;
+  baseUrl?: string;
 }
 
 export class GitHubPublisher implements IPublisher {
@@ -20,7 +21,8 @@ export class GitHubPublisher implements IPublisher {
       { key: 'token', label: 'GitHub Token', type: 'password', required: true },
       { key: 'repo', label: '仓库 (Owner/Repo)', type: 'text', required: true },
       { key: 'branch', label: 'Branch', type: 'text', default: 'main' },
-      { key: 'pathPrefix', label: 'Path Prefix', type: 'text', default: 'daily' }
+      { key: 'pathPrefix', label: 'Path Prefix', type: 'text', default: 'daily' },
+      { key: 'baseUrl', label: 'API Base URL', type: 'text', default: 'https://api.github.com', required: false }
     ]
   };
 
@@ -43,7 +45,10 @@ export class GitHubPublisher implements IPublisher {
     this.owner = owner || '';
     this.repo = repo || '';
 
-    this.octokit = new Octokit({ auth: config.token });
+    this.octokit = new Octokit({ 
+      auth: config.token,
+      baseUrl: config.baseUrl || 'https://api.github.com'
+    });
   }
 
   async publish(content: string, options: { filePath?: string; message?: string, date?: string }) {

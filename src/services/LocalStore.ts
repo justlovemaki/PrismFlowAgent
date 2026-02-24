@@ -91,14 +91,6 @@ export class LocalStore {
         )
       `);
 
-      // 检查并添加 full_content 字段（如果不存在，用于向后兼容）
-      const tableInfo = await this.db.all("PRAGMA table_info(commit_history)");
-      const hasFullContent = tableInfo.some(column => column.name === "full_content");
-      if (!hasFullContent) {
-        await this.db.exec("ALTER TABLE commit_history ADD COLUMN full_content TEXT");
-        console.log("Added full_content column to commit_history table");
-      }
-
       // 创建 Agent 相关表
       await this.db.exec(`
         CREATE TABLE IF NOT EXISTS agents (
@@ -137,16 +129,6 @@ export class LocalStore {
         )
       `);
 
-      // 检查并添加 updated_at 字段（如果不存在）
-      const schedulesTableInfo = await this.db.all("PRAGMA table_info(schedules)");
-      const hasUpdatedAt = schedulesTableInfo.some(column => column.name === "updated_at");
-      if (!hasUpdatedAt) {
-        await this.db.exec("ALTER TABLE schedules ADD COLUMN updated_at INTEGER");
-        // 初始化已有数据的 updated_at 为当前时间
-        await this.db.exec(`UPDATE schedules SET updated_at = ${Date.now()}`);
-        console.log("Added updated_at column to schedules table and initialized values");
-      }
-
       // 创建执行日志记录表
       await this.db.exec(`
         CREATE TABLE IF NOT EXISTS task_logs (
@@ -162,14 +144,6 @@ export class LocalStore {
           result_count INTEGER
         )
       `);
-
-      // 检查并添加 progress 字段（如果不存在）
-      const taskLogsTableInfo = await this.db.all("PRAGMA table_info(task_logs)");
-      const hasProgress = taskLogsTableInfo.some(column => column.name === "progress");
-      if (!hasProgress) {
-        await this.db.exec("ALTER TABLE task_logs ADD COLUMN progress INTEGER DEFAULT 0");
-        console.log("Added progress column to task_logs table");
-      }
 
       // 创建数据源数据存储表
       await this.db.exec(`
@@ -189,21 +163,6 @@ export class LocalStore {
           status TEXT DEFAULT 'unread'
         )
       `);
-
-      // 检查并添加 ingestion_date 字段（如果不存在）
-      const sourceDataTableInfo = await this.db.all("PRAGMA table_info(source_data)");
-      const hasIngestionDate = sourceDataTableInfo.some(column => column.name === "ingestion_date");
-      if (!hasIngestionDate) {
-        await this.db.exec("ALTER TABLE source_data ADD COLUMN ingestion_date TEXT");
-        console.log("Added ingestion_date column to source_data table");
-      }
-
-      // 检查并添加 adapter_name 字段（如果不存在）
-      const hasAdapterName = sourceDataTableInfo.some(column => column.name === "adapter_name");
-      if (!hasAdapterName) {
-        await this.db.exec("ALTER TABLE source_data ADD COLUMN adapter_name TEXT");
-        console.log("Added adapter_name column to source_data table");
-      }
 
       // 创建索引
       await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_source ON source_data(source)`);

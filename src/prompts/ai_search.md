@@ -1,0 +1,22 @@
+请针对关键词 "{{keyword}}" 进行深入检索或生成相关资讯，并返回最新或最相关的资讯。
+
+结果必须严格以 JSON 数组的形式返回，不要包含任何 Markdown 代码块包裹（如 ```json ），也不要包含任何解释性文字。
+数组中的每个对象应包含以下字段：
+- title: 资讯标题
+- url: 相关链接（如果没有真实链接就为空，不要生成一个假的）
+- description: 资讯简要描述
+- content: 更详细的描述，需要完整的描述内容，不要有任何编造，在150字左右，可以包含图片链接
+- author: 作者或来源机构（可选）
+- published_date: 发布日期（ISO 格式或 YYYY-MM-DD hh:mm:ss）
+
+示例格式：
+[
+  {
+    "title": "示例新闻标题",
+    "url": "https://example.com/news/1",
+    "description": "这是新闻内容的简要描述...",
+    "content": "这是新闻内容",
+    "author": "TechCrunch",
+    "published_date": "2024-05-20 12:13:14"
+  }
+]

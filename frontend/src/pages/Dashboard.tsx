@@ -5,8 +5,7 @@ import { getSettings } from '../services/settingsService';
 import { getTodayShanghai } from '../utils/dateUtils';
 import { clearCache, CACHE_KEYS } from '../utils/cacheUtils';
 import { useToast } from '../context/ToastContext.js';
-
-
+import ImportModal from '../components/UI/ImportModal';
 
 interface Stats {
   todayCount: number;
@@ -52,6 +51,7 @@ const Dashboard: React.FC = () => {
   const [syncForm, setSyncForm] = useState<Record<string, any>>({});
   const [syncDate, setSyncDate] = useState<string>(getTodayShanghai());
   const [showSyncModal, setShowSyncModal] = useState<string | null>(null);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
   const [categories, setCategories] = useState<any[]>([]);
 
   const openSyncModal = (name: string) => {
@@ -336,14 +336,23 @@ const Dashboard: React.FC = () => {
                 <span className="material-symbols-outlined text-primary">hub</span>
                 数据源适配器状态
               </h3>
-              <button 
-                onClick={handleSync}
-                disabled={syncing}
-                className={`group flex items-center gap-2 bg-primary hover:bg-primary/90 active:scale-95 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all shadow-md shadow-primary/20 ${syncing ? 'opacity-70 cursor-not-allowed' : ''}`}
-              >
-                <span className={`material-symbols-outlined text-[16px] ${syncing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`}>sync</span>
-                <span>{syncing ? '抓取中...' : '立即抓取'}</span>
-              </button>
+              <div className="flex items-center gap-3">
+                <button 
+                  onClick={handleSync}
+                  disabled={syncing}
+                  className={`group flex items-center gap-2 bg-primary hover:bg-primary/90 active:scale-95 text-white text-xs font-bold px-4 py-2 rounded-lg transition-all shadow-md shadow-primary/20 ${syncing ? 'opacity-70 cursor-not-allowed' : ''}`}
+                >
+                  <span className={`material-symbols-outlined text-[16px] ${syncing ? 'animate-spin' : 'group-hover:rotate-180 transition-transform duration-500'}`}>sync</span>
+                  <span>{syncing ? '抓取中...' : '立即抓取'}</span>
+                </button>
+                <button 
+                  onClick={() => setIsImportModalOpen(true)}
+                  className="flex items-center gap-2 bg-primary/10 hover:bg-primary/20 text-primary text-xs font-bold px-4 py-2 rounded-lg transition-all shadow-sm"
+                >
+                  <span className="material-symbols-outlined text-[18px]">input</span>
+                  <span>手动导入</span>
+                </button>
+              </div>
             </div>
             
             <div className="w-full overflow-hidden rounded-xl border border-slate-200 dark:border-white/5 bg-white dark:bg-surface-dark shadow-xl shadow-black/5 dark:shadow-black/20">
@@ -521,11 +530,10 @@ const Dashboard: React.FC = () => {
                     className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/5 rounded-lg text-sm text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-primary/30 outline-none transition-all"
                   />
                 </div>
-
-                {adaptersData[showSyncModal]?.configFields?.length > 0 && (
+                {showSyncModal && adaptersData[showSyncModal]?.configFields && adaptersData[showSyncModal].configFields.length > 0 && (
                   <div className="space-y-4">
                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest border-t border-slate-100 dark:border-white/5 pt-4">可选抓取参数</p>
-                    {adaptersData[showSyncModal].configFields.map(field => (
+                    {adaptersData[showSyncModal].configFields.map((field: any) => (
                       <div key={field.key} className="space-y-2">
                         <label className="text-xs text-slate-400">{field.label}</label>
                         {field.type === 'select' ? (
@@ -534,7 +542,7 @@ const Dashboard: React.FC = () => {
                             onChange={(e) => setSyncForm(prev => ({ ...prev, [field.key]: e.target.value }))}
                             className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/5 rounded-lg text-sm text-slate-700 dark:text-slate-300 focus:ring-1 focus:ring-primary/30 outline-none transition-all"
                           >
-                            {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                            {field.options?.map((opt: any) => <option key={opt} value={opt}>{opt}</option>)}
                           </select>
                         ) : (
                           <input
@@ -558,8 +566,10 @@ const Dashboard: React.FC = () => {
                 </button>
                 <button 
                   onClick={() => {
-                    handleSyncAdapter(showSyncModal, { date: syncDate, ...syncForm });
-                    setShowSyncModal(null);
+                    if (showSyncModal) {
+                      handleSyncAdapter(showSyncModal, { date: syncDate, ...syncForm });
+                      setShowSyncModal(null);
+                    }
                   }}
                   className="bg-primary hover:bg-primary/90 text-white text-sm font-bold px-6 py-2 rounded-lg transition-all shadow-md shadow-primary/20 flex items-center gap-2"
                 >
@@ -571,6 +581,16 @@ const Dashboard: React.FC = () => {
           </div>
         )}
       </AnimatePresence>
+
+      <ImportModal 
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        categories={categories}
+        onSuccess={() => {
+          clearCache(CACHE_KEYS.SELECTION_ITEMS);
+          fetchData();
+        }}
+      />
     </div>
   );
 };

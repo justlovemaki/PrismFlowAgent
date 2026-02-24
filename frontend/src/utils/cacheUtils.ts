@@ -30,8 +30,24 @@ export function saveToCache<T>(key: string, data: T, date: string): void {
       date
     };
     localStorage.setItem(getFullKey(key, date), JSON.stringify(cacheData));
-  } catch (error) {
-    console.error('保存缓存失败:', error);
+  } catch (error: any) {
+    if (error.name === 'QuotaExceededError' || error.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+      console.warn('localStorage 空间不足，正在尝试清空旧缓存...');
+      clearAllCache();
+      // 尝试再次保存
+      try {
+        const cacheData: CacheData<T> = {
+          data,
+          timestamp: Date.now(),
+          date
+        };
+        localStorage.setItem(getFullKey(key, date), JSON.stringify(cacheData));
+      } catch (retryError) {
+        console.error('重试保存缓存失败:', retryError);
+      }
+    } else {
+      console.error('保存缓存失败:', error);
+    }
   }
 }
 

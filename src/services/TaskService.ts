@@ -266,7 +266,8 @@ export class TaskService {
       const currentConfig: Record<string, any> = {};
       if (adapter.configFields) {
         for (const field of adapter.configFields) {
-          currentConfig[field.key] = (adapter as any)[field.key];
+          // 优先从实例属性获取，其次从 itemConfig 获取，最后使用默认值
+          currentConfig[field.key] = (adapter as any)[field.key] ?? (adapter as any).itemConfig?.[field.key] ?? field.default;
         }
       }
 
@@ -309,18 +310,28 @@ export class TaskService {
     }
 
     const data: Record<string, UnifiedData[]> = {};
-    for (const adapter of this.adapters) {
-      const { items } = await this.store.listSourceData({
-        adapterName: adapter.name,
-        category: adapter.category,
-        ingestionDates: dates,
-        limit: options.includePreviousDay ? 2000 : 1000
+    
+    // 1. 获取所有在 targetDate 同步的数据，不分适配器
+    // 这样可以兼容手动导入的数据（ManualImport）
+    const { items: allItems } = await this.store.listSourceData({
+      ingestionDates: dates,
+      limit: options.includePreviousDay ? 3000 : 2000
+    });
+
+    // 2. 按分类归档
+    for (const item of allItems) {
+      const cat = item.category || 'default';
+      if (!data[cat]) data[cat] = [];
+      data[cat].push(item);
+    }
+
+    // 3. 排序：按抓取时间倒序
+    for (const cat in data) {
+      data[cat].sort((a, b) => {
+        const timeA = a.metadata?.fetched_at || 0;
+        const timeB = b.metadata?.fetched_at || 0;
+        return timeB - timeA;
       });
-      
-      if (items && items.length > 0) {
-        if (!data[adapter.category]) data[adapter.category] = [];
-        data[adapter.category].push(...items);
-      }
     }
 
     // 加入历史记录作为一种特殊的数据源
@@ -414,5 +425,16 @@ export class TaskService {
    */
   async deleteCommitHistory(id: number) {
     return await this.store.deleteCommitHistory(id);
+  }
+
+  /**
+   * 删除原始数据或历史记录
+   */
+  async deleteSourceData(id: string) {
+    if (id.startsWith('history-')) {
+      const historyId = parseInt(id.replace('history-', ''));
+      return await this.store.deleteCommitHistory(historyId);
+    }
+    return await this.store.deleteSourceData(id);
   }
 }

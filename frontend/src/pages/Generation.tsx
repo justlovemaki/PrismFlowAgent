@@ -8,6 +8,7 @@ import { getSettings } from '../services/settingsService';
 import ContentRenderer from '../components/UI/ContentRenderer';
 import { request } from '../services/api';
 import { useToast } from '../context/ToastContext.js';
+import { copyToClipboard as copyToClipboardUtil } from '../utils/clipboardUtils';
 
 const Generation: React.FC = () => {
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
@@ -35,8 +36,18 @@ const Generation: React.FC = () => {
   const [wechatTitle, setWechatTitle] = useState('');
   const [wechatAuthor, setWechatAuthor] = useState('');
   const [wechatDigest, setWechatDigest] = useState('');
-  const [wechatCoverPrompt, setWechatCoverPrompt] = useState('');
+  const [wechatCoverMainTitle, setWechatCoverMainTitle] = useState('');
+  const [wechatCoverSubtitle, setWechatCoverSubtitle] = useState('');
+  const [wechatCoverCustom, setWechatCoverCustom] = useState('');
   const [selectedCoverAgentId, setSelectedCoverAgentId] = useState('');
+
+  // 保存封面生成执行器的选择
+  useEffect(() => {
+    if (selectedCoverAgentId) {
+      localStorage.setItem('wechat_cover_executor', selectedCoverAgentId);
+    }
+  }, [selectedCoverAgentId]);
+
   const [wechatCoverUrl, setWechatCoverUrl] = useState('');
   const [wechatThumbMediaId, setWechatThumbMediaId] = useState('');
   const [isGeneratingCover, setIsGeneratingCover] = useState(false);
@@ -54,7 +65,7 @@ const Generation: React.FC = () => {
 
   // Tool execution state
   const [selectedTool, setSelectedTool] = useState<Tool | null>(null);
-  const [toolInput, setToolInput] = useState('');
+  const [toolArguments, setToolArguments] = useState<Record<string, any>>({});
 
   // Mobile layout state
   const [mobileTab, setMobileTab] = useState<'source' | 'preview'>('preview');
@@ -242,12 +253,14 @@ const Generation: React.FC = () => {
       }
       
       // 初始化封面提示词
-      setWechatCoverPrompt(`A professional news cover image for a tech daily report titled "${wechatTitle}". Cyberpunk style, futuristic, clean design, 16:9 ratio.`);
+      setWechatCoverMainTitle('Main Title');
+      setWechatCoverSubtitle('Sub Title');
+      setWechatCoverCustom('比例: 16:9,  优化文案后输出.');
       
       // 摘要默认为空
       setWechatDigest('');
 
-      // 加载 Agent 和工作流列表以供封面生成使用
+      // 加载 Agent、工作流列表以供封面生成使用
       try {
         const [ags, wfs] = await Promise.all([
           agentService.getAgents(),
@@ -256,14 +269,36 @@ const Generation: React.FC = () => {
         setAgents(ags || []);
         setWorkflows(wfs || []);
         
-        // 优先选择第一个 Agent 作为默认值
-        if (ags && ags.length > 0) {
-          setSelectedCoverAgentId(`agent:${ags[0].id}`);
-        } else if (wfs && wfs.length > 0) {
-          setSelectedCoverAgentId(`workflow:${wfs[0].id}`);
+        // 尝试加载上次选中的执行器 (仅限智能体或工作流)
+        const savedExecutorId = localStorage.getItem('wechat_cover_executor');
+        if (savedExecutorId) {
+          const [type, id] = savedExecutorId.split(':');
+          if (type === 'tool') {
+            // 如果上次选中的是已弃用的工具执行器，则重置为第一个智能体
+            if (ags && ags.length > 0) setSelectedCoverAgentId(`agent:${ags[0].id}`);
+            else if (wfs && wfs.length > 0) setSelectedCoverAgentId(`workflow:${wfs[0].id}`);
+          } else {
+            let exists = false;
+            if (type === 'agent') exists = ags?.some((a: Agent) => a.id === id);
+            else if (type === 'workflow') exists = wfs?.some((w: Workflow) => w.id === id);
+            
+            if (exists) {
+              setSelectedCoverAgentId(savedExecutorId);
+            } else {
+              if (ags && ags.length > 0) setSelectedCoverAgentId(`agent:${ags[0].id}`);
+              else if (wfs && wfs.length > 0) setSelectedCoverAgentId(`workflow:${wfs[0].id}`);
+            }
+          }
+        } else {
+          // 优先选择第一个 Agent 作为默认值
+          if (ags && ags.length > 0) {
+            setSelectedCoverAgentId(`agent:${ags[0].id}`);
+          } else if (wfs && wfs.length > 0) {
+            setSelectedCoverAgentId(`workflow:${wfs[0].id}`);
+          }
         }
       } catch (e) {
-        console.error('Failed to load agents/workflows for cover generation:', e);
+        console.error('Failed to load agents/workflows/tools for cover generation:', e);
       }
 
       setShowCommitPicker(false);
@@ -312,13 +347,16 @@ const Generation: React.FC = () => {
   };
 
   const handleGenerateCover = async () => {
-    if (!wechatCoverPrompt) return;
+    // 构造最终提示词
+    const combinedPrompt = `${wechatCoverMainTitle} - ${wechatCoverSubtitle}. ${wechatCoverCustom}`.trim();
+    if (!combinedPrompt) return;
     
     setIsGeneratingCover(true);
     try {
-      const res = await generateCoverImage(wechatCoverPrompt, selectedCoverAgentId, date);
+      // 统一通过 generateCoverImage 调用，后端现在支持 tool: 前缀
+      const res = await generateCoverImage(combinedPrompt, selectedCoverAgentId, date);
       
-      if (res.url) {
+      if (res && res.url) {
         setWechatCoverUrl(res.url);
         // 上传到微信素材库
         const materialRes = await uploadWechatMaterial(res.url);
@@ -360,25 +398,30 @@ const Generation: React.FC = () => {
     }
   };
 
-  const handleRunTool = async (tool: Tool, input: string) => {
+  const handleRunTool = async (tool: Tool, input: string | Record<string, any>) => {
     saveRecentSelection({ type: 'tool' as any, id: tool.id, name: tool.name });
     setShowAIPicker(false);
     setGenerating(true);
     setStatus(`正在执行工具 "${tool.name}"...`);
     try {
-      // 尝试解析输入为 JSON，如果失败则作为普通字符串包装在主参数中
       let args: any;
-      try {
-        args = JSON.parse(input);
-        if (args && typeof args === 'object' && !Array.isArray(args)) {
-          args.date = date;
+      if (typeof input === 'string') {
+        // 尝试解析输入为 JSON，如果失败则作为普通字符串包装在主参数中
+        try {
+          args = JSON.parse(input);
+          if (args && typeof args === 'object' && !Array.isArray(args)) {
+            args.date = date;
+          }
+        } catch {
+          // 启发式：根据工具参数寻找最合适的参数名
+          const props = tool.parameters?.properties || {};
+          const required = tool.parameters?.required || [];
+          const firstParam = required[0] || Object.keys(props)[0] || 'input';
+          args = { [firstParam]: input, date: date };
         }
-      } catch {
-        // 启发式：根据工具参数寻找最合适的参数名
-        const props = tool.parameters?.properties || {};
-        const required = tool.parameters?.required || [];
-        const firstParam = required[0] || Object.keys(props)[0] || 'input';
-        args = { [firstParam]: input, date: date };
+      } else {
+        // 可视化填写的参数
+        args = { ...input, date: date };
       }
 
       const res = await agentService.runTool(tool.id, args);
@@ -409,7 +452,7 @@ const Generation: React.FC = () => {
     setStatus(`正在通过工作流 "${wf.name}" 生成内容...`);
     try {
       const inputPayload = selectedItems
-        ? JSON.stringify(selectedItems.map(({ selected, id, description, ...rest }: any) => {
+        ? JSON.stringify(selectedItems.map(({ selected, id, ...rest }: any) => {
             if (rest.metadata?.ai_summary) {
               const { content_html, ...restMetadata } = rest.metadata;
               return { ...rest, metadata: restMetadata };
@@ -437,7 +480,7 @@ const Generation: React.FC = () => {
     setStatus(`正在通过 Agent "${agent.name}" 生成内容...`);
     try {
       const inputText = selectedItems
-        ? JSON.stringify(selectedItems.map(({ selected, id, description, ...rest }: any) => {
+        ? JSON.stringify(selectedItems.map(({ selected, id, ...rest }: any) => {
             if (rest.metadata?.ai_summary) {
               const { content_html, ...restMetadata } = rest.metadata;
               return { ...rest, metadata: restMetadata };
@@ -458,9 +501,13 @@ const Generation: React.FC = () => {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toastSuccess('已复制到剪贴板');
+  const copyToClipboard = async (text: string) => {
+    const success = await copyToClipboardUtil(text);
+    if (success) {
+      toastSuccess('已复制到剪贴板');
+    } else {
+      toastError('复制失败');
+    }
   };
 
   return (
@@ -510,7 +557,7 @@ const Generation: React.FC = () => {
             {selectedItems && selectedItems.length > 0 && (
               <button 
                 onClick={() => {
-                  const cleanedItems = selectedItems.map(({ selected, id, description, ...rest }: any) => {
+                  const cleanedItems = selectedItems.map(({ selected, id, ...rest }: any) => {
                     if (rest.metadata?.ai_summary) {
                       const { content_html, ...restMetadata } = rest.metadata;
                       return { ...rest, metadata: restMetadata };
@@ -548,6 +595,11 @@ const Generation: React.FC = () => {
                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
                       {item.category.toUpperCase()}
                     </span>
+                    {item.source && (
+                      <span className="ml-auto text-[9px] text-slate-400 dark:text-text-secondary truncate max-w-[100px]">
+                        {item.source}
+                      </span>
+                    )}
                   </div>
                   <h3 className="text-xs font-bold text-slate-900 dark:text-white mb-0.5 line-clamp-1">{item.metadata?.translated_title || item.title}</h3>
                   <p className="text-[10px] text-slate-500 dark:text-text-secondary line-clamp-1">{item.metadata?.translated_description || item.description}</p>
@@ -784,27 +836,22 @@ const Generation: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {previewItem.content && !previewItem.metadata?.content_html && (
+                {previewItem.metadata?.full_content && (
                   <div>
-                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">详情内容</h4>
-                    <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/50 p-3 sm:p-4 rounded-xl border border-slate-100 dark:border-white/5">
-                      <ContentRenderer content={previewItem.content} imageProxy={imageProxy} />
+                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">全文内容</h4>
+                    <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/50 p-3 sm:p-4 rounded-xl border border-slate-100 dark:border-white/5 overflow-wrap-anywhere">
+                      <ContentRenderer 
+                        content={previewItem.metadata.full_content} 
+                        imageProxy={imageProxy}
+                      />
                     </div>
                   </div>
                 )}
-                {previewItem.metadata?.description && (
-                  <div>
-                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">元数据描述</h4>
-                    <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/50 p-3 sm:p-4 rounded-xl border border-slate-100 dark:border-white/5">
-                      <ContentRenderer content={previewItem.metadata.description} imageProxy={imageProxy} />
-                    </div>
-                  </div>
-                )}
-                {(previewItem.metadata?.translated_description || previewItem.description) && !previewItem.metadata?.description && (
+                {(previewItem.metadata?.ai_summary || previewItem.metadata?.translated_description || previewItem.description) && (
                   <div>
                     <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">基本描述</h4>
                     <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/50 p-3 sm:p-4 rounded-xl border border-slate-100 dark:border-white/5">
-                      <ContentRenderer content={previewItem.metadata?.translated_description || previewItem.description} imageProxy={imageProxy} />
+                      <ContentRenderer content={previewItem.metadata?.ai_summary || previewItem.metadata?.translated_description || previewItem.description} imageProxy={imageProxy} />
                     </div>
                   </div>
                 )}
@@ -824,7 +871,7 @@ const Generation: React.FC = () => {
 
       {/* WeChat Publish Modal */}
       {showWechatModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowWechatModal(false)}>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm" >
           <div className="bg-white dark:bg-surface-dark w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-border-dark overflow-hidden flex flex-col max-h-[95vh] sm:max-h-none" onClick={e => e.stopPropagation()}>
             <div className="px-4 sm:px-6 py-3 sm:py-4 border-b border-slate-100 dark:border-border-dark flex items-center justify-between">
               <div className="flex items-center gap-2 sm:gap-3">
@@ -900,7 +947,7 @@ const Generation: React.FC = () => {
                       </select>
                     </div>
                     <button 
-                      disabled={isGeneratingCover || !selectedCoverAgentId || !wechatCoverPrompt}
+                      disabled={isGeneratingCover || !selectedCoverAgentId }
                       onClick={handleGenerateCover}
                       className="flex items-center gap-1.5 px-3 py-1 bg-primary/10 hover:bg-primary text-primary hover:text-white rounded-lg transition-all text-[10px] font-bold border border-primary/20"
                     >
@@ -914,34 +961,83 @@ const Generation: React.FC = () => {
                   </div>
                 </div>
 
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">主标题</label>
+                    <input 
+                      type="text"
+                      value={wechatCoverMainTitle}
+                      onChange={(e) => setWechatCoverMainTitle(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/10 rounded-xl text-[10px] sm:text-[11px] text-slate-600 dark:text-slate-300 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                      placeholder="主标题"
+                    />
+                  </div>
+                  <div className="space-y-1.5 sm:space-y-2">
+                    <label className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">副标题</label>
+                    <input 
+                      type="text"
+                      value={wechatCoverSubtitle}
+                      onChange={(e) => setWechatCoverSubtitle(e.target.value)}
+                      className="w-full px-3 py-2 bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/10 rounded-xl text-[10px] sm:text-[11px] text-slate-600 dark:text-slate-300 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all"
+                      placeholder="副标题"
+                    />
+                  </div>
+                </div>
                 <div className="space-y-1.5 sm:space-y-2">
-                  <label className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">绘图提示词</label>
+                  <label className="text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider ml-1">自定义提示词</label>
                   <textarea 
-                    value={wechatCoverPrompt}
-                    onChange={(e) => setWechatCoverPrompt(e.target.value)}
+                    value={wechatCoverCustom}
+                    onChange={(e) => setWechatCoverCustom(e.target.value)}
                     rows={2}
                     className="w-full px-3 py-2 bg-slate-50 dark:bg-white/[0.03] border border-slate-200 dark:border-white/10 rounded-xl text-[10px] sm:text-[11px] text-slate-600 dark:text-slate-300 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none"
                     placeholder="请输入封面图生成提示词"
                   />
                 </div>
                 
-                <div className="relative rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-white/10 aspect-[2.35/1] bg-slate-50 dark:bg-black/20 flex items-center justify-center">
-                  {wechatCoverUrl ? (
-                    <img src={wechatCoverUrl} className="w-full h-full object-cover" alt="Cover" />
-                  ) : (
-                    <div className="text-center p-4">
-                      <span className="material-symbols-outlined text-2xl sm:text-3xl text-slate-300 dark:text-slate-600 mb-2">image</span>
-                      <p className="text-[10px] sm:text-xs text-slate-400 font-medium">微信将默认使用正文第一张图作为封面</p>
+                <div className="space-y-3">
+                  <div className="relative rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-white/10 aspect-[2.35/1] bg-slate-50 dark:bg-black/20 flex items-center justify-center">
+                    {wechatCoverUrl ? (
+                      <img src={wechatCoverUrl} className="w-full h-full object-cover" alt="Cover" />
+                    ) : (
+                      <div className="text-center p-4">
+                        <span className="material-symbols-outlined text-2xl sm:text-3xl text-slate-300 dark:text-slate-600 mb-2">image</span>
+                        <p className="text-[10px] sm:text-xs text-slate-400 font-medium">微信将默认使用正文第一张图作为封面</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {wechatCoverUrl && !wechatThumbMediaId && !isGeneratingCover && (
+                    <div className="flex justify-center">
+                      <button 
+                        onClick={async () => {
+                          setIsGeneratingCover(true);
+                          try {
+                            const materialRes = await uploadWechatMaterial(wechatCoverUrl);
+                            if (materialRes.media_id) {
+                              setWechatThumbMediaId(materialRes.media_id);
+                              toastSuccess('封面图重新提交成功');
+                            }
+                          } catch (error: any) {
+                            toastError('重新提交失败: ' + error.message);
+                          } finally {
+                            setIsGeneratingCover(false);
+                          }
+                        }}
+                        className="flex items-center gap-1.5 px-4 py-1.5 bg-amber-500/10 hover:bg-amber-500 text-amber-600 hover:text-white rounded-xl transition-all text-xs font-bold border border-amber-500/20"
+                      >
+                        <span className="material-symbols-outlined text-sm">cloud_upload</span>
+                        重新提交图片到微信
+                      </button>
+                    </div>
+                  )}
+                  
+                  {wechatThumbMediaId && (
+                    <div className="flex items-center justify-center gap-1.5 py-1 px-3 bg-green-500/10 rounded-full w-fit mx-auto border border-green-500/20">
+                      <span className="material-symbols-outlined text-green-500 text-sm">check_circle</span>
+                      <span className="text-[9px] sm:text-[10px] text-green-500 font-mono font-bold">封面已就绪</span>
                     </div>
                   )}
                 </div>
-                
-                {wechatThumbMediaId && (
-                  <div className="flex items-center justify-center gap-1.5 py-1 px-3 bg-green-500/10 rounded-full w-fit mx-auto border border-green-500/20">
-                    <span className="material-symbols-outlined text-green-500 text-sm">check_circle</span>
-                    <span className="text-[9px] sm:text-[10px] text-green-500 font-mono font-bold">封面已就绪</span>
-                  </div>
-                )}
               </div>
             </div>
 
@@ -1037,28 +1133,31 @@ const Generation: React.FC = () => {
                     agent: { icon: 'smart_toy', color: 'primary', label: 'Agent' },
                     tool: { icon: 'build', color: 'amber', label: '工具' }
                   } as const;
-                  const handleRecentClick = (r: any) => {
-                    if (r.type === 'workflow') {
-                      const wf = workflows.find(w => w.id === r.id);
-                      if (wf) handleRunWithWorkflow(wf);
-                      else { toastError(`工作流 "${r.name}" 已不存在`); }
-                    } else if (r.type === 'agent') {
-                      const ag = agents.find(a => a.id === r.id);
-                      if (ag) handleRunWithAgent(ag);
-                      else { toastError(`Agent "${r.name}" 已不存在`); }
-                    } else if (r.type === 'tool') {
-                      const tl = tools.find(t => t.id === r.id);
-                      if (tl) {
-                        setSelectedTool(tl);
-                        setAiPickerTab('tool');
-                        // 自动填充输入
-                        const defaultInput = result?.daily_summary_markdown || 
-                                            (selectedItems ? JSON.stringify(selectedItems, null, 2) : '');
-                        setToolInput(defaultInput);
-                      }
-                      else { toastError(`工具 "${r.name}" 已不存在`); }
-                    }
-                  };
+                        const handleRecentClick = (r: any) => {
+                          if (r.type === 'workflow') {
+                            const wf = workflows.find(w => w.id === r.id);
+                            if (wf) handleRunWithWorkflow(wf);
+                            else { toastError(`工作流 "${r.name}" 已不存在`); }
+                          } else if (r.type === 'agent') {
+                            const ag = agents.find(a => a.id === r.id);
+                            if (ag) handleRunWithAgent(ag);
+                            else { toastError(`Agent "${r.name}" 已不存在`); }
+                          } else if (r.type === 'tool') {
+                            const tl = tools.find(t => t.id === r.id);
+                            if (tl) {
+                              setSelectedTool(tl);
+                              setAiPickerTab('tool');
+                              // 初始化参数
+                              const props = tl.parameters?.properties || {};
+                              const required = tl.parameters?.required || [];
+                              const firstParam = required[0] || Object.keys(props)[0] || 'input';
+                              const defaultInput = result?.daily_summary_markdown || 
+                                                  (selectedItems ? JSON.stringify(selectedItems, null, 2) : '');
+                              setToolArguments({ [firstParam]: defaultInput });
+                            }
+                            else { toastError(`工具 "${r.name}" 已不存在`); }
+                          }
+                        };
                   return (
                     <div className="space-y-2">
                       {recents.map((r, idx) => {
@@ -1156,7 +1255,10 @@ const Generation: React.FC = () => {
                 selectedTool ? (
                   <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                     <button 
-                      onClick={() => setSelectedTool(null)}
+                      onClick={() => {
+                        setSelectedTool(null);
+                        setToolArguments({});
+                      }}
                       className="flex items-center gap-1 text-[10px] sm:text-xs text-primary hover:underline mb-2"
                     >
                       <span className="material-symbols-outlined text-sm">arrow_back</span>
@@ -1172,20 +1274,77 @@ const Generation: React.FC = () => {
                       <p className="text-[10px] sm:text-xs text-slate-500 dark:text-text-secondary">{selectedTool.description}</p>
                     </div>
                     
-                    <div>
-                      <label className="block text-[9px] sm:text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 ml-1">
-                        输入参数 (JSON 或 纯文本)
-                      </label>
-                      <textarea 
-                        value={toolInput}
-                        onChange={(e) => setToolInput(e.target.value)}
-                        placeholder="输入工具执行所需的参数内容..."
-                        className="w-full h-32 sm:h-40 bg-white dark:bg-surface-dark text-slate-900 dark:text-white rounded-xl border border-slate-200 dark:border-border-dark focus:ring-2 focus:ring-primary focus:border-primary p-3 text-[10px] sm:text-xs font-mono transition-all outline-none resize-none"
-                      />
+                    <div className="space-y-4 max-h-[40vh] overflow-y-auto px-1 no-scrollbar">
+                      {Object.entries(selectedTool.parameters?.properties || {}).map(([key, prop]: [string, any]) => {
+                        // 排除 date，因为会自动注入
+                        if (key === 'date') return null;
+                        
+                        const isRequired = selectedTool.parameters?.required?.includes(key);
+                        const type = prop.type || 'string';
+                        
+                        return (
+                          <div key={key} className="space-y-1.5">
+                            <div className="flex justify-between items-center">
+                              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">
+                                {prop.title || key} {isRequired && <span className="text-red-500">*</span>}
+                              </label>
+                              {prop.description && (
+                                <span className="text-[9px] text-slate-400 italic max-w-[60%] truncate" title={prop.description}>
+                                  {prop.description}
+                                </span>
+                              )}
+                            </div>
+                            
+                            {prop.enum ? (
+                              <div className="relative">
+                                <select
+                                  value={toolArguments[key] || ''}
+                                  onChange={e => setToolArguments({ ...toolArguments, [key]: e.target.value })}
+                                  className="w-full appearance-none px-3 py-2 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-xs outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white cursor-pointer"
+                                >
+                                  <option value="">请选择...</option>
+                                  {prop.enum.map((v: string) => <option key={v} value={v}>{v}</option>)}
+                                </select>
+                                <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-sm">
+                                  expand_more
+                                </span>
+                              </div>
+                            ) : type === 'boolean' ? (
+                              <div className="flex items-center gap-3 p-2 bg-slate-50 dark:bg-white/[0.02] rounded-xl border border-slate-200 dark:border-white/5">
+                                <span className="text-[10px] text-slate-500">启用</span>
+                                <label className="relative inline-flex items-center cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    className="sr-only peer"
+                                    checked={!!toolArguments[key]}
+                                    onChange={e => setToolArguments({ ...toolArguments, [key]: e.target.checked })}
+                                  />
+                                  <div className="w-9 h-5 bg-slate-200 rounded-full peer peer-checked:bg-primary transition-all after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:after:translate-x-full"></div>
+                                </label>
+                              </div>
+                            ) : type === 'number' || type === 'integer' ? (
+                              <input
+                                type="number"
+                                value={toolArguments[key] ?? ''}
+                                onChange={e => setToolArguments({ ...toolArguments, [key]: e.target.value === '' ? undefined : Number(e.target.value) })}
+                                placeholder={prop.default !== undefined ? `默认: ${prop.default}` : ''}
+                                className="w-full px-3 py-2 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-xs outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white"
+                              />
+                            ) : (
+                              <textarea
+                                value={toolArguments[key] || ''}
+                                onChange={e => setToolArguments({ ...toolArguments, [key]: e.target.value })}
+                                placeholder={prop.default !== undefined ? `默认: ${prop.default}` : '请输入内容...'}
+                                className="w-full px-3 py-2 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-xs outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white min-h-[60px] resize-y"
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
 
                     <button 
-                      onClick={() => handleRunTool(selectedTool, toolInput)}
+                      onClick={() => handleRunTool(selectedTool, toolArguments)}
                       className="w-full py-2.5 sm:py-3 rounded-xl bg-primary hover:bg-cyan-400 text-white font-bold shadow-lg shadow-primary/20 transition-all flex items-center justify-center gap-2 text-sm sm:text-base"
                     >
                       <span className="material-symbols-outlined text-lg">play_arrow</span>
@@ -1200,34 +1359,43 @@ const Generation: React.FC = () => {
                     </div>
                   ) : (
                     <div className="space-y-2">
-                          {tools.map(tool => (
-                            <button
-                              key={tool.id}
-                              onClick={() => {
-                                setSelectedTool(tool);
-                                const defaultInput = result?.daily_summary_markdown || 
-                                                    (selectedItems ? JSON.stringify(selectedItems, null, 2) : '');
-                                setToolInput(defaultInput);
-                              }}
-                              className="w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-border-dark hover:border-amber-400 dark:hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all group text-left"
-                            >
-                              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
-                                <span className="material-symbols-outlined text-lg sm:text-xl">build</span>
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <div className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors truncate">{tool.name}</div>
-                                  {(tool as any).isBuiltin ? (
-                                    <span className="px-1 py-0.5 rounded text-[7px] sm:text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider shrink-0">内置</span>
-                                  ) : (
-                                    <span className="px-1 py-0.5 rounded text-[7px] sm:text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider shrink-0">自定义</span>
-                                  )}
-                                </div>
-                                {tool.description && <div className="text-[10px] sm:text-xs text-slate-500 dark:text-text-secondary mt-0.5 line-clamp-1">{tool.description}</div>}
-                              </div>
-                              <span className="material-symbols-outlined text-slate-300 dark:text-white/10 group-hover:text-amber-500 transition-colors text-lg sm:text-xl">arrow_forward</span>
-                            </button>
-                          ))}
+                      {tools.map(tool => (
+                        <button
+                          key={tool.id}
+                          onClick={() => {
+                            setSelectedTool(tool);
+                            const props = tool.parameters?.properties || {};
+                            const required = tool.parameters?.required || [];
+                            const firstParam = required[0] || Object.keys(props)[0] || 'input';
+                            const defaultInput = result?.daily_summary_markdown || 
+                                                (selectedItems ? JSON.stringify(selectedItems.map(({ selected, id, description, ...rest }: any) => {
+                                                  if (rest.metadata?.ai_summary) {
+                                                    const { content_html, ...restMetadata } = rest.metadata;
+                                                    return { ...rest, metadata: restMetadata };
+                                                  }
+                                                  return rest;
+                                                }), null, 2) : '');
+                            setToolArguments({ [firstParam]: defaultInput });
+                          }}
+                          className="w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-border-dark hover:border-amber-400 dark:hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all group text-left"
+                        >
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-amber-100 dark:bg-amber-500/20 flex items-center justify-center text-amber-600 dark:text-amber-400 shrink-0">
+                            <span className="material-symbols-outlined text-lg sm:text-xl">build</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <div className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors truncate">{tool.name}</div>
+                              {(tool as any).isBuiltin ? (
+                                <span className="px-1 py-0.5 rounded text-[7px] sm:text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider shrink-0">内置</span>
+                              ) : (
+                                <span className="px-1 py-0.5 rounded text-[7px] sm:text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider shrink-0">自定义</span>
+                              )}
+                            </div>
+                            {tool.description && <div className="text-[10px] sm:text-xs text-slate-500 dark:text-text-secondary mt-0.5 line-clamp-1">{tool.description}</div>}
+                          </div>
+                          <span className="material-symbols-outlined text-slate-300 dark:text-white/10 group-hover:text-amber-500 transition-colors text-lg sm:text-xl">arrow_forward</span>
+                        </button>
+                      ))}
                     </div>
                   )
                 )

@@ -48,11 +48,22 @@ export function removeMarkdownCodeBlock(text: string): string {
 
 export function stripHtml(html: string): string {
   if (!html) return "";
-  let processedHtml = html.replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*>/gi, (match, src, alt) => {
+  
+  // 1. 移除 script 和 style 标签及其内容 (HTML 中的 CSS 和 JS)
+  let processedHtml = html.replace(/<script[\s\S]*?<\/script>/gi, '');
+  processedHtml = processedHtml.replace(/<style[\s\S]*?<\/style>/gi, '');
+  
+  // 2. 移除 Markdown 格式的 CSS 代码块 (如果存在)
+  processedHtml = processedHtml.replace(/```css[\s\S]*?```/gi, '');
+  
+  // 3. 处理图片和视频（保留基本信息，作为纯文本中的占位符）
+  processedHtml = processedHtml.replace(/<img[^>]*src="([^"]*)"[^>]*alt="([^"]*)"[^>]*>/gi, (match, src, alt) => {
     return alt ? `[图片: ${alt} ${src}]` : `[图片: ${src}]`;
   });
   processedHtml = processedHtml.replace(/<img[^>]*src="([^"]*)"[^>]*>/gi, '[图片: $1]');
   processedHtml = processedHtml.replace(/<video[^>]*src="([^"]*)"[^>]*>.*?<\/video>/gi, '[视频: $1]');
+  
+  // 4. 移除所有其他 HTML 标签
   return processedHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 

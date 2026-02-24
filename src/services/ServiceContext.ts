@@ -43,6 +43,10 @@ export class ServiceContext {
     return this.services.translationService;
   }
 
+  public get importService() {
+    return this.services.importService;
+  }
+
   public get aiProvider(): AIProvider | undefined {
     return this.services.aiProvider;
   }

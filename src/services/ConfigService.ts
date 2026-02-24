@@ -37,35 +37,6 @@ export class ConfigService {
       ...(storedSettings || {})
     } as SystemSettings;
 
-    // 迁移逻辑：将旧的 storage ID 'github' 更新为 'github-storage'
-    let needsSave = false;
-    if (this.settings.STORAGES && Array.isArray(this.settings.STORAGES)) {
-      for (const storage of this.settings.STORAGES) {
-        if (storage.id === 'github') {
-          storage.id = 'github-storage';
-          needsSave = true;
-        }
-      }
-    }
-    
-    // 迁移 CLOSED_PLUGINS 中的 storage ID
-    if (this.settings.CLOSED_PLUGINS && Array.isArray(this.settings.CLOSED_PLUGINS)) {
-      const index = this.settings.CLOSED_PLUGINS.indexOf('github');
-      if (index !== -1) {
-        // 检查是否有 'github' publisher，如果没有则说明这是 storage
-        const hasGithubPublisher = this.settings.PUBLISHERS?.some((p: any) => p.id === 'github');
-        if (!hasGithubPublisher) {
-          this.settings.CLOSED_PLUGINS[index] = 'github-storage';
-          needsSave = true;
-        }
-      }
-    }
-
-    if (needsSave) {
-      await this.save();
-      console.log('Migrated storage ID from "github" to "github-storage"');
-    }
-
     return this.settings;
   }
 

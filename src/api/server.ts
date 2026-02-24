@@ -6,6 +6,7 @@ import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import AdmZip from 'adm-zip';
 import YAML from 'yaml';
@@ -13,6 +14,7 @@ import { LocalStore } from '../services/LocalStore.js';
 import { AIService } from '../services/AIService.js';
 import { createAIProvider } from '../services/AIProvider.js';
 import { getISODate, parseGithubUrl } from '../utils/helpers.js';
+import { parseOPML } from '../utils/opml.js';
 
 import { LogService } from '../services/LogService.js';
 import { ServiceContext } from '../services/ServiceContext.js';
@@ -157,7 +159,34 @@ export async function createServer(existingStore?: LocalStore) {
     }
   });
 
+  fastify.post('/api/import', async (request, reply) => {
+    try {
+      const { mode, categoryId, payload } = request.body as any;
+      if (!mode || !categoryId || !payload) {
+        return reply.status(400).send({ error: '缺少必要参数 (mode, categoryId, payload)' });
+      }
+
+      const importService = context.importService;
+      if (mode === 'URL') {
+        const item = await importService.importFromUrl(payload.url, categoryId);
+        return { status: 'success', data: item };
+      } else if (mode === 'TEXT') {
+        const item = await importService.importFromText(payload.title, payload.content, categoryId);
+        return { status: 'success', data: item };
+      } else if (mode === 'JSON') {
+        const count = await importService.importFromJson(payload.json, categoryId);
+        return { status: 'success', count };
+      } else {
+        return reply.status(400).send({ error: '不支持的导入模式' });
+      }
+    } catch (error: any) {
+      LogService.error(`API Import failed: ${error.message}`);
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.post('/api/dashboard/test-ai', async (request, reply) => {
+
     try {
       if (!context.aiProvider) {
         return { status: 'error', message: 'AI Provider not configured' };
@@ -290,6 +319,16 @@ export async function createServer(existingStore?: LocalStore) {
     }
   });
 
+  fastify.delete('/api/content/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      await context.taskService.deleteSourceData(id);
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.get('/api/proxy/image', async (request, reply) => {
     try {
       const { url } = request.query as any;
@@ -310,6 +349,67 @@ export async function createServer(existingStore?: LocalStore) {
       const buffer = await response.arrayBuffer();
       return Buffer.from(buffer);
     } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/adapters/import-opml', async (request, reply) => {
+    try {
+      const { opmlContent, adapterId } = request.body as any;
+      if (!opmlContent) {
+        return reply.status(400).send({ error: '缺少 opmlContent 参数' });
+      }
+
+      const feeds = parseOPML(opmlContent);
+      if (feeds.length === 0) {
+        return reply.status(400).send({ error: '未在 OPML 中找到任何 RSS 订阅源' });
+      }
+
+      const currentSettings = await store.get('system_settings') || {};
+      const adapters = currentSettings.ADAPTERS || [];
+      
+      // 查找或创建 RSSAdapter 配置
+      let rssAdapterConfig = adapterId 
+        ? adapters.find((a: any) => a.id === adapterId)
+        : adapters.find((a: any) => a.adapterType === 'RSSAdapter');
+      
+      if (!rssAdapterConfig) {
+        rssAdapterConfig = {
+          id: 'rss-bulk-import',
+          name: 'RSS 批量导入',
+          adapterType: 'RSSAdapter',
+          enabled: true,
+          apiUrl: '',
+          items: []
+        };
+        adapters.push(rssAdapterConfig);
+      }
+
+      // 批量添加 items
+      const newItems = feeds.map(feed => ({
+        id: `rss-${crypto.createHash('md5').update(feed.xmlUrl).digest('hex').substring(0, 12)}`,
+        name: feed.title,
+        enabled: true,
+        useProxy: false,
+        category: feed.category || 'rss',
+        rssUrl: feed.xmlUrl,
+        limit: 20
+      }));
+
+      // 简单的去重逻辑（根据 rssUrl）
+      const existingUrls = new Set(rssAdapterConfig.items.map((item: any) => item.rssUrl));
+      for (const item of newItems) {
+        if (!existingUrls.has(item.rssUrl)) {
+          rssAdapterConfig.items.push(item);
+        }
+      }
+
+      await store.put('system_settings', { ...currentSettings, ADAPTERS: adapters });
+      await context.reload();
+
+      return { status: 'success', count: feeds.length, added: newItems.length };
+    } catch (error: any) {
+      LogService.error(`OPML import failed: ${error.message}`);
       reply.status(500).send({ error: error.message });
     }
   });
@@ -645,6 +745,7 @@ export async function createServer(existingStore?: LocalStore) {
       };
 
       await store.saveSkill(skill);
+      await context.skillService.refreshSkills();
       return { status: 'success', skill };
     } catch (error: any) {
       reply.status(500).send({ error: error.message });
@@ -661,6 +762,7 @@ export async function createServer(existingStore?: LocalStore) {
         fs.rmSync(skillDir, { recursive: true, force: true });
       }
       await store.deleteSkill(id);
+      await context.skillService.refreshSkills();
       return { status: 'success' };
     } catch (error: any) {
       reply.status(500).send({ error: error.message });
@@ -743,6 +845,15 @@ export async function createServer(existingStore?: LocalStore) {
 
       fs.writeFileSync(fullPath, content, 'utf8');
 
+      let needsDbSave = false;
+
+      // 如果是新文件，更新技能的文件列表
+      if (!skill.files) skill.files = [];
+      if (filePath !== 'SKILL.md' && !skill.files.includes(filePath)) {
+        skill.files.push(filePath);
+        needsDbSave = true;
+      }
+
       // 如果修改的是 SKILL.md，同步更新数据库元数据
       if (filePath === 'SKILL.md') {
         const skillMdContent = content
@@ -754,17 +865,33 @@ export async function createServer(existingStore?: LocalStore) {
           try {
             const metadata = YAML.parse(frontmatterMatch[1]);
             const instructions = frontmatterMatch[2].trim();
-            if (metadata.name && metadata.description) {
+            
+            // 只要有任何一项更新，就同步到数据库
+            if (metadata.name) {
               skill.name = metadata.name;
-              skill.description = metadata.description;
-              skill.instructions = instructions;
-              await store.saveSkill(skill);
+              needsDbSave = true;
             }
-          } catch (e) {
+            if (metadata.description) {
+              skill.description = metadata.description;
+              needsDbSave = true;
+            }
+            if (instructions !== undefined) {
+              skill.instructions = instructions;
+              needsDbSave = true;
+            }
+          } catch (e: any) {
             // YAML 解析失败也允许保存文件，但不更新元数据
+            LogService.warn(`Failed to parse SKILL.md YAML: ${e.message}`);
           }
         }
       }
+
+      if (needsDbSave) {
+        await store.saveSkill(skill);
+      }
+      
+      // 无论是否更新数据库，都刷新内存缓存，因为文件已经在磁盘上更新了
+      await context.skillService.refreshSkills();
 
       return { status: 'success' };
     } catch (error: any) {

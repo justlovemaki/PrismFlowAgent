@@ -31,13 +31,19 @@ export interface AdapterItemConfig {
   feedId?: string;
   fetchPages?: number;
   enableTranslation?: boolean;
+  // RSS fields
+  rssUrl?: string;
+  limit?: number;
+  // AI Search fields
+  keyword?: string;
+  executorId?: string;
 }
 
 export interface AdapterConfig {
   id: string;
   name: string;
   category?: string;
-  adapterType: 'GitHubTrendingAdapter' | 'FollowApiAdapter';
+  adapterType: 'GitHubTrendingAdapter' | 'FollowApiAdapter' | 'AISearchAdapter' | 'RSSAdapter';
   enabled: boolean;
   apiUrl: string;
   fetchDays?: number;
@@ -78,5 +84,6 @@ export interface SystemSettings {
   CATEGORIES: CategoryConfig[];
   SKILL_STORE_API_KEY?: string;
   GLOBAL_GITHUB_TOKEN?: string;
+  ARK_API_KEY?: string;
   [key: string]: any; // Allow for dynamic extension
 }

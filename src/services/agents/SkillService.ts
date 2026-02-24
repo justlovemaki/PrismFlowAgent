@@ -55,7 +55,7 @@ export class SkillService {
     const id = path.basename(dirPath);
 
     // Parse Frontmatter
-    const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+    const match = content.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n([\s\S]*)$/);
     if (!match) {
       throw new Error('Invalid Skill format: Missing Frontmatter');
     }

@@ -24,16 +24,23 @@ export class FollowApiAdapter extends BaseAdapter {
   public foloCookie?: string;
   configFields = FollowApiAdapter.metadata.configFields;
 
+  private listId?: string;
+  private feedId?: string;
+  private fetchDays: number = 3;
+  private fetchPages: number = 1;
+
 
   constructor(
     public readonly name: string,
     public readonly category: string,
-    private listId?: string,
-    private feedId?: string,
-    private fetchDays: number = 3,
-    private fetchPages: number = 1
+    itemConfig: any = {}
   ) {
     super();
+    this.listId = itemConfig.listId;
+    this.feedId = itemConfig.feedId;
+    this.fetchDays = itemConfig.fetchDays || 3;
+    this.fetchPages = itemConfig.fetchPages || 1;
+
     // 校验逻辑：listId 和 feedId 必须填其中一个
     if (!this.listId && !this.feedId) {
       throw new Error(`[FollowApiAdapter: ${this.name}] 必须提供 listId 或 feedId 其中之一`);

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, memo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getContent, regenerateSummary } from '../services/contentService';
+import { getContent, regenerateSummary, deleteContent } from '../services/contentService';
 import { getSettings } from '../services/settingsService';
 import { agentService } from '../services/agentService';
+import { useToast } from '../context/ToastContext';
 import type { Agent } from '../services/agentService';
 import { getTodayShanghai, formatToShanghai } from '../utils/dateUtils';
 import { saveToCache, loadFromCache, CACHE_KEYS, clearExpiredCache, clearCache } from '../utils/cacheUtils';
@@ -30,8 +31,169 @@ interface ContentItem {
   };
 }
 
+const ContentCard = memo(({ 
+  item, 
+  onToggle, 
+  onPreview, 
+  onRegenerate, 
+  onDelete, 
+  aiMode, 
+  imageProxy, 
+  categories 
+}: { 
+  item: ContentItem, 
+  onToggle: (category: string, id: string) => void,
+  onPreview: (item: ContentItem) => void,
+  onRegenerate: (item: ContentItem) => void,
+  onDelete: (e: React.MouseEvent, item: ContentItem) => void,
+  aiMode: boolean,
+  imageProxy: string,
+  categories: any[]
+}) => {
+  const getTypeStyle = (category: string) => {
+    const cat = category.toLowerCase();
+    if (cat === 'githubtrending') return 'bg-slate-900 dark:bg-[#24292e] text-white border-slate-800';
+    if (cat === 'news') return 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20';
+    if (cat === 'paper') return 'bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/20';
+    if (cat === 'social' || cat === 'socialmedia') return 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/20';
+    if (cat === 'history') return 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20';
+    return 'bg-primary/10 text-primary border-primary/20';
+  };
+
+  const getIcon = (category: string) => {
+    const cat = category.toLowerCase();
+    if (cat === 'history') return 'archive';
+    const config = categories.find(c => c.id.toLowerCase() === cat);
+    if (config && config.icon) return config.icon;
+    return 'public';
+  };
+
+  return (
+    <div 
+      onClick={() => onToggle(item.category, item.id)}
+      className={`group relative border-2 rounded-xl p-3 transition-all cursor-pointer ${
+        item.selected 
+          ? 'bg-white dark:bg-surface-dark border-primary shadow-[0_0_15px_rgba(12,175,207,0.1)]' 
+          : 'bg-white dark:bg-surface-dark border-slate-200 dark:border-border-dark hover:border-primary/50'
+      }`}
+    >
+      <div className="flex justify-between items-start mb-3">
+        <div className="relative flex items-center">
+          <input 
+            type="checkbox" 
+            checked={item.selected}
+            readOnly
+            className="w-5 h-5 rounded border-slate-300 dark:border-border-dark text-primary bg-background-light dark:bg-background-dark focus:ring-primary cursor-pointer"
+          />
+        </div>
+        <div className="flex items-center gap-2">
+          {aiMode && item.metadata?.ai_score && (
+            <span className="flex items-center gap-1 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm" title={item.metadata?.ai_score_reason}>
+              <span className="material-symbols-outlined text-[12px]">grade</span>
+              {item.metadata.ai_score}
+            </span>
+          )}
+          <span className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${getTypeStyle(item.category)}`}>
+            <span className="material-symbols-outlined text-sm">{getIcon(item.category)}</span> 
+            {categories.find(c => c.id.toLowerCase() === item.category.toLowerCase())?.label || item.category.toUpperCase()}
+          </span>
+        </div>
+      </div>
+      
+      <h3 className={`font-bold text-lg mb-2 leading-tight transition-colors line-clamp-2 break-words ${item.selected ? 'text-primary' : 'text-slate-900 dark:text-white group-hover:text-primary'}`}>
+        {item.metadata?.translated_title || item.title}
+      </h3>
+
+      <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3 text-[11px] text-slate-400 dark:text-text-secondary">
+        {item.source && (
+          <span className="flex items-center gap-1 truncate max-w-full">
+            <span className="material-symbols-outlined text-xs flex-shrink-0">hub</span>
+            <span className="truncate">{item.source}</span>
+          </span>
+        )}
+        {item.author && (
+          <span className="flex items-center gap-1 truncate max-w-full">
+            <span className="material-symbols-outlined text-xs flex-shrink-0">person</span>
+            <span className="truncate">{item.author}</span>
+          </span>
+        )}
+        {item.published_date && (
+          <span className="flex items-center gap-1 truncate max-w-full" title="发布时间 (上海)">
+            <span className="material-symbols-outlined text-xs flex-shrink-0">schedule</span>
+            <span className="truncate">{formatToShanghai(item.published_date)}</span>
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-col">
+        <div className="text-slate-500 dark:text-text-secondary text-sm mb-4 line-clamp-5 break-words overflow-hidden">
+          <ContentRenderer 
+            content={(aiMode && item.metadata?.ai_summary) 
+              ? item.metadata.ai_summary 
+              : (item.metadata?.translated_description || item.description)} 
+            imageProxy={imageProxy}
+          />
+        </div>
+        
+        <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-white/5 h-12 flex-shrink-0">
+          <div className="flex items-center">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                onPreview(item);
+              }}
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-primary hover:bg-primary/10 transition-all"
+              title="查看预览"
+            >
+              <span className="material-symbols-outlined text-xl">visibility</span>
+            </button>
+            {aiMode && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onRegenerate(item);
+                }}
+                className="w-8 h-8 ml-2 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-amber-500 hover:bg-amber-500/10 transition-all"
+                title="重新生成 AI 摘要"
+              >
+                <span className="material-symbols-outlined text-xl">refresh</span>
+              </button>
+            )}
+            <button 
+              onClick={(e) => onDelete(e, item)}
+              className="w-8 h-8 ml-2 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-red-500 hover:bg-red-500/10 transition-all"
+              title="删除该条内容"
+            >
+              <span className="material-symbols-outlined text-xl">delete</span>
+            </button>
+          </div>
+          
+          <div className="flex items-center gap-4">
+            {item.stars && (
+              <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-text-secondary font-medium">
+                <span className="material-symbols-outlined text-xs text-amber-500">star</span> {item.stars}
+              </div>
+            )}
+            <a 
+              href={item.url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-primary hover:bg-primary/10 transition-all"
+              title="打开链接"
+            >
+              <span className="material-symbols-outlined text-xl">open_in_new</span>
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 const Selection: React.FC = () => {
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [searchParams, setSearchParams] = useSearchParams();
   const dateParam = searchParams.get('date');
   
@@ -44,7 +206,6 @@ const Selection: React.FC = () => {
   const [previewItem, setPreviewItem] = useState<ContentItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [columnCount, setColumnCount] = useState(3);
-  const [selectionCounter, setSelectionCounter] = useState(0); // 用于记录选中顺序
   const [aiMode, setAiMode] = useState(false); // AI 推荐模式开关
 
   const [agents, setAgents] = useState<Agent[]>([]);
@@ -52,6 +213,21 @@ const Selection: React.FC = () => {
   const [showAgentSelector, setShowAgentSelector] = useState(false);
   const [targetItem, setTargetItem] = useState<ContentItem | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // 辅助函数：剪裁数据以减少缓存体积，防止 localStorage 超出配额
+  const pruneItemsForCache = useCallback((itemsToPrune: ContentItem[]): ContentItem[] => {
+    return itemsToPrune.map(item => {
+      if (!item.metadata) return item;
+      
+      // 移除体积巨大且在列表页非必须的字段
+      const { content_html, full_content, ...safeMetadata } = item.metadata;
+      return {
+        ...item,
+        metadata: safeMetadata
+      };
+    });
+  }, []);
 
   useEffect(() => {
     if (dateParam && dateParam !== date) {
@@ -110,6 +286,26 @@ const Selection: React.FC = () => {
     return () => window.removeEventListener('resize', updateColumnCount);
   }, []);
 
+  useEffect(() => {
+    const mainElement = document.querySelector('main');
+    const handleScroll = () => {
+      if (mainElement && mainElement.scrollTop > 400) {
+        setShowScrollTop(true);
+      } else {
+        setShowScrollTop(false);
+      }
+    };
+
+    if (mainElement) {
+      mainElement.addEventListener('scroll', handleScroll);
+    }
+    return () => {
+      if (mainElement) {
+        mainElement.removeEventListener('scroll', handleScroll);
+      }
+    };
+  }, []);
+
   const handleDateChange = (newDate: string) => {
     setDate(newDate);
     setSearchParams({ date: newDate });
@@ -130,14 +326,10 @@ const Selection: React.FC = () => {
 
     if (hasCachedData) {
       setItems(cachedItems!);
-      // 计算最大的选中顺序，并设置计数器
-      const maxOrder = cachedItems!.reduce((max, item) => Math.max(max, item.selectedOrder || 0), 0);
-      setSelectionCounter(maxOrder);
       setLoading(false);
     } else {
       // 无缓存时才先清空，避免刷新失败导致已有内容闪空
       setItems([]);
-      setSelectionCounter(0);
     }
 
     try {
@@ -196,7 +388,7 @@ const Selection: React.FC = () => {
 
         // 只有当数据不为空时才保存到缓存
         if (merged.length > 0) {
-          saveToCache(CACHE_KEYS.SELECTION_ITEMS, merged, date);
+          saveToCache(CACHE_KEYS.SELECTION_ITEMS, pruneItemsForCache(merged), date);
         }
         return merged;
       });
@@ -207,31 +399,107 @@ const Selection: React.FC = () => {
     }
   };
 
-  const toggleItem = (category: string, id: string) => {
+  const toggleItem = useCallback((category: string, id: string) => {
     setItems(prev => {
+      const maxOrder = prev.reduce((max, item) => Math.max(max, item.selectedOrder || 0), 0);
       const updated = prev.map(item => {
         if (item.id === id && item.category === category) {
           if (item.selected) {
             // 取消选中，移除顺序标记
             return { ...item, selected: false, selectedOrder: undefined };
           } else {
-            // 选中，添加顺序标记
-            setSelectionCounter(c => c + 1);
-            return { ...item, selected: true, selectedOrder: selectionCounter + 1 };
+            // 选中，使用当前最大顺序 + 1
+            return { ...item, selected: true, selectedOrder: maxOrder + 1 };
           }
         }
         return item;
       });
       // 保存到缓存
-      saveToCache(CACHE_KEYS.SELECTION_ITEMS, updated, date);
+      saveToCache(CACHE_KEYS.SELECTION_ITEMS, pruneItemsForCache(updated), date);
       return updated;
     });
-  };
+  }, [date, pruneItemsForCache]);
 
-  const handleSelectAll = () => {
+  const filteredItems = useMemo(() => {
+    return items.filter(item => {
+      // 分类过滤
+      const cat = item.category.toLowerCase();
+      
+      // 获取当前有效的分类 ID 列表
+      const validCategoryIds = new Set(categories.map(c => c.id.toLowerCase()));
+      validCategoryIds.add('history'); // 历史存档始终有效
+
+      let categoryMatch = true;
+      if (activeTab === '全部') {
+        // 在“全部”模式下，只显示在有效分类列表中的项目，避免显示已删除分类的残留数据
+        categoryMatch = validCategoryIds.has(cat);
+      }
+      else if (activeTab === '历史存档') {
+        categoryMatch = cat === 'history';
+      }
+      else {
+        // 查找当前选中的页签对应的分类 ID
+        const activeCat = categories.find(c => 
+          c.label === activeTab || 
+          c.id === activeTab ||
+          c.label.toLowerCase() === activeTab.toLowerCase() ||
+          c.id.toLowerCase() === activeTab.toLowerCase()
+        );
+        
+        if (activeCat) {
+          // 使用 ID 进行匹配 (忽略大小写)
+          categoryMatch = cat === activeCat.id.toLowerCase();
+        } else {
+          // 如果没找到分类配置，且不是全部/历史存档，则不匹配
+          categoryMatch = false;
+        }
+      }
+
+      
+      // 搜索过滤
+      if (!searchQuery.trim()) return categoryMatch;
+      
+      const query = searchQuery.toLowerCase();
+      const titleMatch = item.title.toLowerCase().includes(query);
+      const descMatch = item.description.toLowerCase().includes(query);
+      const sourceMatch = item.source?.toLowerCase().includes(query);
+      const authorMatch = item.author?.toLowerCase().includes(query);
+      
+      return categoryMatch && (titleMatch || descMatch || sourceMatch || authorMatch);
+    }).sort((a, b) => {
+      const dateA = a.published_date ? new Date(a.published_date).getTime() : 0;
+      const dateB = b.published_date ? new Date(b.published_date).getTime() : 0;
+
+      // 如果开启了 AI 推荐模式，按分数和时间综合排序
+      if (aiMode) {
+        // 先按日期（天）排序
+        const dayA = new Date(dateA).setHours(0, 0, 0, 0);
+        const dayB = new Date(dateB).setHours(0, 0, 0, 0);
+        
+        if (dayB !== dayA) {
+          return dayB - dayA;
+        }
+        
+        // 同一天内，按 AI 分数排序
+        const scoreA = a.metadata?.ai_score || 0;
+        const scoreB = b.metadata?.ai_score || 0;
+        
+        if (scoreB !== scoreA) {
+          return scoreB - scoreA;
+        }
+        
+        // 如果分数也相同，按具体时间排序
+        return dateB - dateA;
+      }
+      // 按时间降序排序（最新的在前）
+      return dateB - dateA;
+    });
+  }, [items, activeTab, categories, searchQuery, aiMode]);
+
+  const handleSelectAll = useCallback(() => {
     const visibleIds = new Set(filteredItems.map(item => `${item.category}-${item.id}`));
     setItems(prev => {
-      let counter = selectionCounter;
+      let counter = prev.reduce((max, item) => Math.max(max, item.selectedOrder || 0), 0);
       const updated = prev.map(item => {
         if (visibleIds.has(`${item.category}-${item.id}`) && !item.selected) {
           counter++;
@@ -239,24 +507,23 @@ const Selection: React.FC = () => {
         }
         return item;
       });
-      setSelectionCounter(counter);
       // 保存到缓存
-      saveToCache(CACHE_KEYS.SELECTION_ITEMS, updated, date);
+      saveToCache(CACHE_KEYS.SELECTION_ITEMS, pruneItemsForCache(updated), date);
       return updated;
     });
-  };
+  }, [filteredItems, date, pruneItemsForCache]);
 
-  const handleDeselectAll = () => {
+  const handleDeselectAll = useCallback(() => {
     const visibleIds = new Set(filteredItems.map(item => `${item.category}-${item.id}`));
     setItems(prev => {
       const updated = prev.map(item =>
         visibleIds.has(`${item.category}-${item.id}`) ? { ...item, selected: false, selectedOrder: undefined } : item
       );
       // 保存到缓存
-      saveToCache(CACHE_KEYS.SELECTION_ITEMS, updated, date);
+      saveToCache(CACHE_KEYS.SELECTION_ITEMS, pruneItemsForCache(updated), date);
       return updated;
     });
-  };
+  }, [filteredItems, date, pruneItemsForCache]);
 
   const handleGenerate = () => {
     // 按选中顺序排序
@@ -270,10 +537,40 @@ const Selection: React.FC = () => {
     navigate('/generation', { state: { date, selectedIds, selectedItems: sortedSelectedItems } });
   };
 
-  const handleRegenerateClick = (item: ContentItem) => {
+  const scrollToTop = () => {
+    const mainElement = document.querySelector('main');
+    if (mainElement) {
+      mainElement.scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
+
+  const handleRegenerateClick = useCallback((item: ContentItem) => {
     setTargetItem(item);
     setShowAgentSelector(true);
-  };
+  }, []);
+
+  const handleDeleteItem = useCallback(async (e: React.MouseEvent, item: ContentItem) => {
+    e.stopPropagation();
+    if (!window.confirm('确定要删除这条内容吗？')) return;
+    
+    try {
+      await deleteContent(item.id);
+      showToast('删除成功', 'success');
+      
+      // 更新本地状态
+      setItems(prev => {
+        const updated = prev.filter(i => !(i.id === item.id && i.category === item.category));
+        // 同时更新缓存
+        saveToCache(CACHE_KEYS.SELECTION_ITEMS, pruneItemsForCache(updated), date);
+        return updated;
+      });
+    } catch (error) {
+      console.error('Failed to delete item:', error);
+      showToast('删除失败', 'error');
+    }
+  }, [date, pruneItemsForCache, showToast]);
 
   const onSelectAgent = async (agentId: string) => {
     if (!targetItem) return;
@@ -297,7 +594,7 @@ const Selection: React.FC = () => {
             return item;
           });
           // 同时更新缓存
-          saveToCache(CACHE_KEYS.SELECTION_ITEMS, updated, date);
+          saveToCache(CACHE_KEYS.SELECTION_ITEMS, pruneItemsForCache(updated), date);
           return updated;
         });
         setShowAgentSelector(false);
@@ -310,118 +607,19 @@ const Selection: React.FC = () => {
     }
   };
 
-  const filteredItems = items.filter(item => {
-    // 分类过滤
-    const cat = item.category.toLowerCase();
-    
-    // 获取当前有效的分类 ID 列表
-    const validCategoryIds = new Set(categories.map(c => c.id.toLowerCase()));
-    validCategoryIds.add('history'); // 历史存档始终有效
-
-    let categoryMatch = true;
-    if (activeTab === '全部') {
-      // 在“全部”模式下，只显示在有效分类列表中的项目，避免显示已删除分类的残留数据
-      categoryMatch = validCategoryIds.has(cat);
-    }
-    else if (activeTab === '历史存档') {
-      categoryMatch = cat === 'history';
-    }
-    else {
-      // 查找当前选中的页签对应的分类 ID
-      const activeCat = categories.find(c => 
-        c.label === activeTab || 
-        c.id === activeTab ||
-        c.label.toLowerCase() === activeTab.toLowerCase() ||
-        c.id.toLowerCase() === activeTab.toLowerCase()
-      );
-      
-      if (activeCat) {
-        // 使用 ID 进行匹配 (忽略大小写)
-        categoryMatch = cat === activeCat.id.toLowerCase();
-      } else {
-        // 如果没找到分类配置，且不是全部/历史存档，则不匹配
-        categoryMatch = false;
-      }
-    }
-
-    
-    // 搜索过滤
-    if (!searchQuery.trim()) return categoryMatch;
-    
-    const query = searchQuery.toLowerCase();
-    const titleMatch = item.title.toLowerCase().includes(query);
-    const descMatch = item.description.toLowerCase().includes(query);
-    const sourceMatch = item.source?.toLowerCase().includes(query);
-    const authorMatch = item.author?.toLowerCase().includes(query);
-    
-    return categoryMatch && (titleMatch || descMatch || sourceMatch || authorMatch);
-  }).sort((a, b) => {
-    const dateA = a.published_date ? new Date(a.published_date).getTime() : 0;
-    const dateB = b.published_date ? new Date(b.published_date).getTime() : 0;
-
-    // 如果开启了 AI 推荐模式，按分数和时间综合排序
-    if (aiMode) {
-      // 先按日期（天）排序
-      const dayA = new Date(dateA).setHours(0, 0, 0, 0);
-      const dayB = new Date(dateB).setHours(0, 0, 0, 0);
-      
-      if (dayB !== dayA) {
-        return dayB - dayA;
-      }
-      
-      // 同一天内，按 AI 分数排序
-      const scoreA = a.metadata?.ai_score || 0;
-      const scoreB = b.metadata?.ai_score || 0;
-      
-      if (scoreB !== scoreA) {
-        return scoreB - scoreA;
-      }
-      
-      // 如果分数也相同，按具体时间排序
-      return dateB - dateA;
-    }
-    // 按时间降序排序（最新的在前）
-    return dateB - dateA;
-  });
-
-
-  const selectedCount = items.filter(i => i.selected).length;
+  const selectedCount = useMemo(() => items.filter(i => i.selected).length, [items]);
 
   // 将数据分配到各列，按时间从左到右排序
-  const distributeToColumns = (items: ContentItem[]) => {
-    const columns: ContentItem[][] = Array.from({ length: columnCount }, () => []);
+  const columns = useMemo(() => {
+    const cols: ContentItem[][] = Array.from({ length: columnCount }, () => []);
     
-    items.forEach((item, index) => {
+    filteredItems.forEach((item, index) => {
       const columnIndex = index % columnCount;
-      columns[columnIndex].push(item);
+      cols[columnIndex].push(item);
     });
     
-    return columns;
-  };
-
-  const getTypeStyle = (category: string) => {
-    const cat = category.toLowerCase();
-    
-    if (cat === 'githubtrending') return 'bg-slate-900 dark:bg-[#24292e] text-white border-slate-800';
-    if (cat === 'news') return 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20';
-    if (cat === 'paper') return 'bg-purple-50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/20';
-    if (cat === 'social' || cat === 'socialmedia') return 'bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/20';
-    if (cat === 'history') return 'bg-amber-50 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20';
-    
-    return 'bg-primary/10 text-primary border-primary/20';
-  };
-
-  const getIcon = (category: string) => {
-    const cat = category.toLowerCase();
-    if (cat === 'history') return 'archive';
-    const config = categories.find(c => c.id.toLowerCase() === cat);
-    if (config && config.icon) return config.icon;
-    return 'public';
-  };
-
-
-  const columns = distributeToColumns(filteredItems);
-
+    return cols;
+  }, [filteredItems, columnCount]);
 
 
   return (
@@ -527,126 +725,17 @@ const Selection: React.FC = () => {
           {columns.map((column, columnIndex) => (
             <div key={`${columnCount}-${columnIndex}`} className="flex flex-col gap-4">
               {column.map((item) => (
-                <motion.div 
+                <ContentCard 
                   key={`${item.category}-${item.id}`}
-                  layout
-                  onClick={() => toggleItem(item.category, item.id)}
-                  className={`group relative border-2 rounded-xl p-3 transition-all cursor-pointer ${
-                    item.selected 
-                      ? 'bg-white dark:bg-surface-dark border-primary shadow-[0_0_15px_rgba(12,175,207,0.1)]' 
-                      : 'bg-white dark:bg-surface-dark border-slate-200 dark:border-border-dark hover:border-primary/50'
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-3">
-                    <div className="relative flex items-center">
-                      <input 
-                        type="checkbox" 
-                        checked={item.selected}
-                        onChange={() => {}} 
-                        className="w-5 h-5 rounded border-slate-300 dark:border-border-dark text-primary bg-background-light dark:bg-background-dark focus:ring-primary cursor-pointer"
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {aiMode && item.metadata?.ai_score && (
-                        <span className="flex items-center gap-1 bg-amber-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm" title={item.metadata?.ai_score_reason}>
-                          <span className="material-symbols-outlined text-[12px]">grade</span>
-                          {item.metadata.ai_score}
-                        </span>
-                      )}
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${getTypeStyle(item.category)}`}>
-                        <span className="material-symbols-outlined text-sm">{getIcon(item.category)}</span> 
-                        {categories.find(c => c.id.toLowerCase() === item.category.toLowerCase())?.label || item.category.toUpperCase()}
-                      </span>
-                    </div>
-
-
-                  </div>
-                  
-                  <h3 className={`font-bold text-lg mb-2 leading-tight transition-colors line-clamp-2 break-words ${item.selected ? 'text-primary' : 'text-slate-900 dark:text-white group-hover:text-primary'}`}>
-                    {item.metadata?.translated_title || item.title}
-                  </h3>
-
-                  <div className="flex flex-wrap gap-x-3 gap-y-1 mb-3 text-[11px] text-slate-400 dark:text-text-secondary">
-                    {item.source && (
-                      <span className="flex items-center gap-1 truncate max-w-full">
-                        <span className="material-symbols-outlined text-xs flex-shrink-0">hub</span>
-                        <span className="truncate">{item.source}</span>
-                      </span>
-                    )}
-                    {item.author && (
-                      <span className="flex items-center gap-1 truncate max-w-full">
-                        <span className="material-symbols-outlined text-xs flex-shrink-0">person</span>
-                        <span className="truncate">{item.author}</span>
-                      </span>
-                    )}
-                    {item.published_date && (
-                      <span className="flex items-center gap-1 truncate max-w-full" title="发布时间 (上海)">
-                        <span className="material-symbols-outlined text-xs flex-shrink-0">schedule</span>
-                        <span className="truncate">{formatToShanghai(item.published_date)}</span>
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col">
-                    <div className="text-slate-500 dark:text-text-secondary text-sm mb-4 line-clamp-5 break-words overflow-hidden">
-                      <ContentRenderer 
-                        content={(aiMode && item.metadata?.ai_summary) 
-                          ? item.metadata.ai_summary 
-                          : (item.metadata?.translated_description || item.description)} 
-                        imageProxy={imageProxy}
-                      />
-                    </div>
-                    
-                    <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-white/5 h-12 flex-shrink-0">
-                      <div className="flex items-center">
-                        {item.metadata && Object.keys(item.metadata).length > 0 && (
-                          <>
-                            <button 
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setPreviewItem(item);
-                              }}
-                              className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-primary hover:bg-primary/10 transition-all"
-                              title="查看预览"
-                            >
-                              <span className="material-symbols-outlined text-xl">visibility</span>
-                            </button>
-                            {aiMode && (
-                              <button 
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleRegenerateClick(item);
-                                }}
-                                className="w-8 h-8 ml-2 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-amber-500 hover:bg-amber-500/10 transition-all"
-                                title="重新生成 AI 摘要"
-                              >
-                                <span className="material-symbols-outlined text-xl">refresh</span>
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                      
-                      <div className="flex items-center gap-4">
-                        {item.stars && (
-                          <div className="flex items-center gap-1 text-[10px] text-slate-400 dark:text-text-secondary font-medium">
-                            <span className="material-symbols-outlined text-xs text-amber-500">star</span> {item.stars}
-                          </div>
-                        )}
-                        <a 
-                          href={item.url} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-primary hover:bg-primary/10 transition-all"
-                          title="打开链接"
-                        >
-                          <span className="material-symbols-outlined text-xl">open_in_new</span>
-                        </a>
-                      </div>
-                    </div>
-                  </div>
-                </motion.div>
+                  item={item}
+                  onToggle={toggleItem}
+                  onPreview={setPreviewItem}
+                  onRegenerate={handleRegenerateClick}
+                  onDelete={handleDeleteItem}
+                  aiMode={aiMode}
+                  imageProxy={imageProxy}
+                  categories={categories}
+                />
               ))}
             </div>
           ))}
@@ -683,6 +772,25 @@ const Selection: React.FC = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <AnimatePresence>
+        {showScrollTop && (
+          <motion.button
+            key="scroll-to-top"
+            initial={{ opacity: 0, scale: 0.5, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.5, y: 20 }}
+            onClick={scrollToTop}
+            className={`fixed right-6 z-40 w-12 h-12 flex items-center justify-center rounded-full bg-primary text-white shadow-lg hover:bg-cyan-400 transition-all ${
+              selectedCount > 0 ? 'bottom-28' : 'bottom-8'
+            }`}
+            title="回到顶部"
+          >
+            <span className="material-symbols-outlined text-2xl">arrow_upward</span>
+          </motion.button>
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {showAgentSelector && (
           <motion.div 
@@ -868,7 +976,7 @@ const Selection: React.FC = () => {
                       </div>
                     )}
                     {Object.entries(previewItem.metadata || {}).map(([key, value]) => {
-                      if (key === 'description' || key === 'translated_title' || key === 'translated_description' ) return null; // 已经在下面显示了
+                      if (key === 'description' || key === 'translated_title' || key === 'translated_description' || key === 'ai_summary') return null; // 已经在下面显示了
                       return (
                         <div key={key} className="flex flex-col gap-2 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
                           <span className="text-xs font-bold text-primary uppercase tracking-wider">{key}</span>

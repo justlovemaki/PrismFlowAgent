@@ -138,24 +138,31 @@ export class AgentService {
             
             let result: any;
             
-            // 查找工具定义以确定是否为 MCP 工具
-            const toolDef = combinedTools.find(t => t.name === tc.name);
+            // 优先从本地工具注册中心查找
+            const localTool = this.toolRegistry.getTool(tc.name);
             
-            if (toolDef && !toolDef.isBuiltin) {
-              // 是 MCP 工具。toolDef.id 包含 "configId:toolName" (原始名称)
-              const [configId, ...nameParts] = toolDef.id.split(':');
-              const originalToolName = nameParts.join(':');
-              const mcpConfig = mcpConfigs.find(cfg => cfg.id === configId);
-              
-              if (mcpConfig) {
-                result = await this.mcpService.callTool(mcpConfig, originalToolName, tc.arguments);
-              } else {
-                // 回退逻辑：如果找不到配置，尝试直接调用（可能 toolName 已经是原始名称）
-                result = await this.mcpService.callTool({ id: configId } as any, originalToolName, tc.arguments);
-              }
-            } else {
-              // 内置工具或插件工具
+            if (localTool) {
+              // 内置工具或插件工具（包括自定义插件）
               result = await this.toolRegistry.callTool(tc.name, tc.arguments);
+            } else {
+              // 查找工具定义以确定是否为 MCP 工具
+              const toolDef = combinedTools.find(t => t.name === tc.name);
+              
+              if (toolDef) {
+                // 是 MCP 工具。toolDef.id 包含 "configId:toolName" (原始名称)
+                const [configId, ...nameParts] = toolDef.id.split(':');
+                const originalToolName = nameParts.join(':');
+                const mcpConfig = mcpConfigs.find(cfg => cfg.id === configId);
+                
+                if (mcpConfig) {
+                  result = await this.mcpService.callTool(mcpConfig, originalToolName, tc.arguments);
+                } else {
+                  // 回退逻辑：如果找不到配置，尝试直接调用（可能 toolName 已经是原始名称）
+                  result = await this.mcpService.callTool({ id: configId } as any, originalToolName, tc.arguments);
+                }
+              } else {
+                throw new Error(`未找到工具定义: ${tc.name}`);
+              }
             }
 
             if (!options.silent) {

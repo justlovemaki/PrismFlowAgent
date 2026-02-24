@@ -14,5 +14,8 @@ export const uploadWechatMaterial = (url: string) =>
 export const writeData = (date: string) => 
   request('/writeData', { method: 'POST', body: JSON.stringify({ date }) });
 
+export const deleteContent = (id: string) =>
+  request(`/api/content/${id}`, { method: 'DELETE' });
+
 export const regenerateSummary = (id: string, agentId: string) =>
   request(`/api/content/${id}/regenerate`, { method: 'POST', body: JSON.stringify({ agentId }) });
