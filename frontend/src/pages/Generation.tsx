@@ -253,8 +253,8 @@ const Generation: React.FC = () => {
       }
       
       // 初始化封面提示词
-      setWechatCoverMainTitle('Main Title');
-      setWechatCoverSubtitle('Sub Title');
+      // setWechatCoverMainTitle('Main Title');
+      // setWechatCoverSubtitle('Sub Title');
       setWechatCoverCustom('比例: 16:9,  优化文案后输出.');
       
       // 摘要默认为空
@@ -827,7 +827,16 @@ const Generation: React.FC = () => {
                 )}
                 {previewItem.metadata?.content_html && (
                   <div>
-                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">HTML 内容</h4>
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">HTML 内容</h4>
+                      <button 
+                        onClick={() => copyToClipboard(previewItem.metadata.content_html)}
+                        className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                        title="复制 HTML 内容"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                      </button>
+                    </div>
                     <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/50 p-3 sm:p-4 rounded-xl border border-slate-100 dark:border-white/5 overflow-wrap-anywhere">
                       <ContentRenderer 
                         content={previewItem.metadata.content_html} 
@@ -838,7 +847,16 @@ const Generation: React.FC = () => {
                 )}
                 {previewItem.metadata?.full_content && (
                   <div>
-                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">全文内容</h4>
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">全文内容</h4>
+                      <button 
+                        onClick={() => copyToClipboard(previewItem.metadata.full_content)}
+                        className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                        title="复制全文内容"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                      </button>
+                    </div>
                     <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/50 p-3 sm:p-4 rounded-xl border border-slate-100 dark:border-white/5 overflow-wrap-anywhere">
                       <ContentRenderer 
                         content={previewItem.metadata.full_content} 
@@ -849,7 +867,16 @@ const Generation: React.FC = () => {
                 )}
                 {(previewItem.metadata?.ai_summary || previewItem.metadata?.translated_description || previewItem.description) && (
                   <div>
-                    <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">基本描述</h4>
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">基本描述</h4>
+                      <button 
+                        onClick={() => copyToClipboard(previewItem.metadata?.ai_summary || previewItem.metadata?.translated_description || previewItem.description)}
+                        className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                        title="复制基本描述"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                      </button>
+                    </div>
                     <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/50 p-3 sm:p-4 rounded-xl border border-slate-100 dark:border-white/5">
                       <ContentRenderer content={previewItem.metadata?.ai_summary || previewItem.metadata?.translated_description || previewItem.description} imageProxy={imageProxy} />
                     </div>

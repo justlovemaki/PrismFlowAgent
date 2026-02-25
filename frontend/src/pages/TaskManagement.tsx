@@ -105,16 +105,18 @@ const TaskManagement: React.FC = () => {
     e.preventDefault();
     if (!currentSchedule) return;
     try {
-      let config = {};
+      let configFromEditor = {};
       if (configString.trim()) {
         try {
-          config = JSON.parse(configString);
+          configFromEditor = JSON.parse(configString);
         } catch (e) {
           toastError('JSON 格式错误');
           return;
         }
       }
-      let finalSchedule = { ...currentSchedule, config } as ScheduleTask;
+      // 合并配置，确保通过 UI 控件设置的 executorType 等字段得以保留
+      const finalConfig = { ...currentSchedule.config, ...configFromEditor };
+      let finalSchedule = { ...currentSchedule, config: finalConfig } as ScheduleTask;
       if (finalSchedule.type === 'FULL_INGESTION') {
         finalSchedule.targetId = 'all';
       }
@@ -158,18 +160,18 @@ const TaskManagement: React.FC = () => {
 
   const getTargetDisplayName = (type: string, targetId: string) => {
     if (!targetId) return '-';
-    if (type === 'FULL_INGESTION') return '全量数据';
+    if (type === 'FULL_INGESTION') return '数据源全量同步';
     
     if (type === 'ADAPTER') {
       return targetId;
     }
     
-    if (type === 'AGENT_DEAL') {
+    if ((type === 'AGENT_SUMMARY' || type === 'AGENT_DEAL') && currentSchedule?.config?.executorType !== 'workflow') {
       const agent = availableAgents.find(a => a.id === targetId);
       return agent ? agent.name : targetId;
     }
     
-    if (type === 'WORKFLOW') {
+    if ((type === 'AGENT_SUMMARY' || type === 'AGENT_DEAL') && currentSchedule?.config?.executorType === 'workflow') {
       const workflow = availableWorkflows.find(w => w.id === targetId);
       return workflow ? workflow.name : targetId;
     }
@@ -249,9 +251,9 @@ const TaskManagement: React.FC = () => {
                       <td className="px-6 py-4 hidden sm:table-cell">
                         <span className="px-2 py-0.5 rounded text-[10px] bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-400">
                           {schedule.type === 'ADAPTER' ? '数据源适配器' :
-                           schedule.type === 'WORKFLOW' ? '工作流' :
-                           schedule.type === 'AGENT_DEAL' ? 'Agent 处理' :
-                           schedule.type === 'FULL_INGESTION' ? '全量同步' : schedule.type}
+                           schedule.type === 'AGENT_SUMMARY' ? 'AI 总结处理' :
+                           schedule.type === 'AGENT_DEAL' ? 'AI 任务执行' :
+                           schedule.type === 'FULL_INGESTION' ? '数据源全量同步' : schedule.type}
                         </span>
                       </td>
                       <td className="px-6 py-4 text-slate-500 dark:text-slate-400 text-xs hidden lg:table-cell">
@@ -395,10 +397,10 @@ const TaskManagement: React.FC = () => {
                         onChange={e => setCurrentSchedule({...currentSchedule, type: e.target.value as any})}
                         className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
                       >
+                        <option value="FULL_INGESTION">数据源全量同步</option>
                         <option value="ADAPTER">数据源适配器</option>
-                        <option value="WORKFLOW">工作流</option>
-                        <option value="AGENT_DEAL">Agent处理</option>
-                        <option value="FULL_INGESTION">全量同步</option>
+                        <option value="AGENT_SUMMARY">AI 总结处理</option>
+                        <option value="AGENT_DEAL">AI 任务执行</option>
                       </select>
                     </div>
                     <div className="space-y-1">
@@ -414,59 +416,78 @@ const TaskManagement: React.FC = () => {
                   </div>
 
                   {currentSchedule.type !== 'FULL_INGESTION' && (
-                    <div className="space-y-1">
-                      <label className="text-xs font-bold text-slate-500 uppercase">
-                        {currentSchedule.type === 'ADAPTER' ? '选择适配器' :
-                         currentSchedule.type === 'WORKFLOW' ? '选择工作流' :
-                         currentSchedule.type === 'AGENT_DEAL' ? '选择智能体 (Agent)' : '目标标识 (ID)'}
-                      </label>
-                      
-                      {currentSchedule.type === 'ADAPTER' ? (
-                        <select
-                          required
-                          value={currentSchedule.targetId}
-                          onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
-                          className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
-                        >
-                          <option value="">请选择适配器</option>
-                          {availableAdapters.map(id => (
-                            <option key={id} value={id}>{id}</option>
-                          ))}
-                        </select>
-                      ) : currentSchedule.type === 'WORKFLOW' ? (
-                        <select
-                          required
-                          value={currentSchedule.targetId}
-                          onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
-                          className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
-                        >
-                          <option value="">请选择工作流</option>
-                          {availableWorkflows.map(wf => (
-                            <option key={wf.id} value={wf.id}>{wf.name} ({wf.id})</option>
-                          ))}
-                        </select>
-                      ) : currentSchedule.type === 'AGENT_DEAL' ? (
-                        <select
-                          required
-                          value={currentSchedule.targetId}
-                          onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
-                          className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
-                        >
-                        <option value="">请选择智能体</option>
-                        {availableAgents.map(agent => (
-                          <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input 
-                        required
-                        value={currentSchedule.targetId}
-                        onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
-                        className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
-                        placeholder="all"
-                      />
-                    )}
+                    <div className="space-y-4">
+                      {(currentSchedule.type === 'AGENT_SUMMARY' || currentSchedule.type === 'AGENT_DEAL') && (
+                        <div className="space-y-1">
+                          <label className="text-xs font-bold text-slate-500 uppercase">执行器类型</label>
+                          <select
+                            value={currentSchedule.config?.executorType || 'agent'}
+                            onChange={e => {
+                              const newExecutorType = e.target.value;
+                              let newConfig = { ...currentSchedule.config, executorType: newExecutorType };
+                              setCurrentSchedule({...currentSchedule, config: newConfig});
+                            }}
+                            className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
+                          >
+                            <option value="agent">智能体 (Agent)</option>
+                            <option value="workflow">工作流 (Workflow)</option>
+                          </select>
+                        </div>
+                      )}
 
+                      <div className="space-y-1">
+                        <label className="text-xs font-bold text-slate-500 uppercase">
+                          {currentSchedule.type === 'ADAPTER' ? '选择适配器' :
+                           ((currentSchedule.type === 'AGENT_SUMMARY' || currentSchedule.type === 'AGENT_DEAL') && currentSchedule.config?.executorType === 'workflow') ? '选择工作流' :
+                           ((currentSchedule.type === 'AGENT_SUMMARY' || currentSchedule.type === 'AGENT_DEAL') && currentSchedule.config?.executorType !== 'workflow') ? '选择智能体 (Agent)' : '目标标识 (ID)'}
+                        </label>
+                        
+                        {currentSchedule.type === 'ADAPTER' ? (
+                          <select
+                            required
+                            value={currentSchedule.targetId}
+                            onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
+                            className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
+                          >
+                            <option value="">请选择适配器</option>
+                            {availableAdapters.map(id => (
+                              <option key={id} value={id}>{id}</option>
+                            ))}
+                          </select>
+                        ) : ((currentSchedule.type === 'AGENT_SUMMARY' || currentSchedule.type === 'AGENT_DEAL') && currentSchedule.config?.executorType === 'workflow') ? (
+                          <select
+                            required
+                            value={currentSchedule.targetId}
+                            onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
+                            className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
+                          >
+                            <option value="">请选择工作流</option>
+                            {availableWorkflows.map(wf => (
+                              <option key={wf.id} value={wf.id}>{wf.name} ({wf.id})</option>
+                            ))}
+                          </select>
+                        ) : ((currentSchedule.type === 'AGENT_SUMMARY' || currentSchedule.type === 'AGENT_DEAL') && currentSchedule.config?.executorType !== 'workflow') ? (
+                          <select
+                            required
+                            value={currentSchedule.targetId}
+                            onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
+                            className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
+                          >
+                          <option value="">请选择智能体</option>
+                          {availableAgents.map(agent => (
+                            <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input 
+                          required
+                          value={currentSchedule.targetId}
+                          onChange={e => setCurrentSchedule({...currentSchedule, targetId: e.target.value})}
+                          className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
+                          placeholder="all"
+                        />
+                      )}
+                      </div>
                     </div>
                   )}
 
@@ -488,9 +509,15 @@ const TaskManagement: React.FC = () => {
                       value={configString}
                       onChange={e => setConfigString(e.target.value)}
                       className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-xs font-mono"
-                      placeholder='{ "foloCookie": "...", "fetchPages": 2 }'
+                      placeholder={currentSchedule.type === 'AGENT_SUMMARY' ? '{ "targetFields": ["ai_summary", "ai_score"] }' : '{ "foloCookie": "...", "fetchPages": 2 }'}
                     />
-                    <p className="text-[10px] text-slate-400">此配置将覆盖系统全局设置，仅在执行此任务时生效。</p>
+                    <p className="text-[10px] text-slate-400">
+                      {currentSchedule.type === 'AGENT_SUMMARY' 
+                        ? '支持 targetFields 定义 AI 输出字段 (如 ai_summary, ai_score, tags)' 
+                        : currentSchedule.type === 'AGENT_DEAL'
+                        ? '支持 input 定义 AI 输入内容，或在 config 中定义工作流参数。'
+                        : '此配置将覆盖系统全局设置，仅在执行此任务时生效。'}
+                    </p>
                   </div>
                 </div>
 

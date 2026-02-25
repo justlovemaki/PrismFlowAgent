@@ -2,6 +2,7 @@
 import { WechatService, WechatConfig } from './WechatService.js';
 import { LogService } from '../../../../services/LogService.js';
 import { PublisherMetadata } from '../../../../registries/PublisherRegistry.js';
+import { WechatRenderer } from '../../tools/RenderStandardWechatArticleTool.js';
 
 export class WechatPublisher implements IPublisher {
   static metadata: PublisherMetadata = {
@@ -46,24 +47,34 @@ export class WechatPublisher implements IPublisher {
     LogService.info(`Publishing to WeChat: ${title}`);
 
     let finalContent = content;
+
+    // 检查是否为 HTML。如果不是（大概率是 Markdown），则使用 WechatRenderer 自动渲染
+    // 逻辑：如果包含块级闭合标签如 </p>, </div>, </section> 则视为 HTML；
+    // 仅包含 <br/> 或 <img> 等单标签的 Markdown 仍会被渲染。
+    const isHtml = /<\/(p|div|section|h[1-6]|table|ul|ol)>/i.test(content);
+    if (!isHtml) {
+      LogService.info("Detected non-HTML content (Markdown), auto-rendering with WechatRenderer...");
+      finalContent = WechatRenderer.convert(content);
+    }
+
     let displayDate = options.displayDate || new Date().toISOString().split('T')[0].replace(/-/g, '/');
     let displaySummary = '';
 
-    // If it's already HTML, try to extract date
-    const dateMatch = content.match(/20\d{2}\/\d{1,2}\/\d{1,2}/);
+    // 尝试从最终内容（已确保是 HTML）中提取日期
+    const dateMatch = finalContent.match(/20\d{2}\/\d{1,2}\/\d{1,2}/);
     if (dateMatch) displayDate = dateMatch[0];
 
-    // Compress HTML
+    // 3. 压缩并处理 HTML
     finalContent = finalContent
       .replace(/&nbsp;|\u00A0/g, ' ')
       .replace(/\s{2,}/g, '')
       .trim();
 
-    // 1. Process images (Upload to WeChat)
+    // 4. 处理图片 (上传到微信)
     const fallbackLogo = this.config.fallbackLogoUrl || 'https://source.hubtoday.app/logo/ai.hubtoday.app.png';
     const { html: processedHtml, firstMediaId } = await this.service.processHtmlImages(finalContent, undefined, fallbackLogo);
 
-    // 2. Publish to draft
+    // 5. 发布到草稿箱
     const result = await this.service.publishToDraft({
       title: title || `${displayDate}`,
       author: options.author || this.config.author || '',

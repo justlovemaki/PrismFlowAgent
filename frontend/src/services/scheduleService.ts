@@ -4,7 +4,7 @@ export interface ScheduleTask {
   id: string;
   name: string;
   cron: string;
-  type: 'ADAPTER' | 'WORKFLOW' | 'FULL_INGESTION' | 'AGENT_DEAL';
+  type: 'ADAPTER' | 'AGENT_SUMMARY' | 'AGENT_DEAL' | 'FULL_INGESTION';
   targetId: string;
   config?: any;
   enabled: boolean;

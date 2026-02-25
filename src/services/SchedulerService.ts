@@ -204,7 +204,7 @@ export class SchedulerService {
             if (!item.metadata) item.metadata = {};
 
             // 映射已知字段
-            const summary = parsed.ai_summary || parsed.ai_summary;
+            const summary = parsed.ai_summary || parsed.summary;
             if (summary) {
               item.metadata.ai_summary = summary;
             }
@@ -305,36 +305,67 @@ export class SchedulerService {
           resultCount = singleResult.count;
           break;
 
-        case 'WORKFLOW':
-          if (this.workflowEngine) {
-            resultCount = await this.processItemsIteratively(schedule, logId, async (item, date) => {
-              const itemContent = this.formatItemForPrompt(item);
-              const workflowInput = {
-                content: itemContent, // 注入统一格式化的文本输入
-                date
-              };
-              const result = await this.workflowEngine!.runWorkflow(schedule.targetId, workflowInput, date);
-              return result;
-            });
-            message = `Workflow executed iteratively for ${resultCount} items (Fields: ${targetFields.join(',')})`;
+        case 'AGENT_SUMMARY':
+          const isWorkflow = schedule.config?.executorType === 'workflow';
+          
+          if (isWorkflow) {
+            if (this.workflowEngine) {
+              resultCount = await this.processItemsIteratively(schedule, logId, async (item, date) => {
+                const itemContent = this.formatItemForPrompt(item);
+                const workflowInput: any = {
+                  content: itemContent,
+                  date
+                };
+
+                const result = await this.workflowEngine!.runWorkflow(schedule.targetId, workflowInput, date);
+                return result;
+              });
+              message = `Workflow executed iteratively for ${resultCount} items (Fields: ${targetFields.join(',')})`;
+            } else {
+              throw new Error('Workflow Engine not initialized');
+            }
           } else {
-            throw new Error('Workflow Engine not initialized');
+            // Default to Agent for AGENT_SUMMARY
+            if (this.agentService) {
+              resultCount = await this.processItemsIteratively(schedule, logId, async (item, date) => {
+                let input = this.formatItemForPrompt(item);
+
+                const agentId = schedule.targetId || 'default_summarizer';
+                const result = await this.agentService!.runAgent(agentId, input, date, { silent: false });
+                return result.content;
+              });
+              message = `AI Processing completed for ${resultCount} items (Fields: ${targetFields.join(',')})`;
+            } else {
+              throw new Error('Agent Service not initialized');
+            }
           }
           break;
 
         case 'AGENT_DEAL':
-          if (this.agentService) {
-            resultCount = await this.processItemsIteratively(schedule, logId, async (item, date) => {
-              const itemContent = this.formatItemForPrompt(item);
-              const input = itemContent;
-              const agentId = schedule.targetId || 'default_summarizer';
-              const result = await this.agentService!.runAgent(agentId, input, date, { silent: false });
-              return result.content;
-            });
-            message = `AI Processing completed for ${resultCount} items (Fields: ${targetFields.join(',')})`;
+          const isWorkflowDeal = schedule.config?.executorType === 'workflow';
+          const dealTargetId = schedule.targetId;
+          const dealToday = getISODate();
+          const input = typeof schedule.config?.input === 'string' ? schedule.config.input : JSON.stringify(schedule.config || {});
+          await onProgress(10);
+
+          if (isWorkflowDeal) {
+            if (this.workflowEngine) {
+              await this.workflowEngine!.runWorkflow(dealTargetId, input, dealToday);
+              message = `Workflow ${dealTargetId} executed successfully`;
+              resultCount = 1;
+            } else {
+              throw new Error('Workflow Engine not initialized');
+            }
           } else {
-            throw new Error('Agent Service not initialized');
+            if (this.agentService) {
+              await this.agentService!.runAgent(dealTargetId, input, dealToday, { silent: false });
+              message = `Agent ${dealTargetId} executed successfully`;
+              resultCount = 1;
+            } else {
+              throw new Error('Agent Service not initialized');
+            }
           }
+          await onProgress(100);
           break;
 
         default:
