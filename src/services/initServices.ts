@@ -96,7 +96,7 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   const storageInstances = initStorages(settings);
 
   // 6. Initialize Task Service
-  const taskService = new TaskService(adapterInstances, store, aiProvider, publisherInstances);
+  const taskService = new TaskService(adapterInstances, store, aiProvider, publisherInstances, settings);
   
   // 6.1. Initialize Scheduler Service (Now that WorkflowEngine exists)
   const schedulerService = new SchedulerService(store, taskService, agentService, workflowEngine, aiService);

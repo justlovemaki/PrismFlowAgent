@@ -169,6 +169,7 @@ export class LocalStore {
       await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_fetched_at ON source_data(fetched_at)`);
       await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_status ON source_data(status)`);
       await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_ingestion_date ON source_data(ingestion_date)`);
+      await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_published_date ON source_data(published_date)`);
       
       // 系统启动时，将所有运行中的任务状态设置为中断
       await this.db.exec(`UPDATE task_logs SET status = 'interrupted', message = '系统重启导致任务中断' WHERE status = 'running'`);
@@ -233,6 +234,31 @@ export class LocalStore {
       Date.now(),
       record.fullContent || ''
     );
+  }
+
+  /**
+   * 根据 ID 获取单条提交历史记录
+   */
+  async getCommitHistoryById(id: number): Promise<{
+    id: number;
+    date: string;
+    platform: string;
+    filePath: string;
+    commitMessage: string;
+    commitTime: number;
+    fullContent: string;
+  } | null> {
+    const row = await this.db?.get('SELECT * FROM commit_history WHERE id = ?', id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      date: row.date,
+      platform: row.platform,
+      filePath: row.file_path,
+      commitMessage: row.commit_message,
+      commitTime: row.commit_time,
+      fullContent: row.full_content || ''
+    };
   }
 
   /**
@@ -590,6 +616,7 @@ export class LocalStore {
     status?: string;
     ingestionDate?: string;
     ingestionDates?: string[];
+    publishedDates?: string[];
     adapterName?: string;
     limit?: number;
     offset?: number;
@@ -636,6 +663,16 @@ export class LocalStore {
       countParams.push(...options.ingestionDates);
     }
 
+    if (options?.publishedDates && options.publishedDates.length > 0) {
+      // 这里的 published_date 可能是完整的 ISO 字符串，也可能是 YYYY-MM-DD
+      // 我们使用 LIKE 或者前缀匹配
+      const clauses = options.publishedDates.map(() => 'published_date LIKE ?').join(' OR ');
+      query += ` AND (${clauses})`;
+      countQuery += ` AND (${clauses})`;
+      params.push(...options.publishedDates.map(d => `${d}%`));
+      countParams.push(...options.publishedDates.map(d => `${d}%`));
+    }
+
     if (options?.adapterName) {
       query += ' AND adapter_name = ?';
       countQuery += ' AND adapter_name = ?';
@@ -678,6 +715,7 @@ export class LocalStore {
         source: row.source,
         category: row.category,
         author: row.author,
+        ingestion_date: row.ingestion_date,
         metadata: row.metadata ? JSON.parse(row.metadata) : {},
         status: row.status
       })),
@@ -701,6 +739,7 @@ export class LocalStore {
       source: row.source,
       category: row.category,
       author: row.author,
+      ingestion_date: row.ingestion_date,
       metadata: row.metadata ? JSON.parse(row.metadata) : {},
       status: row.status
     };

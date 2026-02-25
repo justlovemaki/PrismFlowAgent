@@ -169,12 +169,15 @@ export async function createServer(existingStore?: LocalStore) {
       const importService = context.importService;
       if (mode === 'URL') {
         const item = await importService.importFromUrl(payload.url, categoryId);
+        context.taskService.clearCache();
         return { status: 'success', data: item };
       } else if (mode === 'TEXT') {
         const item = await importService.importFromText(payload.title, payload.content, categoryId);
+        context.taskService.clearCache();
         return { status: 'success', data: item };
       } else if (mode === 'JSON') {
         const count = await importService.importFromJson(payload.json, categoryId);
+        context.taskService.clearCache();
         return { status: 'success', count };
       } else {
         return reply.status(400).send({ error: '不支持的导入模式' });
@@ -311,7 +314,7 @@ export async function createServer(existingStore?: LocalStore) {
     try {
       const { date } = request.query as any;
       const targetDate = date || getISODate();
-      const data = await context.taskService.getAggregatedData(targetDate);
+      const data = await context.taskService.getAggregatedData(targetDate, { settings: context.settings });
       
       return data;
     } catch (error: any) {
@@ -512,6 +515,43 @@ export async function createServer(existingStore?: LocalStore) {
     }
   });
 
+  fastify.post('/api/history/republish/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      const recordId = parseInt(id);
+      
+      const record = await store.getCommitHistoryById(recordId);
+      if (!record) {
+        reply.status(404).send({ error: 'History record not found' });
+        return;
+      }
+
+      const platformLower = record.platform.toLowerCase();
+      const publisher = context.publisherInstances.find(p =>
+        p.id.toLowerCase() === platformLower ||
+        p.name.toLowerCase() === platformLower 
+      );
+
+      if (!publisher) {
+        reply.status(400).send({ error: `Publisher for platform ${record.platform} not found or not configured` });
+        return;
+      }
+
+      // 准备发布参数
+      const options: any = {
+        title: record.commitMessage, //Wechat
+        filePath: record.filePath, //Github 
+        date: record.date
+      };
+
+      const result = await context.taskService.publish(publisher.id, record.fullContent, options);
+      return { status: 'success', data: result };
+    } catch (error: any) {
+      LogService.error(`Failed to republish: ${error.message}`);
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   // --- Agent & Workflow API ---
 
   fastify.get('/api/agents', async () => {
@@ -529,12 +569,14 @@ export async function createServer(existingStore?: LocalStore) {
     }
 
     await store.saveAgent(agent);
+    await context.reload();
     return { status: 'success' };
   });
 
   fastify.delete('/api/agents/:id', async (request) => {
     const { id } = request.params as any;
     await store.deleteAgent(id);
+    await context.reload();
     return { status: 'success' };
   });
 
@@ -970,6 +1012,7 @@ export async function createServer(existingStore?: LocalStore) {
   fastify.post('/api/workflows', async (request) => {
     const workflow = request.body as any;
     await store.saveWorkflow(workflow);
+    await context.reload();
     return { status: 'success' };
   });
 
@@ -1032,6 +1075,7 @@ export async function createServer(existingStore?: LocalStore) {
   fastify.post('/api/mcp-configs', async (request) => {
     const config = request.body as any;
     await store.saveMCPConfig(config);
+    await context.reload();
     return { status: 'success' };
   });
 
@@ -1048,12 +1092,14 @@ export async function createServer(existingStore?: LocalStore) {
       }
     }
 
+    await context.reload();
     return { status: 'success' };
   });
 
   fastify.delete('/api/workflows/:id', async (request) => {
     const { id } = request.params as any;
     await store.deleteWorkflow(id);
+    await context.reload();
     return { status: 'success' };
   });
 

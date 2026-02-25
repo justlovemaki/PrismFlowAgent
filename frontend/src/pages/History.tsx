@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getCommitHistory, deleteCommitHistory, type CommitRecord } from '../services/historyService';
+import { getCommitHistory, deleteCommitHistory, republishCommitHistory, type CommitRecord } from '../services/historyService';
 import ContentRenderer from '../components/UI/ContentRenderer';
 import { useToast } from '../context/ToastContext.js';
 
@@ -9,6 +9,7 @@ const History: React.FC = () => {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState<number | null>(null);
+  const [republishing, setRepublishing] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
@@ -64,6 +65,25 @@ const History: React.FC = () => {
       toastError('删除失败，请重试');
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleRepublish = async (id: number) => {
+    if (!confirm('确定要重新发布这条记录吗？')) {
+      return;
+    }
+    
+    setRepublishing(id);
+    try {
+      await republishCommitHistory(id);
+      toastSuccess('重新发布成功');
+      // 重新获取列表
+      await fetchHistory();
+    } catch (error: any) {
+      console.error('Failed to republish:', error);
+      toastError('重新发布失败，请重试');
+    } finally {
+      setRepublishing(null);
     }
   };
 
@@ -155,6 +175,21 @@ const History: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-1 sm:gap-2">
+                      <button
+                        onClick={() => handleRepublish(commit.id)}
+                        disabled={republishing === commit.id}
+                        className="text-primary font-bold text-xs hover:bg-primary/10 px-2 sm:px-3 py-1.5 rounded-md transition-colors inline-flex items-center justify-center gap-1 min-w-[50px] sm:w-20 disabled:opacity-50"
+                        title="重新发布"
+                      >
+                        {republishing === commit.id ? (
+                          <div className="w-3 h-3 border-2 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                        ) : (
+                          <>
+                            <span className="hidden xs:inline">重发</span>
+                            <span className="material-symbols-outlined text-[14px]">refresh</span>
+                          </>
+                        )}
+                      </button>
                       {commit.fullContent && (
                         <button
                           onClick={() => setPreviewContent(commit.fullContent!)}

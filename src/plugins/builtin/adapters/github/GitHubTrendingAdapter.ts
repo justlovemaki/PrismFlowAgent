@@ -54,6 +54,7 @@ export class GitHubTrendingAdapter extends BaseAdapter {
       url: project.url,
       description: project.description || '',
       published_date: now,
+      ingestion_date: now.split('T')[0],
       source: this.name,
       category: this.category,
       author: project.owner,

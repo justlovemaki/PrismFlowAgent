@@ -2,9 +2,21 @@ import dotenv from 'dotenv';
 import { createServer } from './api/server.js';
 import { LocalStore } from './services/LocalStore.js';
 import { ServiceContext } from './services/ServiceContext.js';
+import { LogService } from './services/LogService.js';
 
 
 dotenv.config();
+
+// Global error handlers to prevent process crash
+process.on('uncaughtException', (error) => {
+  LogService.error(`Uncaught Exception: ${error.message}`);
+  if (error.stack) LogService.error(error.stack);
+  // Do not exit, try to keep the service running
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  LogService.error(`Unhandled Rejection at: ${promise}, reason: ${reason}`);
+});
 
 async function bootstrap() {
   const store = new LocalStore();

@@ -164,6 +164,8 @@ export const defaultSettings: SystemSettings = {
     { id: 'socialMedia', label: '社交媒体', icon: 'forum' },
     { id: 'rss', label: 'RSS 订阅', icon: 'rss_feed' }
   ],
+  SELECTION_FETCH_DAYS: 2,
+  SELECTION_QUERY_FIELD: 'published_date',
   SKILL_STORE_API_KEY: '',
   GLOBAL_GITHUB_TOKEN: ''
 };

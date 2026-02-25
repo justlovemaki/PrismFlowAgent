@@ -4,6 +4,7 @@ import type { AIProvider } from './AIProvider.js';
 import type { UnifiedData } from '../types/index.js';
 import { getISODate } from '../utils/helpers.js';
 import { LogService } from './LogService.js';
+import { SystemSettings } from '../types/config.js';
 import { IPublisher } from '../types/plugin.js';
 
 export class TaskService {
@@ -11,13 +12,15 @@ export class TaskService {
   private publishers: Map<string, IPublisher> = new Map();
   private store: LocalStore;
   private ai?: AIProvider;
+  public settings?: SystemSettings;
   private adapterStatus: Record<string, { lastActive: string, status: string, count: number, category: string }> = {};
   private statsCache: { todayCount: number, yesterdayCount: number, lastUpdate: string } | null = null;
 
-  constructor(adapters: BaseAdapter[], store: LocalStore, ai?: AIProvider, publishers: IPublisher[] = []) {
+  constructor(adapters: BaseAdapter[], store: LocalStore, ai?: AIProvider, publishers: IPublisher[] = [], settings?: SystemSettings) {
     this.adapters = adapters;
     this.store = store;
     this.ai = ai;
+    this.settings = settings;
     
     for (const publisher of publishers) {
       this.publishers.set(publisher.id, publisher);
@@ -82,7 +85,7 @@ export class TaskService {
     }
     
     LogService.info(`Ingestion completed for ${targetDate}`);
-    const data = await this.getAggregatedData(targetDate);
+    const data = await this.getAggregatedData(targetDate, { settings: this.settings });
     return { count: totalCount, data };
   }
 
@@ -101,7 +104,7 @@ export class TaskService {
     const count = await this.runAdapter(adapter, config, targetDate);
     if (onProgress) await onProgress(100);
 
-    const data = await this.getAggregatedData(targetDate);
+    const data = await this.getAggregatedData(targetDate, { settings: this.settings });
     return { count, data };
   }
 
@@ -299,24 +302,33 @@ export class TaskService {
   /**
    * 聚合指定日期的所有适配器数据
    */
-  async getAggregatedData(date: string, options: { includePreviousDay?: boolean } = { includePreviousDay: true }): Promise<Record<string, UnifiedData[]>> {
-    const dates = [date];
-    if (options.includePreviousDay) {
-      const targetDate = new Date(date);
-      const yesterday = new Date(targetDate);
-      yesterday.setDate(yesterday.getDate() - 1);
-      const yesterdayStr = yesterday.toISOString().split('T')[0];
-      dates.unshift(yesterdayStr);
+  async getAggregatedData(date: string, options: { includePreviousDay?: boolean, settings?: SystemSettings } = {}): Promise<Record<string, UnifiedData[]>> {
+    const settings = options.settings || this.settings;
+    const fetchDays = settings?.SELECTION_FETCH_DAYS || (options.includePreviousDay !== false ? 2 : 1);
+    const queryField = settings?.SELECTION_QUERY_FIELD || 'published_date';
+    
+    const dates = [];
+    const targetDate = new Date(date);
+    for (let i = 0; i < fetchDays; i++) {
+      const d = new Date(targetDate);
+      d.setDate(d.getDate() - i);
+      dates.push(d.toISOString().split('T')[0]);
     }
 
     const data: Record<string, UnifiedData[]> = {};
     
-    // 1. 获取所有在 targetDate 同步的数据，不分适配器
-    // 这样可以兼容手动导入的数据（ManualImport）
-    const { items: allItems } = await this.store.listSourceData({
-      ingestionDates: dates,
-      limit: options.includePreviousDay ? 3000 : 2000
-    });
+    // 1. 获取指定日期范围内的数据
+    const queryOptions: any = {
+      limit: fetchDays > 1 ? 3000 : 2000
+    };
+
+    if (queryField === 'published_date') {
+      queryOptions.publishedDates = dates;
+    } else {
+      queryOptions.ingestionDates = dates;
+    }
+
+    const { items: allItems } = await this.store.listSourceData(queryOptions);
 
     // 2. 按分类归档
     for (const item of allItems) {
@@ -345,6 +357,7 @@ export class TaskService {
         url: '', // 可以在这里构造 GitHub URL，但后端拿不到完整的 settings
         description: (record.fullContent || '').substring(0, 500), // 缩略图只显示前 500 字
         published_date: new Date(record.commitTime).toISOString(),
+        ingestion_date: record.date,
         source: record.platform,
         category: 'history',
         metadata: {
@@ -428,9 +441,19 @@ export class TaskService {
   }
 
   /**
+   * 清除统计缓存
+   */
+  public clearCache() {
+    this.statsCache = null;
+  }
+
+  /**
    * 删除原始数据或历史记录
    */
   async deleteSourceData(id: string) {
+    // 数据变动，清除统计缓存
+    this.statsCache = null;
+
     if (id.startsWith('history-')) {
       const historyId = parseInt(id.replace('history-', ''));
       return await this.store.deleteCommitHistory(historyId);

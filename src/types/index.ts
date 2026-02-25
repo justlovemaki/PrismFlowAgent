@@ -4,6 +4,7 @@ export interface UnifiedData {
   url: string;
   description: string;
   published_date: string;
+  ingestion_date?: string;
   source: string;
   category: string;
   author?: string;

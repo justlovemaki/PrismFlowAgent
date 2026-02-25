@@ -228,17 +228,16 @@ const Settings: React.FC = () => {
 
   const tabs = [
     ...(pluginMetadata.aiProviders.length > 0 ? [{ id: 'ai', label: 'AI 模型', icon: 'psychology' }] : []),
-    ...(pluginMetadata.publishers.length > 0 || pluginMetadata.storages.length > 0 ? [{ id: 'publishers', label: '发布与存储', icon: 'send' }] : []),
-    { id: 'media', label: '媒体处理', icon: 'auto_fix_high' },
     ...(pluginMetadata.adapters.length > 0 ? [{ id: 'sources', label: '数据源管理', icon: 'database' }] : []),
     { id: 'categories', label: '分类管理', icon: 'label' },
-    { id: 'network', label: '网络设置', icon: 'language' },
-    { id: 'security', label: '安全', icon: 'security' },
+    ...(pluginMetadata.publishers.length > 0 || pluginMetadata.storages.length > 0 ? [{ id: 'publishers', label: '发布与存储', icon: 'send' }] : []),
+    { id: 'system', label: '系统', icon: 'settings' },
   ];
 
   const sections = [
     {
       id: 'ai',
+      tab: 'ai',
       title: 'AI 模型配置',
       description: '配置 AI 平台、模型参数及翻译功能',
       fields: [
@@ -254,6 +253,7 @@ const Settings: React.FC = () => {
 
     {
       id: 'publishers',
+      tab: 'publishers',
       title: '发布与存储管理',
       description: '配置内容分发平台及图片/视频存储插件',
       fields: [
@@ -263,7 +263,61 @@ const Settings: React.FC = () => {
     },
 
     {
+      id: 'sources',
+      tab: 'sources',
+      title: '数据源管理',
+      description: '管理数据适配器及其子数据源项',
+      fields: [
+        { label: '适配器配置', key: 'ADAPTERS', type: 'custom' },
+      ]
+    },
+    {
+      id: 'categories',
+      tab: 'categories',
+      title: '分类标签管理',
+      description: '管理全局分类标签，用于数据源归类',
+      fields: [
+        { label: '分类配置', key: 'CATEGORIES', type: 'custom' },
+      ]
+    },
+    {
+      id: 'network',
+      tab: 'system',
+      title: '网络与代理设置',
+      description: '配置接口代理与图片代理，解决访问限制问题',
+      fields: [
+        { label: 'API 接口代理', key: 'API_PROXY', type: 'text', placeholder: '例如: http://127.0.0.1:7890' },
+        { label: '图片代理模板', key: 'IMAGE_PROXY', type: 'text', placeholder: '例如: https://i0.wp.com/{url} 或 /api/proxy/image?url={url}' },
+      ]
+    },
+    {
+      id: 'selection',
+      tab: 'system',
+      title: '内容筛选设置',
+      description: '配置内容筛选页面的数据获取范围与查询方式',
+      fields: [
+        {
+          label: '数据获取天数',
+          key: 'SELECTION_FETCH_DAYS',
+          type: 'number',
+          defaultValue: 2,
+          placeholder: '设置从选定日期起回溯的天数'
+        },
+        {
+          label: '筛选查询字段',
+          key: 'SELECTION_QUERY_FIELD',
+          type: 'select',
+          options: [
+            { label: '抓取日期 (ingestion_date)', value: 'ingestion_date' },
+            { label: '发布日期 (published_date)', value: 'published_date' }
+          ],
+          defaultValue: 'published_date'
+        },
+      ]
+    },
+    {
       id: 'media',
+      tab: 'system',
       title: '媒体处理设置',
       description: '配置图片转换 AVIF、视频压缩及 TypeID 前缀等参数',
       fields: [
@@ -277,34 +331,9 @@ const Settings: React.FC = () => {
         { label: 'TypeID 前缀', key: 'IMAGE_PROCESS_CONFIG.TYPEID_PREFIX', type: 'text', defaultValue: 'news' },
       ]
     },
-
-    {
-      id: 'sources',
-      title: '数据源管理',
-      description: '管理数据适配器及其子数据源项',
-      fields: [
-        { label: '适配器配置', key: 'ADAPTERS', type: 'custom' },
-      ]
-    },
-    {
-      id: 'categories',
-      title: '分类标签管理',
-      description: '管理全局分类标签，用于数据源归类',
-      fields: [
-        { label: '分类配置', key: 'CATEGORIES', type: 'custom' },
-      ]
-    },
-    {
-      id: 'network',
-      title: '网络与代理设置',
-      description: '配置接口代理与图片代理，解决访问限制问题',
-      fields: [
-        { label: 'API 接口代理', key: 'API_PROXY', type: 'text', placeholder: '例如: http://127.0.0.1:7890' },
-        { label: '图片代理模板', key: 'IMAGE_PROXY', type: 'text', placeholder: '例如: https://i0.wp.com/{url} 或 /api/proxy/image?url={url}' },
-      ]
-    },
     {
       id: 'security',
+      tab: 'system',
       title: '安全与 API 密钥',
       description: '管理系统访问权限、密码以及第三方平台 API 密钥',
       fields: [
@@ -1413,7 +1442,7 @@ const Settings: React.FC = () => {
 
   };
 
-  const activeSection = sections.find(s => s.id === activeTab) || sections[0];
+  const activeSections = sections.filter(s => (s as any).tab === activeTab || s.id === activeTab);
 
   if (isLoading) {
     return (
@@ -1449,7 +1478,7 @@ const Settings: React.FC = () => {
         ))}
       </div>
 
-      <div className="relative min-height-[400px]">
+      <div className="relative min-height-[400px] space-y-8">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -1457,22 +1486,29 @@ const Settings: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
             transition={{ duration: 0.2 }}
-            className="bg-white dark:bg-surface-dark rounded-2xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-sm"
+            className="space-y-8"
           >
-            <div className="px-4 py-5 md:px-8 md:py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02]">
-              <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-1">{activeSection.title}</h3>
-              <p className="text-slate-500 dark:text-slate-400 text-sm">{activeSection.description}</p>
-            </div>
-            
-            <div className="p-4 md:p-8 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
-                {activeSection.fields.map((field) => (
-                  <React.Fragment key={field.key}>
-                    {renderField(field)}
-                  </React.Fragment>
-                ))}
+            {activeSections.map((section) => (
+              <div
+                key={section.id}
+                className="bg-white dark:bg-surface-dark rounded-2xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-sm"
+              >
+                <div className="px-4 py-5 md:px-8 md:py-6 border-b border-slate-100 dark:border-white/5 bg-slate-50/50 dark:bg-white/[0.02]">
+                  <h3 className="text-xl font-bold text-slate-900 dark:text-white mb-1">{section.title}</h3>
+                  <p className="text-slate-500 dark:text-slate-400 text-sm">{section.description}</p>
+                </div>
+                
+                <div className="p-4 md:p-8 space-y-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8">
+                    {section.fields.map((field) => (
+                      <React.Fragment key={field.key}>
+                        {renderField(field)}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                </div>
               </div>
-            </div>
+            ))}
           </motion.div>
         </AnimatePresence>
       </div>

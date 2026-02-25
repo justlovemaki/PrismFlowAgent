@@ -28,6 +28,11 @@ export class ServiceContext {
       this.services.schedulerService.stopAll();
     }
 
+    // Disconnect MCP clients
+    if (this.services?.mcpService) {
+      await this.services.mcpService.disconnectAll();
+    }
+
     this.services = await initServices(this.store);
   }
 

@@ -100,19 +100,22 @@ export class GeminiProvider implements AIProvider {
     }
 
     const payload: any = {
-      contents
+      contents,
+      tools: [
+        { google_search: {} },
+        { googleMaps: {} },
+        { url_context: {} }
+      ]
     };
 
     if (tools && tools.length > 0) {
-      payload.tools = [
-        {
-          functionDeclarations: tools.map(t => ({
-            name: t.name,
-            description: t.description,
-            parameters: t.parameters
-          }))
-        }
-      ];
+      payload.tools.push({
+        functionDeclarations: tools.map(t => ({
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters
+        }))
+      });
       payload.toolConfig = {
         functionCallingConfig: {
           mode: 'AUTO'

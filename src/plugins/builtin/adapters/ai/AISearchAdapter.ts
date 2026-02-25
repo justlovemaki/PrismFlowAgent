@@ -100,6 +100,7 @@ export class AISearchAdapter extends BaseAdapter {
       url: item.url || '#',
       description: item.description || '',
       published_date: item.published_date || now,
+      ingestion_date: now.split('T')[0],
       source: item.author || this.name,
       category: this.category,
       author: item.author,

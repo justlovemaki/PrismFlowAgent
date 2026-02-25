@@ -82,6 +82,8 @@ export interface SystemSettings {
   ADAPTERS: AdapterConfig[];
   CLOSED_PLUGINS?: string[];
   CATEGORIES: CategoryConfig[];
+  SELECTION_FETCH_DAYS: number;
+  SELECTION_QUERY_FIELD: 'ingestion_date' | 'published_date';
   SKILL_STORE_API_KEY?: string;
   GLOBAL_GITHUB_TOKEN?: string;
   ARK_API_KEY?: string;

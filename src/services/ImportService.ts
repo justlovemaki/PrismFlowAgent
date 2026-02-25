@@ -41,6 +41,7 @@ export class ImportService {
         url,
         description,
         published_date: new Date().toISOString(),
+        ingestion_date: getISODate(),
         source: '手动 URL 导入',
         category: categoryId,
         metadata: {
@@ -71,6 +72,7 @@ export class ImportService {
       url: '#',
       description: plainContent.substring(0, 1000),
       published_date: new Date().toISOString(),
+      ingestion_date: getISODate(),
       source: '手动文本导入',
       category: categoryId,
       metadata: {
@@ -102,6 +104,7 @@ export class ImportService {
           url: item.url || '#',
           description: plainDescription,
           published_date: item.published_date || new Date().toISOString(),
+          ingestion_date: getISODate(),
           source: item.source || '手动 JSON 导入',
           category: categoryId || item.category || 'default',
           metadata: {

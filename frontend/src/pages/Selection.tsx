@@ -20,6 +20,7 @@ interface ContentItem {
   published_date?: string;
   author?: string;
   stars?: string;
+  ingestion_date?: string;
   selected: boolean;
   selectedOrder?: number; // 记录选中顺序
   metadata?: {
@@ -207,6 +208,7 @@ const Selection: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [columnCount, setColumnCount] = useState(3);
   const [aiMode, setAiMode] = useState(false); // AI 推荐模式开关
+  const [queryField, setQueryField] = useState<'published_date' | 'ingestion_date'>('published_date');
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [workflows, setWorkflows] = useState<any[]>([]);
@@ -261,6 +263,9 @@ const Selection: React.FC = () => {
       }
       if (settings?.IMAGE_PROXY) {
         setImageProxy(settings.IMAGE_PROXY);
+      }
+      if (settings?.SELECTION_QUERY_FIELD) {
+        setQueryField(settings.SELECTION_QUERY_FIELD);
       }
     } catch (error) {
       console.error('Failed to load categories:', error);
@@ -346,7 +351,8 @@ const Selection: React.FC = () => {
               category,
               selected: false, // Default to not selected
               source: item.source,
-              published_date: item.published_date || item.time || ''
+              published_date: item.published_date || item.time || '',
+              ingestion_date: item.ingestion_date
             });
           });
         }
@@ -467,8 +473,16 @@ const Selection: React.FC = () => {
       
       return categoryMatch && (titleMatch || descMatch || sourceMatch || authorMatch);
     }).sort((a, b) => {
-      const dateA = a.published_date ? new Date(a.published_date).getTime() : 0;
-      const dateB = b.published_date ? new Date(b.published_date).getTime() : 0;
+      let dateA: number;
+      let dateB: number;
+
+      if (queryField === 'ingestion_date') {
+        dateA = a.ingestion_date ? new Date(a.ingestion_date).getTime() : 0;
+        dateB = b.ingestion_date ? new Date(b.ingestion_date).getTime() : 0;
+      } else {
+        dateA = a.published_date ? new Date(a.published_date).getTime() : 0;
+        dateB = b.published_date ? new Date(b.published_date).getTime() : 0;
+      }
 
       // 如果开启了 AI 推荐模式，按分数和时间综合排序
       if (aiMode) {

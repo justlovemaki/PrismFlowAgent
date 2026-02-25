@@ -48,3 +48,6 @@ export const getCommittedDates = (): Promise<CommittedDatesResponse> => request(
 
 export const deleteCommitHistory = (id: number): Promise<{ status: string }> => 
   request(`/api/history/commits/${id}`, { method: 'DELETE' });
+
+export const republishCommitHistory = (id: number): Promise<{ status: string, data?: any }> => 
+  request(`/api/history/republish/${id}`, { method: 'POST' });

@@ -142,6 +142,7 @@ export class FollowApiAdapter extends BaseAdapter {
         url: entry.entries.url,
         description: stripHtml(entry.entries.content || ''),
         published_date: entry.entries.publishedAt,
+        ingestion_date: new Date().toISOString().split('T')[0],
         source: entry.feeds.title,
         category: this.category,
         author: entry.entries.author,

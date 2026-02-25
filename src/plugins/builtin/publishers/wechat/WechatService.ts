@@ -39,6 +39,12 @@ export class WechatService {
   public static getInstance(config?: WechatConfig): WechatService {
     if (!WechatService.instance && config) {
       WechatService.instance = new WechatService(config);
+    } else if (WechatService.instance && config) {
+      // 如果已经存在实例但传入了新配置，更新配置
+      WechatService.instance.config = config;
+      // 重置 token 以强制重新获取（防止 appId/appSecret 变更但 token 还没过期）
+      WechatService.instance.accessToken = null;
+      WechatService.instance.tokenExpiresAt = 0;
     }
     return WechatService.instance;
   }
@@ -138,7 +144,12 @@ export class WechatService {
       if (contentType === 'image/avif' || filename.toLowerCase().endsWith('.avif')) {
         LogService.info(`Converting AVIF to JPEG for WeChat: ${filename}`);
         try {
-          fileBuffer = await sharp(fileBuffer).jpeg({ quality: 90 }).toBuffer();
+          // 使用 Promise.race 防止 sharp 挂起
+          fileBuffer = await Promise.race([
+            sharp(fileBuffer).jpeg({ quality: 90 }).toBuffer(),
+            new Promise<Buffer>((_, reject) => setTimeout(() => reject(new Error('Sharp conversion timeout')), 30000))
+          ]);
+          LogService.info(`Successfully converted AVIF to JPEG: ${filename}`);
           filename = filename.replace(/\.avif$/i, '.jpg');
           contentType = 'image/jpeg';
         } catch (err: any) {
@@ -160,11 +171,15 @@ export class WechatService {
 
       const url = `${this.getBaseUrl()}/cgi-bin/material/add_material?access_token=${accessToken}&type=image`;
 
+      LogService.info(`Uploading to WeChat API: ${url.split('?')[0]} (size: ${body.length} bytes)`);
+
       const response = await axios.post(url, body, {
         headers: {
           'Content-Type': `multipart/form-data; boundary=${boundary}`,
         },
-        timeout: 60000,
+        timeout: 90000,
+        maxContentLength: Infinity,
+        maxBodyLength: Infinity,
       });
 
       const data = response.data;
@@ -253,6 +268,14 @@ export class WechatService {
       LogService.info(`Processing video to GIF: ${src}`);
       let tempDir = '';
       try {
+        // 检查 ffmpeg 是否可用
+        await new Promise((resolve, reject) => {
+          ffmpeg.getAvailableCodecs((err, codecs) => {
+            if (err) reject(new Error(`ffmpeg not found or error: ${err.message}`));
+            else resolve(codecs);
+          });
+        });
+
         tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'wechat-video-'));
         const hash = crypto.createHash('md5').update(src).digest('hex');
         const videoPath = path.join(tempDir, `input_${hash}`);

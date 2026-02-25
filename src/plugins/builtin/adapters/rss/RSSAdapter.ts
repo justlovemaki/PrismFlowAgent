@@ -70,6 +70,7 @@ export class RSSAdapter extends BaseAdapter {
       url: item.link || '',
       description: stripHtml(item.contentSnippet || item.content || item.summary || ''),
       published_date: item.isoDate || item.pubDate || new Date().toISOString(),
+      ingestion_date: new Date().toISOString().split('T')[0],
       source: rawData.title || this.name,
       category: config?.category || this.category || 'rss',
       author: item.creator || item.author || ''
