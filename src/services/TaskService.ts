@@ -373,6 +373,18 @@ export class TaskService {
 
 
   /**
+   * 根据分数和日期查询数据
+   */
+  async queryDataByScore(options: { minScore?: number, date?: string, publishedDates?: string[], limit?: number }) {
+    return await this.store.listSourceData({
+      minScore: options.minScore,
+      ingestionDate: options.date,
+      publishedDates: options.publishedDates,
+      limit: options.limit || 50
+    });
+  }
+
+  /**
    * 统一发布接口
    */
   async publish(publisherId: string, content: any, options: any) {
@@ -418,6 +430,7 @@ export class TaskService {
    */
   async getCommitHistory(options?: {
     date?: string;
+    dates?: string[];
     platform?: string;
     limit?: number;
     offset?: number;

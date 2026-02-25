@@ -51,20 +51,31 @@ export class GitHubPublisher implements IPublisher {
     });
   }
 
-  async publish(content: string, options: { filePath?: string; message?: string, date?: string }) {
+  async publish(content: string, options: { filePath?: string; message?: string; date?: string; repo?: string; branch?: string }) {
     const date = options.date || new Date().toISOString().split('T')[0];
     const filePath = options.filePath || `${this.config.pathPrefix || 'daily'}/${date}.md`;
     const message = options.message || `Push Github for ${date}`;
     
-    LogService.info(`Publishing to GitHub: ${filePath}`);
+    let owner = this.owner;
+    let repo = this.repo;
+    if (options.repo) {
+      const [o, r] = options.repo.split('/');
+      if (o && r) {
+        owner = o;
+        repo = r;
+      }
+    }
+    const branch = options.branch || this.config.branch;
+
+    LogService.info(`Publishing to GitHub: ${owner}/${repo} -> ${filePath}`);
     
     let sha: string | undefined;
     try {
       const { data } = await this.octokit.repos.getContent({
-        owner: this.owner,
-        repo: this.repo,
+        owner,
+        repo,
         path: filePath,
-        ref: this.config.branch
+        ref: branch
       });
       if ('sha' in data) {
         sha = data.sha;
@@ -74,12 +85,12 @@ export class GitHubPublisher implements IPublisher {
     }
 
     const params: any = {
-      owner: this.owner,
-      repo: this.repo,
+      owner,
+      repo,
       path: filePath,
       message,
       content: Buffer.from(content).toString('base64'),
-      branch: this.config.branch
+      branch
     };
 
     if (sha) {
@@ -87,7 +98,13 @@ export class GitHubPublisher implements IPublisher {
     }
 
     const result = await this.octokit.repos.createOrUpdateFileContents(params);
-    return { success: true, filePath, sha: (result.data as any).content?.sha };
+    return { 
+      success: true, 
+      filePath, 
+      sha: (result.data as any).content?.sha,
+      repo: `${owner}/${repo}`,
+      branch
+    };
   }
 
   // Helper for reading (as in original GitHubService)

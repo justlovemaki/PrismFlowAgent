@@ -266,6 +266,7 @@ export class LocalStore {
    */
   async getCommitHistory(options?: {
     date?: string;
+    dates?: string[];
     platform?: string;
     limit?: number;
     offset?: number;
@@ -292,6 +293,14 @@ export class LocalStore {
       countQuery += ' AND date = ?';
       params.push(options.date);
       countParams.push(options.date);
+    }
+
+    if (options?.dates && options.dates.length > 0) {
+      const placeholders = options.dates.map(() => '?').join(',');
+      query += ` AND date IN (${placeholders})`;
+      countQuery += ` AND date IN (${placeholders})`;
+      params.push(...options.dates);
+      countParams.push(...options.dates);
     }
 
     if (options?.platform) {
@@ -616,6 +625,7 @@ export class LocalStore {
     status?: string;
     ingestionDate?: string;
     ingestionDates?: string[];
+    minScore?: number;
     publishedDates?: string[];
     adapterName?: string;
     limit?: number;
@@ -661,6 +671,13 @@ export class LocalStore {
       countQuery += ` AND ingestion_date IN (${placeholders})`;
       params.push(...options.ingestionDates);
       countParams.push(...options.ingestionDates);
+    }
+
+    if (options?.minScore !== undefined) {
+      query += " AND CAST(json_extract(metadata, '$.ai_score') AS REAL) >= ?";
+      countQuery += " AND CAST(json_extract(metadata, '$.ai_score') AS REAL) >= ?";
+      params.push(options.minScore);
+      countParams.push(options.minScore);
     }
 
     if (options?.publishedDates && options.publishedDates.length > 0) {

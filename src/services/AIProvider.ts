@@ -65,6 +65,15 @@ export class GeminiProvider implements AIProvider {
     let contents: any[] = [];
     if (Array.isArray(prompt)) {
       contents = prompt.map(m => {
+        // If we have raw parts (e.g. from a previous Gemini response), use them directly
+        // This is crucial for preserving thinking process and signatures
+        if (m.raw_parts && (m.role === 'assistant' || m.role === 'user')) {
+          return {
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: m.raw_parts
+          };
+        }
+
         const parts: any[] = [];
         if (m.content) {
           parts.push({ text: m.content });
@@ -157,7 +166,8 @@ export class GeminiProvider implements AIProvider {
 
     const result: AIResponse = {
       content,
-      tool_calls: functionCalls.length > 0 ? functionCalls : undefined
+      tool_calls: functionCalls.length > 0 ? functionCalls : undefined,
+      raw_parts: parts
     };
 
     if (data.usageMetadata) {

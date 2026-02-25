@@ -34,6 +34,7 @@ export interface AIResponse {
     completion_tokens: number;
     total_tokens: number;
   };
+  raw_parts?: any[]; // Store original provider-specific parts (e.g., Gemini's thinking process)
 }
 
 export interface AIMessage {
@@ -42,6 +43,7 @@ export interface AIMessage {
   tool_calls?: any[];
   tool_call_id?: string;
   name?: string;
+  raw_parts?: any[]; // Store original provider-specific parts
 }
 
 export interface StoreOptions {

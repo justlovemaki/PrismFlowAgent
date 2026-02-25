@@ -122,7 +122,8 @@ export class AgentService {
       messages.push({
         role: 'assistant',
         content: responseContent || null,
-        tool_calls: response.tool_calls
+        tool_calls: response.tool_calls,
+        raw_parts: response.raw_parts
       });
 
       if (response.tool_calls && response.tool_calls.length > 0) {
