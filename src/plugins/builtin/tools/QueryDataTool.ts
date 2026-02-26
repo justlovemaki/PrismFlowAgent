@@ -1,10 +1,10 @@
 import { BaseTool } from '../../base/BaseTool.js';
 import { ServiceContext } from '../../../services/ServiceContext.js';
 
-export class QueryDataByScoreTool extends BaseTool {
-  readonly id = 'query_data_by_score';
-  readonly name = 'query_data_by_score';
-  readonly description = '从数据库中按日期和最低分数查询资讯数据';
+export class QueryDataTool extends BaseTool {
+  readonly id = 'query_data';
+  readonly name = 'query_data';
+  readonly description = '从数据库中查询资讯数据，支持日期、最低分数和关键词搜索';
   readonly parameters = {
     type: 'object',
     properties: {
@@ -20,15 +20,19 @@ export class QueryDataByScoreTool extends BaseTool {
         type: 'number', 
         description: '最低 AI 分数 (0-100)' 
       },
+      search: {
+        type: 'string',
+        description: '关键词搜索'
+      },
       limit: {
         type: 'number',
         description: '返回结果数量限制, 默认为 50'
       }
     },
-    required: ['startDate', 'endDate', 'minScore']
+    required: ['startDate', 'endDate']
   };
 
-  async handler(args: { startDate: string; endDate: string; minScore: number; limit?: number }) {
+  async handler(args: { startDate: string; endDate: string; minScore?: number; search?: string; limit?: number }) {
     const context = await ServiceContext.getInstance();
     
     // 生成日期范围内的所有日期字符串
@@ -41,9 +45,10 @@ export class QueryDataByScoreTool extends BaseTool {
       current.setDate(current.getDate() + 1);
     }
 
-    const result = await context.taskService.queryDataByScore({
+    const result = await context.taskService.queryData({
       publishedDates: dates,
       minScore: args.minScore,
+      search: args.search,
       limit: args.limit
     });
 

@@ -373,13 +373,14 @@ export class TaskService {
 
 
   /**
-   * 根据分数和日期查询数据
+   * 根据分数、日期或关键词查询数据
    */
-  async queryDataByScore(options: { minScore?: number, date?: string, publishedDates?: string[], limit?: number }) {
+  async queryData(options: { minScore?: number, date?: string, publishedDates?: string[], search?: string, limit?: number }) {
     return await this.store.listSourceData({
       minScore: options.minScore,
       ingestionDate: options.date,
       publishedDates: options.publishedDates,
+      search: options.search,
       limit: options.limit || 50
     });
   }
