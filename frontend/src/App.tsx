@@ -6,6 +6,7 @@ import AppLayout from './components/Layout/AppLayout';
 import Dashboard from './pages/Dashboard';
 import Selection from './pages/Selection';
 import Generation from './pages/Generation';
+import StandalonePreview from './pages/StandalonePreview';
 import History from './pages/History';
 import TaskManagement from './pages/TaskManagement';
 import Agents from './pages/Agents';
@@ -26,6 +27,14 @@ function App() {
           <Router>
             <Routes>
               <Route path="/login" element={<Login />} />
+              <Route
+                path="/preview"
+                element={
+                  <ProtectedRoute>
+                    <StandalonePreview />
+                  </ProtectedRoute>
+                }
+              />
               <Route
                 path="/*"
                 element={

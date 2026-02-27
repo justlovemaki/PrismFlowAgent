@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import { publishContent, generateCoverImage, uploadWechatMaterial } from '../services/contentService';
 import { agentService } from '../services/agentService';
@@ -69,6 +69,36 @@ const Generation: React.FC = () => {
 
   // Mobile layout state
   const [mobileTab, setMobileTab] = useState<'source' | 'preview'>('preview');
+
+  const channelRef = useRef<BroadcastChannel | null>(null);
+
+  // 初始化同步通道
+  useEffect(() => {
+    const channel = new BroadcastChannel('generation_sync');
+    channelRef.current = channel;
+
+    channel.onmessage = (event) => {
+      if (event.data && event.data.type === 'update_content' && event.data.date === date && event.data.source !== 'main') {
+        setResult((prev: any) => ({ ...prev, daily_summary_markdown: event.data.content }));
+      }
+    };
+
+    return () => {
+      channel.close();
+    };
+  }, [date]);
+
+  // 当内容在本页面变化时同步到其他页面
+  useEffect(() => {
+    if (result && channelRef.current) {
+      channelRef.current.postMessage({
+        type: 'update_content',
+        date,
+        content: result.daily_summary_markdown,
+        source: 'main'
+      });
+    }
+  }, [result?.daily_summary_markdown, date]);
 
   // 移除单条素材
   const handleRemoveItem = (idx: number) => {
@@ -662,6 +692,15 @@ const Generation: React.FC = () => {
 
             {/* Right Section: Stats and Actions */}
             <div className="flex items-center justify-end gap-1 sm:gap-1.5">
+              {result && (
+                <button 
+                  onClick={() => window.open(`/preview?date=${date}`, '_blank')}
+                  className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-dark transition shrink-0"
+                  title="在新标签页中打开预览与编辑"
+                >
+                  <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+                </button>
+              )}
               {result && (
                 <button 
                   onClick={() => copyToClipboard(result.daily_summary_markdown)}
