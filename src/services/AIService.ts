@@ -18,4 +18,11 @@ export class AIService {
       return { status: 'error', message: error.message };
     }
   }
+
+  streamContent(prompt: string, systemInstruction?: string) {
+    if (!this.ai.streamContent) {
+      throw new Error(`Provider ${this.ai.name} does not support streaming`);
+    }
+    return this.ai.streamContent(prompt, [], systemInstruction);
+  }
 }

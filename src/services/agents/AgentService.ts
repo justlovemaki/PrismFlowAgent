@@ -239,4 +239,147 @@ export class AgentService {
       data: lastToolResult // 返回最后一个工具的执行结果
     };
   }
+
+  async *streamAgent(agentId: string, input: string, date?: string, options: { silent?: boolean } = {}): AsyncIterable<any> {
+    const agentDef = await this.store.getAgent(agentId);
+    if (!agentDef) throw new Error(`Agent ${agentId} not found`);
+
+    if (!options.silent) {
+      LogService.info(`Streaming agent: ${agentDef.name}${date ? ` for date: ${date}` : ''}`);
+    }
+
+    let provider: AIProvider = this.aiProvider;
+    if (agentDef.providerId) {
+      const settings = await this.store.get('system_settings');
+      const providers = settings?.AI_PROVIDERS || [];
+      const providerConfig = providers.find((p: any) => p.id === agentDef.providerId);
+      if (providerConfig) {
+        const model = agentDef.model || providerConfig.models?.[0];
+        const dispatcher = providerConfig.useProxy === true ? (this as any).proxyAgent : undefined;
+        const created = createAIProvider({ ...providerConfig, model }, dispatcher);
+        if (created) provider = created;
+      }
+    }
+
+    if (!provider.streamContent) {
+      throw new Error(`Provider ${provider.name} does not support streaming`);
+    }
+
+    const combinedSkillInstructions = await this.skillService.buildSkillsPrompt(agentDef.skillIds || []);
+    const toolIds = new Set<string>([...(agentDef.toolIds || [])]);
+    if ((agentDef.skillIds || []).length > 0) toolIds.add('execute_command');
+
+    const settings = await this.store.get('system_settings');
+    const closedPlugins = settings?.CLOSED_PLUGINS || [];
+    const tools = Array.from(toolIds)
+      .filter(id => !closedPlugins.includes(id))
+      .map(id => this.toolRegistry.getTool(id))
+      .filter(Boolean) as any[];
+
+    const mcpConfigs = [];
+    if (agentDef.mcpServerIds && agentDef.mcpServerIds.length > 0) {
+      for (const id of agentDef.mcpServerIds) {
+        const config = await this.store.getMCPConfig(id);
+        if (config) mcpConfigs.push(config);
+      }
+    }
+    const mcpTools = await this.mcpService.getTools(mcpConfigs);
+    const combinedTools = [...tools, ...mcpTools];
+
+    let systemInstruction = `${combinedSkillInstructions}\n${agentDef.systemPrompt}`;
+    if (date) systemInstruction += `\n\n当前处理日期为: ${date}`;
+
+    const messages: AIMessage[] = [
+      { role: 'system', content: systemInstruction },
+      { role: 'user', content: input }
+    ];
+
+    let rounds = 0;
+    const maxRounds = 5;
+
+    while (rounds < maxRounds) {
+      yield { type: 'round_start', round: rounds + 1 };
+
+      const stream = provider.streamContent(messages, combinedTools);
+      let roundContent = '';
+      let tool_calls: any[] = [];
+
+      for await (const chunk of stream) {
+        if (chunk.content) {
+          roundContent += chunk.content;
+          yield { type: 'content', content: chunk.content };
+        }
+        if (chunk.tool_calls) {
+          // Merge tool call chunks
+          chunk.tool_calls.forEach(tc => {
+            const existing = tool_calls.find(etc => etc.id === tc.id || (etc.name === tc.name && !etc.id));
+            if (existing) {
+              if (tc.arguments) {
+                if (typeof existing.arguments === 'string' && typeof tc.arguments === 'string') {
+                    existing.arguments += tc.arguments;
+                } else if (typeof existing.arguments === 'object' && typeof tc.arguments === 'object') {
+                    existing.arguments = { ...existing.arguments, ...tc.arguments };
+                }
+              }
+            } else {
+              tool_calls.push({ ...tc });
+            }
+          });
+          yield { type: 'tool_calls_delta', tool_calls: chunk.tool_calls };
+        }
+      }
+
+      // Finalize tool calls (parse JSON if needed)
+      tool_calls = tool_calls.map(tc => {
+        if (typeof tc.arguments === 'string') {
+          try {
+            return { ...tc, arguments: JSON.parse(tc.arguments) };
+          } catch {
+            return tc;
+          }
+        }
+        return tc;
+      });
+
+      messages.push({
+        role: 'assistant',
+        content: roundContent || null,
+        tool_calls: tool_calls.length > 0 ? tool_calls : undefined
+      });
+
+      if (tool_calls.length > 0) {
+        yield { type: 'tool_calls', tool_calls };
+        for (const tc of tool_calls) {
+          try {
+            yield { type: 'tool_start', tool: tc.name, args: tc.arguments };
+            let result: any;
+            const localTool = this.toolRegistry.getTool(tc.name);
+            if (localTool) {
+              result = await this.toolRegistry.callTool(tc.name, tc.arguments);
+            } else {
+              const toolDef = combinedTools.find(t => t.name === tc.name);
+              if (toolDef) {
+                const [configId, ...nameParts] = toolDef.id.split(':');
+                const originalToolName = nameParts.join(':');
+                const mcpConfig = mcpConfigs.find(cfg => cfg.id === configId);
+                result = await this.mcpService.callTool(mcpConfig || { id: configId } as any, originalToolName, tc.arguments);
+              } else {
+                throw new Error(`Tool not found: ${tc.name}`);
+              }
+            }
+            const content = typeof result === 'string' ? result : JSON.stringify(result);
+            messages.push({ role: 'tool', tool_call_id: tc.id, name: tc.name, content });
+            yield { type: 'tool_result', tool: tc.name, result };
+          } catch (error: any) {
+            messages.push({ role: 'tool', tool_call_id: tc.id, name: tc.name, content: `Error: ${error.message}` });
+            yield { type: 'tool_error', tool: tc.name, error: error.message };
+          }
+        }
+        rounds++;
+      } else {
+        yield { type: 'final_content', content: roundContent };
+        break;
+      }
+    }
+  }
 }

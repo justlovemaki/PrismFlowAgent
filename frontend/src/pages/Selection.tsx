@@ -130,7 +130,7 @@ const ContentCard = memo(({
         <div className="text-slate-500 dark:text-text-secondary text-sm mb-4 line-clamp-5 break-words overflow-hidden">
           <ContentRenderer 
             content={(aiMode && item.metadata?.ai_summary) 
-              ? item.metadata.ai_summary 
+              ? `${item.metadata.ai_summary}\n\n${item.metadata?.translated_description || item.description}`
               : (item.metadata?.translated_description || item.description)} 
             imageProxy={imageProxy}
           />
@@ -1006,16 +1006,27 @@ const Selection: React.FC = () => {
                         </div>
                       );
                     })}
-                    {(previewItem.metadata?.translated_description || previewItem.description || (aiMode && previewItem.metadata?.ai_summary)) && (
+                    {aiMode && previewItem.metadata?.ai_summary && (
                       <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
                         <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                          {(aiMode && previewItem.metadata?.ai_summary) ? 'AI 总结' : '描述'}
+                          AI 总结
                         </span>
                         <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                           <ContentRenderer 
-                            content={(aiMode && previewItem.metadata?.ai_summary) 
-                              ? previewItem.metadata.ai_summary 
-                              : (previewItem.metadata?.translated_description || previewItem.description)} 
+                            content={previewItem.metadata.ai_summary} 
+                            imageProxy={imageProxy} 
+                          />
+                        </div>
+                      </div>
+                    )}
+                    {(previewItem.metadata?.translated_description || previewItem.description) && (
+                      <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
+                        <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                          描述
+                        </span>
+                        <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                          <ContentRenderer 
+                            content={previewItem.metadata?.translated_description || previewItem.description} 
                             imageProxy={imageProxy} 
                           />
                         </div>

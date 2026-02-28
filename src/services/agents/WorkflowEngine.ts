@@ -60,6 +60,7 @@ export class WorkflowEngine {
 
       // Process results and find next ready steps
       const nextReady: string[] = [];
+      let shouldInterrupt = false;
 
       for (let i = 0; i < readyQueue.length; i++) {
         const stepId = readyQueue[i];
@@ -68,9 +69,18 @@ export class WorkflowEngine {
         if (result.status === 'fulfilled') {
           stepResults[stepId] = result.value;
           finalOutput = result.value;
+          
+          if (this.isResponseEmpty(result.value)) {
+            LogService.warn(`Workflow ${workflowId} interrupted at step ${stepId}: Empty response received.`);
+            shouldInterrupt = true;
+            break;
+          }
         } else {
           LogService.error(`Workflow step ${stepId} failed: ${result.reason}`);
           stepResults[stepId] = { error: String(result.reason) };
+          finalOutput = stepResults[stepId];
+          shouldInterrupt = true;
+          break;
         }
 
         completed.add(stepId);
@@ -84,6 +94,10 @@ export class WorkflowEngine {
             nextReady.push(nextId);
           }
         }
+      }
+
+      if (shouldInterrupt) {
+        break;
       }
 
       readyQueue = nextReady;
@@ -235,5 +249,15 @@ export class WorkflowEngine {
     const outputStr = typeof output === 'string' ? output : JSON.stringify(output);
     LogService.info(`[Workflow ${step.id}] Output: ${outputStr?.slice(0, 1000)}${(outputStr?.length || 0) > 1000 ? '...(truncated)' : ''}`);
     return output;
+  }
+
+  private isResponseEmpty(output: any): boolean {
+    if (output === null || output === undefined) return true;
+    if (typeof output === 'string') {
+      const trimmed = output.trim();
+      // Includes the specific "No response generated" message from AgentService
+      return !trimmed || trimmed === 'No response generated (AI returned empty content)';
+    }
+    return false;
   }
 }

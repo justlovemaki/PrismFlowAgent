@@ -161,6 +161,8 @@ const Agents: React.FC = () => {
 
   const handleRunAgent = async (id: string, input: string) => {
     try {
+      const agent = agents.find(a => a.id === id);
+      
       // 在测试前清除上一次的测试结果
       setTestResults(prev => {
         const next = { ...prev };
@@ -169,8 +171,24 @@ const Agents: React.FC = () => {
       });
       
       setTestResults(prev => ({ ...prev, [id]: '运行中...' }));
-      const result = await agentService.runAgent(id, input);
-      setTestResults(prev => ({ ...prev, [id]: result.content }));
+
+      if (agent?.streaming) {
+        let fullContent = '';
+        await agentService.runAgentStream(id, input, undefined, (chunk) => {
+          if (chunk.type === 'content') {
+            fullContent += chunk.content;
+            setTestResults(prev => ({ ...prev, [id]: fullContent }));
+          } else if (chunk.type === 'tool_start') {
+            fullContent += `\n[调用工具: ${chunk.tool}...]\n`;
+            setTestResults(prev => ({ ...prev, [id]: fullContent }));
+          } else if (chunk.type === 'final_content') {
+            // fullContent is already updated by 'content' chunks
+          }
+        });
+      } else {
+        const result = await agentService.runAgent(id, input);
+        setTestResults(prev => ({ ...prev, [id]: result.content }));
+      }
     } catch (error: any) {
       setTestResults(prev => ({ ...prev, [id]: `错误: ${error.message}` }));
     }
@@ -329,6 +347,11 @@ const Agents: React.FC = () => {
                     {mcpConfigs.find(m => m.id === mid)?.name || mid}
                   </span>
                 ))}
+                {agent.streaming && (
+                  <span className="px-2 py-1 bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg text-[10px] font-bold flex items-center gap-1">
+                    <span className="material-symbols-outlined text-[10px]">stream</span>流式已开启
+                  </span>
+                )}
               </div>
             </div>
 
@@ -547,6 +570,27 @@ const Agents: React.FC = () => {
                     </div>
                   </div>
                 )}
+
+                <div className="p-4 bg-slate-50 dark:bg-white/[0.02] rounded-2xl border border-slate-200 dark:border-white/5">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-blue-500">stream</span>
+                      <span className="text-xs font-bold dark:text-white">流式输出</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input 
+                        type="checkbox" 
+                        className="sr-only peer"
+                        checked={editingAgent.streaming || false}
+                        onChange={e => {
+                          setEditingAgent({ ...editingAgent, streaming: e.target.checked });
+                        }}
+                      />
+                      <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-blue-500 transition-all after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-2">开启后，智能体将以流式方式返回响应，提升交互体验。</p>
+                </div>
 
                 <div className="p-4 bg-slate-50 dark:bg-white/[0.02] rounded-2xl border border-slate-200 dark:border-white/5">
                   <div className="flex items-center justify-between">

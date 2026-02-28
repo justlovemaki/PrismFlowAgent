@@ -5,6 +5,7 @@ export interface AIProvider {
   dispatcher?: any;
   generateContent(prompt: string, systemInstruction?: string): Promise<AIResponse>;
   generateWithTools(prompt: string | AIMessage[], tools: any[], systemInstruction?: string): Promise<AIResponse>;
+  streamContent?(prompt: string | AIMessage[], tools?: any[], systemInstruction?: string): AsyncIterable<AIResponse>;
   listModels?(): Promise<string[]>;
 }
 
@@ -180,6 +181,130 @@ export class GeminiProvider implements AIProvider {
     return result;
   }
 
+  async *streamContent(prompt: string | AIMessage[], tools?: any[], systemInstruction?: string): AsyncIterable<AIResponse> {
+    const url = `${this.apiUrl}/v1beta/models/${this.model}:streamGenerateContent?key=${this.apiKey}&alt=sse`;
+    console.log(`[Gemini] API Request (Stream): ${url}, Using Proxy: ${!!this.dispatcher}`);
+
+    let contents: any[] = [];
+    if (Array.isArray(prompt)) {
+      contents = prompt.map(m => {
+        if (m.raw_parts && (m.role === 'assistant' || m.role === 'user')) {
+          return {
+            role: m.role === 'assistant' ? 'model' : 'user',
+            parts: m.raw_parts
+          };
+        }
+        const parts: any[] = [];
+        if (m.content) parts.push({ text: m.content });
+        if (m.tool_calls) {
+          m.tool_calls.forEach(tc => {
+            parts.push({ functionCall: { name: tc.name, args: tc.arguments } });
+          });
+        }
+        if (m.role === 'tool') {
+          return {
+            role: 'function',
+            parts: [{ functionResponse: { name: m.name, response: { content: m.content } } }]
+          };
+        }
+        return { role: m.role === 'assistant' ? 'model' : 'user', parts };
+      });
+    } else {
+      contents = [{ parts: [{ text: prompt }] }];
+    }
+
+    const payload: any = {
+      contents,
+      tools: [
+        { google_search: {} },
+        { googleMaps: {} },
+        { url_context: {} }
+      ]
+    };
+
+    if (tools && tools.length > 0) {
+      payload.tools.push({
+        functionDeclarations: tools.map(t => ({
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters
+        }))
+      });
+      payload.toolConfig = { functionCallingConfig: { mode: 'AUTO' } };
+    }
+
+    if (systemInstruction) {
+      payload.systemInstruction = { parts: [{ text: systemInstruction }] };
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      dispatcher: this.dispatcher
+    } as any);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Gemini API error: ${response.status} ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Response body is null');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            const parts = data.candidates?.[0]?.content?.parts || [];
+            const content = parts
+              .filter((p: any) => typeof p.text === 'string')
+              .map((p: any) => p.text)
+              .join('') || '';
+
+            const functionCalls = parts
+              .filter((p: any) => p.functionCall)
+              .map((p: any, idx: number) => ({
+                id: p.functionCall?.id || `call_${idx}`,
+                name: p.functionCall?.name,
+                arguments: p.functionCall?.args || {}
+              }))
+              .filter((tc: any) => tc.name);
+
+            if (content || functionCalls.length > 0) {
+              const result: AIResponse = {
+                content,
+                tool_calls: functionCalls.length > 0 ? functionCalls : undefined,
+                raw_parts: parts
+              };
+              if (data.usageMetadata) {
+                result.usage = {
+                  prompt_tokens: data.usageMetadata.promptTokenCount,
+                  completion_tokens: data.usageMetadata.candidatesTokenCount,
+                  total_tokens: data.usageMetadata.totalTokenCount
+                };
+              }
+              yield result;
+            }
+          } catch (e) {
+            console.error('[Gemini] Stream Parse Error:', e);
+          }
+        }
+      }
+    }
+  }
+
   async listModels(): Promise<string[]> {
     const url = `${this.apiUrl}/v1beta/models?key=${this.apiKey}`;
     const response = await fetch(url, { dispatcher: this.dispatcher } as any);
@@ -332,6 +457,114 @@ export class OpenAIProvider implements AIProvider {
       };
     }
     return result;
+  }
+
+  async *streamContent(prompt: string | AIMessage[], tools?: any[], systemInstruction?: string): AsyncIterable<AIResponse> {
+    const url = `${this.apiUrl}/v1/chat/completions`;
+    console.log(`[OpenAI] API Request (Stream): ${url}, Using Proxy: ${!!this.dispatcher}`);
+    let messages: any[] = [];
+
+    if (Array.isArray(prompt)) {
+      messages = prompt.map(m => {
+        const msg: any = { role: m.role, content: m.content };
+        if (m.tool_calls) {
+          msg.tool_calls = m.tool_calls.map(tc => ({
+            id: tc.id,
+            type: 'function',
+            function: {
+              name: tc.name,
+              arguments: JSON.stringify(tc.arguments)
+            }
+          }));
+        }
+        if (m.tool_call_id) msg.tool_call_id = m.tool_call_id;
+        return msg;
+      });
+    } else {
+      if (systemInstruction) messages.push({ role: 'system', content: systemInstruction });
+      messages.push({ role: 'user', content: prompt });
+    }
+
+    const body: any = {
+      model: this.model,
+      messages,
+      stream: true,
+      stream_options: { include_usage: true }
+    };
+
+    if (tools && tools.length > 0) {
+      body.tools = tools.map(t => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters
+        }
+      }));
+      body.tool_choice = 'auto';
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.apiKey}`
+      },
+      body: JSON.stringify(body),
+      dispatcher: this.dispatcher
+    } as any);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Response body is null');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed === 'data: [DONE]') continue;
+        if (trimmed.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(trimmed.slice(6));
+            const choice = data.choices?.[0];
+            const content = choice?.delta?.content || '';
+            const tool_calls = choice?.delta?.tool_calls?.map((tc: any) => ({
+              id: tc.id,
+              name: tc.function?.name,
+              arguments: tc.function?.arguments // Note: arguments come in chunks here too
+            }));
+
+            if (content || tool_calls || data.usage) {
+              const result: AIResponse = { content };
+              if (tool_calls) result.tool_calls = tool_calls;
+              if (data.usage) {
+                result.usage = {
+                  prompt_tokens: data.usage.prompt_tokens,
+                  completion_tokens: data.usage.completion_tokens,
+                  total_tokens: data.usage.total_tokens
+                };
+              }
+              yield result;
+            }
+          } catch (e) {
+            console.error('[OpenAI] Stream Parse Error:', e);
+          }
+        }
+      }
+    }
   }
 
   async listModels(): Promise<string[]> {
@@ -516,6 +749,125 @@ export class AnthropicProvider implements AIProvider {
     return result;
   }
 
+  async *streamContent(prompt: string | AIMessage[], tools?: any[], systemInstruction?: string): AsyncIterable<AIResponse> {
+    const url = `${this.apiUrl}/v1/messages`;
+    console.log(`[Anthropic] API Request (Stream): ${url}, Using Proxy: ${!!this.dispatcher}`);
+    
+    let messages: any[] = [];
+    let system = systemInstruction;
+
+    if (Array.isArray(prompt)) {
+      messages = prompt.filter(m => m.role !== 'system').map(m => {
+        if (m.role === 'tool') {
+          return {
+            role: 'user',
+            content: [{
+              type: 'tool_result',
+              tool_use_id: m.tool_call_id,
+              content: m.content
+            }]
+          };
+        }
+        const content: any[] = [];
+        if (m.content) content.push({ type: 'text', text: m.content });
+        if (m.tool_calls) {
+          m.tool_calls.forEach(tc => {
+            content.push({
+              type: 'tool_use',
+              id: tc.id,
+              name: tc.name,
+              input: tc.arguments
+            });
+          });
+        }
+        return { role: m.role, content };
+      });
+      const sysMsg = prompt.find(m => m.role === 'system');
+      if (sysMsg) system = sysMsg.content || systemInstruction;
+    } else {
+      messages = [{ role: 'user', content: prompt }];
+    }
+
+    const payload: any = {
+      model: this.model,
+      max_tokens: 4096,
+      messages,
+      stream: true
+    };
+
+    if (tools && tools.length > 0) {
+      payload.tools = tools.map(t => ({
+        name: t.name,
+        description: t.description,
+        input_schema: t.parameters
+      }));
+      payload.tool_choice = { type: 'auto' };
+    }
+
+    if (system) payload.system = system;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify(payload),
+      dispatcher: this.dispatcher
+    } as any);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Anthropic API error: ${response.status} ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Response body is null');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'content_block_delta') {
+              if (data.delta?.type === 'text_delta') {
+                yield { content: data.delta.text };
+              } else if (data.delta?.type === 'input_json_delta') {
+                // Partial JSON for tool input
+                yield { content: '', tool_calls: [{ id: '', name: '', arguments: data.delta.partial_json }] };
+              }
+            } else if (data.type === 'message_delta' && data.usage) {
+              yield { content: '', usage: {
+                prompt_tokens: 0, // Anthropic doesn't provide prompt_tokens in message_delta usually
+                completion_tokens: data.usage.output_tokens,
+                total_tokens: data.usage.output_tokens
+              }};
+            } else if (data.type === 'message_start' && data.message?.usage) {
+                yield { content: '', usage: {
+                    prompt_tokens: data.message.usage.input_tokens,
+                    completion_tokens: 0,
+                    total_tokens: data.message.usage.input_tokens
+                }};
+            }
+          } catch (e) {
+            console.error('[Anthropic] Stream Parse Error:', e);
+          }
+        }
+      }
+    }
+  }
+
   async listModels(): Promise<string[]> {
     const url = `${this.apiUrl}/v1/models`;
     const response = await fetch(url, {
@@ -687,6 +1039,99 @@ export class OllamaProvider implements AIProvider {
     }
     
     return { content: 'Ollama generateWithTools failed with message history' };
+  }
+
+  async *streamContent(prompt: string | AIMessage[], tools?: any[], systemInstruction?: string): AsyncIterable<AIResponse> {
+    const url = `${this.apiUrl}/api/chat`;
+    let messages: any[] = [];
+    
+    if (Array.isArray(prompt)) {
+      messages = prompt.map(m => {
+        const msg: any = { role: m.role, content: m.content };
+        if (m.tool_calls) {
+          msg.tool_calls = m.tool_calls.map(tc => ({
+            function: { name: tc.name, arguments: tc.arguments }
+          }));
+        }
+        return msg;
+      });
+    } else {
+      if (systemInstruction) messages.push({ role: 'system', content: systemInstruction });
+      messages.push({ role: 'user', content: prompt });
+    }
+
+    const payload: any = {
+      model: this.model,
+      messages,
+      stream: true,
+    };
+
+    if (tools && tools.length > 0) {
+      payload.tools = tools.map(t => ({
+        type: 'function',
+        function: {
+          name: t.name,
+          description: t.description,
+          parameters: t.parameters
+        }
+      }));
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      dispatcher: this.dispatcher
+    } as any);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Ollama error: ${response.status} ${errorText}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('Response body is null');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        try {
+          const data = JSON.parse(line);
+          const message = data.message;
+          const content = message?.content || '';
+          const tool_calls = message?.tool_calls?.map((tc: any, idx: number) => ({
+            id: tc.id || `call_${idx}`,
+            name: tc.function?.name,
+            arguments: tc.function?.arguments
+          }));
+
+          if (content || tool_calls || data.done) {
+            const result: AIResponse = { content };
+            if (tool_calls) result.tool_calls = tool_calls;
+            if (data.done) {
+              result.usage = {
+                prompt_tokens: data.prompt_eval_count || 0,
+                completion_tokens: data.eval_count || 0,
+                total_tokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
+              };
+            }
+            yield result;
+          }
+        } catch (e) {
+          console.error('[Ollama] Stream Parse Error:', e);
+        }
+      }
+    }
   }
 
   async listModels(): Promise<string[]> {

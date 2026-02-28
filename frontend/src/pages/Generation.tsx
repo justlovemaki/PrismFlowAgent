@@ -904,20 +904,37 @@ const Generation: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {(previewItem.metadata?.ai_summary || previewItem.metadata?.translated_description || previewItem.description) && (
+                {previewItem.metadata?.ai_summary && (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">基本描述</h4>
+                      <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">AI 总结</h4>
                       <button 
-                        onClick={() => copyToClipboard(previewItem.metadata?.ai_summary || previewItem.metadata?.translated_description || previewItem.description)}
+                        onClick={() => copyToClipboard(previewItem.metadata.ai_summary)}
                         className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
-                        title="复制基本描述"
+                        title="复制 AI 总结"
                       >
                         <span className="material-symbols-outlined text-[14px]">content_copy</span>
                       </button>
                     </div>
                     <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/50 p-3 sm:p-4 rounded-xl border border-slate-100 dark:border-white/5">
-                      <ContentRenderer content={previewItem.metadata?.ai_summary || previewItem.metadata?.translated_description || previewItem.description} imageProxy={imageProxy} />
+                      <ContentRenderer content={previewItem.metadata.ai_summary} imageProxy={imageProxy} />
+                    </div>
+                  </div>
+                )}
+                {(previewItem.metadata?.translated_description || previewItem.description) && (
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <h4 className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wider">描述</h4>
+                      <button 
+                        onClick={() => copyToClipboard(previewItem.metadata?.translated_description || previewItem.description)}
+                        className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+                        title="复制描述"
+                      >
+                        <span className="material-symbols-outlined text-[14px]">content_copy</span>
+                      </button>
+                    </div>
+                    <div className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-surface-darker/50 p-3 sm:p-4 rounded-xl border border-slate-100 dark:border-white/5">
+                      <ContentRenderer content={previewItem.metadata?.translated_description || previewItem.description} imageProxy={imageProxy} />
                     </div>
                   </div>
                 )}

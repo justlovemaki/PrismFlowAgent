@@ -34,6 +34,7 @@ export interface Agent {
   toolIds: string[];
   skillIds: string[];
   mcpServerIds: string[];
+  streaming?: boolean;
 }
 
 export interface WorkflowStep {
@@ -82,6 +83,49 @@ export const agentService = {
     method: 'POST',
     body: JSON.stringify({ input, date })
   }),
+  runAgentStream: (id: string, input: string, date?: string, onChunk?: (chunk: any) => void) => {
+    const token = localStorage.getItem('auth_token');
+    return new Promise((resolve, reject) => {
+      const url = `/api/agents/${id}/run?stream=true`;
+      fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ input, date, stream: true })
+      }).then(response => {
+        if (!response.ok) throw new Error('Network response was not ok');
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        
+        function read() {
+          reader?.read().then(({ done, value }) => {
+            if (done) {
+              resolve(null);
+              return;
+            }
+            const chunk = decoder.decode(value, { stream: true });
+            const lines = chunk.split('\n');
+            lines.forEach(line => {
+              if (line.startsWith('data: ')) {
+                const dataStr = line.slice(6).trim();
+                if (dataStr === '[DONE]') return;
+                try {
+                  const data = JSON.parse(dataStr);
+                  onChunk?.(data);
+                } catch (e) {
+                  console.error('Error parsing SSE chunk', e);
+                }
+              }
+            });
+            read();
+          }).catch(reject);
+        }
+        read();
+      }).catch(reject);
+    });
+  },
   
   getSkills: () => request('/api/skills'),
   uploadSkill: async (file: File) => {
