@@ -5,8 +5,8 @@ export async function request(url: string, options: RequestInit = {}) {
     ...(options.headers as Record<string, string>) 
   };
   
-  // 只在有 body 时才设置 Content-Type
-  if (options.body && !headers['Content-Type']) {
+  // 只在有 body 且不是 FormData 时才设置 Content-Type
+  if (options.body && !headers['Content-Type'] && !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
   

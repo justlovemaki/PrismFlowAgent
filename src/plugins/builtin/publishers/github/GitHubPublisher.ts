@@ -51,10 +51,10 @@ export class GitHubPublisher implements IPublisher {
     });
   }
 
-  async publish(content: string, options: { filePath?: string; message?: string; date?: string; repo?: string; branch?: string }) {
+  async publish(content: string, options: { filePath?: string; message?: string; date?: string; repo?: string; branch?: string; title?: string }) {
     const date = options.date || new Date().toISOString().split('T')[0];
     const filePath = options.filePath || `${this.config.pathPrefix || 'daily'}/${date}.md`;
-    const message = options.message || `Push Github for ${date}`;
+    const message = options.message || options.title || `Push Github for ${date}`;
     
     let owner = this.owner;
     let repo = this.repo;

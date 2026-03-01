@@ -64,6 +64,16 @@ export const defaultSettings: SystemSettings = {
         title: '',
         author: ''
       }
+    },
+    {
+      id: 'rss',
+      enabled: true,
+      config: {
+        title: 'AI Insight Daily',
+        description: '每日 AI 资讯聚合',
+        siteUrl: 'https://github.com/PrismFlow/AI-Insight-Daily',
+        feedUrl: ''
+      }
     }
   ],
 

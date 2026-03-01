@@ -9,19 +9,21 @@ export class PublishToGitHubTool extends BaseTool {
     type: 'object',
     properties: {
       date: { type: 'string', description: '日期 (YYYY-MM-DD)' },
-      dailyMd: { type: 'string', description: '日报 Markdown 内容' }
+      dailyMd: { type: 'string', description: '日报 Markdown 内容' },
+      title: { type: 'string', description: '文章标题 (可选)' }
     },
     required: ['date', 'dailyMd']
   };
 
-  async handler(args: { date: string; dailyMd: string }) {
+  async handler(args: { date: string; dailyMd: string; title?: string }) {
     const context = await ServiceContext.getInstance();
     const githubPublisher = context.publisherInstances.find(p => p.id === 'github') as any;
     const prefix = githubPublisher?.config?.pathPrefix || 'daily';
 
     return await context.taskService.publish('github', args.dailyMd, {
       filePath: `${prefix}/${args.date}.md`,
-      message: `Push Github for ${args.date}`,
+      message: args.title || `Push Github for ${args.date}`,
+      title: args.title,
       date: args.date
     });
   }

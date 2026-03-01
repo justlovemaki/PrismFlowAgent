@@ -61,7 +61,7 @@
 ```text
 ├── src/
 │   ├── api/            # Fastify 路由与服务器
-│   ├── plugins/        # 插件系统（工具、发布、存储）
+│   ├── plugins/        # 插件系统（适配器、工具、发布、存储）
 │   ├── registries/     # 插件注册中心
 │   ├── services/       # 核心业务逻辑 (Agent, Workflow, Task)
 │   ├── types/          # 全局强类型定义
