@@ -24,9 +24,12 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
   const [wechatCoverCustom, setWechatCoverCustom] = useState('');
   const [selectedCoverAgentId, setSelectedCoverAgentId] = useState('');
   const [wechatCoverUrl, setWechatCoverUrl] = useState('');
+  const [wechatCoverUrls, setWechatCoverUrls] = useState<string[]>([]);
   const [wechatThumbMediaId, setWechatThumbMediaId] = useState('');
   const [isGeneratingCover, setIsGeneratingCover] = useState(false);
+  const [isUploadingMaterial, setIsUploadingMaterial] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [urlToMediaIdMap, setUrlToMediaIdMap] = useState<Record<string, string>>({});
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -97,18 +100,40 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
   }, [date]);
 
   const handleGenerateCover = async () => {
-    const combinedPrompt = `${wechatCoverMainTitle} - ${wechatCoverSubtitle}. ${wechatCoverCustom}`.trim();
+    const combinedPrompt = `主标题：${wechatCoverMainTitle} - 副标题：${wechatCoverSubtitle}. 其它要求：${wechatCoverCustom}`.trim();
     if (!combinedPrompt) return;
     
     setIsGeneratingCover(true);
+    // 开始新生成时，重置旧的 media_id，但保留 URL 直到新 URL 返回
+    setWechatThumbMediaId('');
+    
     try {
       const res = await generateCoverImage(combinedPrompt, selectedCoverAgentId, date);
       if (res && res.url) {
         setWechatCoverUrl(res.url);
-        const materialRes = await uploadWechatMaterial(res.url);
-        if (materialRes.media_id) {
-          setWechatThumbMediaId(materialRes.media_id);
-          toastSuccess('封面图生成并上传成功');
+        const uniqueUrls = res.urls && Array.isArray(res.urls) ? Array.from(new Set(res.urls)) : [res.url];
+        setWechatCoverUrls(uniqueUrls as string[]);
+
+        // 只有在启用微信且有 URL 时才尝试自动上传
+        if (res.url) {
+          if (urlToMediaIdMap[res.url]) {
+            setWechatThumbMediaId(urlToMediaIdMap[res.url]);
+          } else {
+            setIsUploadingMaterial(true);
+            try {
+              const materialRes = await uploadWechatMaterial(res.url);
+              if (materialRes.media_id) {
+                setWechatThumbMediaId(materialRes.media_id);
+                setUrlToMediaIdMap(prev => ({ ...prev, [res.url]: materialRes.media_id }));
+                toastSuccess('封面图生成并上传成功');
+              }
+            } catch (uploadError: any) {
+              console.error('Upload to WeChat failed:', uploadError);
+              toastError('封面已生成但上传到微信失败: ' + uploadError.message + '。请尝试手动重新提交。');
+            } finally {
+              setIsUploadingMaterial(false);
+            }
+          }
         }
       }
     } catch (error: any) {
@@ -265,38 +290,120 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
             </div>
             
             <div className="space-y-3">
-              <div className="relative rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-white/10 aspect-[2.35/1] bg-slate-50 dark:bg-black/20 flex items-center justify-center">
-                {wechatCoverUrl ? (
-                  <img src={wechatCoverUrl} className="w-full h-full object-cover" alt="Cover" />
-                ) : (
-                  <div className="text-center p-4">
-                    <span className="material-symbols-outlined text-2xl sm:text-3xl text-slate-300 dark:text-slate-600 mb-2">image</span>
-                    <p className="text-[10px] sm:text-xs text-slate-400 font-medium">微信将默认使用正文第一张图作为封面</p>
-                  </div>
-                )}
+              <div className="flex flex-col gap-2">
+                <div className="relative rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-white/10 aspect-[2.35/1] bg-slate-50 dark:bg-black/20 flex items-center justify-center group">
+                  {wechatCoverUrl ? (
+                    <>
+                      <img src={wechatCoverUrl} className="w-full h-full object-cover" alt="Cover" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <button 
+                          onClick={() => {
+                            const url = prompt('请输入外部封面图片 URL:', wechatCoverUrl);
+                            if (url && url !== wechatCoverUrl) {
+                              setWechatCoverUrl(url);
+                              setWechatThumbMediaId('');
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-white/20 backdrop-blur-md hover:bg-white/40 text-white rounded-lg text-[10px] font-bold transition-all border border-white/30"
+                        >
+                          手动输入 URL
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center p-4">
+                      <span className="material-symbols-outlined text-2xl sm:text-3xl text-slate-300 dark:text-slate-600 mb-2">image</span>
+                      <p className="text-[10px] sm:text-xs text-slate-400 font-medium">微信将默认使用正文第一张图作为封面</p>
+                      <button 
+                        onClick={() => {
+                          const url = prompt('请输入外部封面图片 URL:');
+                          if (url) {
+                            setWechatCoverUrl(url);
+                            setWechatThumbMediaId('');
+                          }
+                        }}
+                        className="mt-2 text-[10px] text-primary hover:underline font-bold"
+                      >
+                        或手动输入图片 URL
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
 
+              {wechatCoverUrls.length > 1 && (
+                <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 px-1">
+                  {wechatCoverUrls.map((url, index) => (
+                    <div 
+                      key={index}
+                      onClick={async () => {
+                        if (isUploadingMaterial) return;
+                        setWechatCoverUrl(url);
+                        
+                        if (urlToMediaIdMap[url]) {
+                          setWechatThumbMediaId(urlToMediaIdMap[url]);
+                          toastSuccess('已切换到缓存的封面');
+                        } else {
+                          setWechatThumbMediaId('');
+                          // 自动切换并同步上传到微信
+                          try {
+                            setIsUploadingMaterial(true);
+                            const materialRes = await uploadWechatMaterial(url);
+                            if (materialRes.media_id) {
+                              setWechatThumbMediaId(materialRes.media_id);
+                              setUrlToMediaIdMap(prev => ({ ...prev, [url]: materialRes.media_id }));
+                              toastSuccess('封面已切换并同步到微信');
+                            }
+                          } catch (error: any) {
+                            console.error('Upload to WeChat failed:', error);
+                            toastError('封面已切换但上传到微信失败，请手动上传。');
+                          } finally {
+                            setIsUploadingMaterial(false);
+                          }
+                        }
+                      }}
+                      className={`relative aspect-[2.35/1] rounded-lg overflow-hidden border-2 transition-all cursor-pointer group ${
+                        wechatCoverUrl === url ? 'border-primary shadow-sm' : 'border-slate-200 dark:border-white/10 hover:border-primary/50'
+                      }`}
+                    >
+                      <img src={url} className="w-full h-full object-cover" alt={`Option ${index + 1}`} />
+                      {wechatCoverUrl === url && (
+                        <div className="absolute inset-0 bg-primary/10 flex items-center justify-center">
+                          <span className="material-symbols-outlined text-primary text-xs bg-white rounded-full">check_circle</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {wechatCoverUrl && !wechatThumbMediaId && !isGeneratingCover && (
-                <div className="flex justify-center">
+                <div className="flex flex-col items-center gap-2">
                   <button 
+                    disabled={isUploadingMaterial}
                     onClick={async () => {
-                      setIsGeneratingCover(true);
+                      setIsUploadingMaterial(true);
                       try {
                         const materialRes = await uploadWechatMaterial(wechatCoverUrl);
                         if (materialRes.media_id) {
                           setWechatThumbMediaId(materialRes.media_id);
-                          toastSuccess('封面图重新提交成功');
+                          setUrlToMediaIdMap(prev => ({ ...prev, [wechatCoverUrl]: materialRes.media_id }));
+                          toastSuccess('封面图上传成功');
                         }
                       } catch (error: any) {
-                        toastError('重新提交失败: ' + error.message);
+                        toastError('重新上传失败: ' + error.message);
                       } finally {
-                        setIsGeneratingCover(false);
+                        setIsUploadingMaterial(false);
                       }
                     }}
-                    className="flex items-center gap-1.5 px-4 py-1.5 bg-amber-500/10 hover:bg-amber-500 text-amber-600 hover:text-white rounded-xl transition-all text-xs font-bold border border-amber-500/20"
+                    className="flex items-center gap-1.5 px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-lg shadow-amber-500/20 transition-all text-xs font-bold disabled:opacity-50"
                   >
-                    <span className="material-symbols-outlined text-sm">cloud_upload</span>
-                    重新提交图片到微信
+                    {isUploadingMaterial ? (
+                       <div className="w-3 h-3 border-2 border-white/20 border-t-white rounded-full animate-spin"></div>
+                    ) : (
+                       <span className="material-symbols-outlined text-sm">cloud_upload</span>
+                    )}
+                    重新上传封面图到微信
                   </button>
                 </div>
               )}

@@ -290,9 +290,30 @@ export async function createServer(existingStore?: LocalStore) {
 
       // 3. 处理结果
       if (type === 'cover') {
-        const urlMatch = result.data?.url || result.content.match(/https?:\/\/[^\s)]+/i)?.[0];
-        if (urlMatch) {
-          return { status: 'success', url: urlMatch };
+        const urls: string[] = [];
+        
+        // Try to get URLs from result.data
+        if (result.data?.urls && Array.isArray(result.data.urls)) {
+          urls.push(...result.data.urls);
+        } else if (result.data?.url) {
+          urls.push(result.data.url);
+        }
+        
+        // If no URLs found in data, look for all URLs in result.content
+        if (urls.length === 0) {
+          const matches = result.content.match(/https?:\/\/[^\s)]+/gi);
+          if (matches) {
+            for (const m of matches) {
+              if (!urls.includes(m)) urls.push(m);
+            }
+          }
+        }
+
+        if (urls.length > 0) {
+          // 确保所有 URL 都是唯一的
+          const uniqueUrls = Array.from(new Set(urls));
+          // 返回第一个作为默认，同时返回所有
+          return { status: 'success', url: uniqueUrls[0], urls: uniqueUrls };
         }
         throw new Error('AI 未能成功生成图片 URL');
       }

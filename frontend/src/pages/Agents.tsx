@@ -175,11 +175,17 @@ const Agents: React.FC = () => {
       if (agent?.streaming) {
         let fullContent = '';
         await agentService.runAgentStream(id, input, undefined, (chunk) => {
-          if (chunk.type === 'content') {
+          if (chunk.type === 'error') {
+            fullContent += `\n[错误: ${chunk.error}]\n`;
+            setTestResults(prev => ({ ...prev, [id]: fullContent }));
+          } else if (chunk.type === 'content') {
             fullContent += chunk.content;
             setTestResults(prev => ({ ...prev, [id]: fullContent }));
           } else if (chunk.type === 'tool_start') {
             fullContent += `\n[调用工具: ${chunk.tool}...]\n`;
+            setTestResults(prev => ({ ...prev, [id]: fullContent }));
+          } else if (chunk.type === 'tool_error') {
+            fullContent += `\n[工具错误: ${chunk.error}]\n`;
             setTestResults(prev => ({ ...prev, [id]: fullContent }));
           } else if (chunk.type === 'final_content') {
             // fullContent is already updated by 'content' chunks

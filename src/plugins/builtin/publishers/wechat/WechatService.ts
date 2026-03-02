@@ -94,120 +94,143 @@ export class WechatService {
   /**
    * 上传图片到微信素材库
    */
-  public async uploadResource(imagePath: string, baseDir?: string): Promise<{ media_id: string; url: string }> {
-    const accessToken = await this.getAccessToken();
-    let fileBuffer: Buffer;
-    let filename: string;
-    let contentType: string;
-    let tempFilePath: string | null = null;
+  public async uploadResource(imagePath: string, baseDir?: string, retries: number = 3): Promise<{ media_id: string; url: string }> {
+    let lastError: any;
 
-    try {
-      if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-        const response = await axios.get(imagePath, { responseType: 'arraybuffer', timeout: 60000 });
-        fileBuffer = Buffer.from(response.data);
-        const urlPath = imagePath.split('?')[0];
-        filename = path.basename(urlPath) || 'image.jpg';
-        if (!path.extname(filename)) {
-          filename += '.jpg';
-        }
-        contentType = response.headers['content-type'] || 'image/jpeg';
-
-        // 将下载的内容写入临时文件
-        const tempDir = os.tmpdir();
-        const hash = crypto.createHash('md5').update(imagePath).digest('hex');
-        tempFilePath = path.join(tempDir, `wechat_upload_${hash}_${filename}`);
-        fs.writeFileSync(tempFilePath, fileBuffer);
-        LogService.info(`Downloaded remote resource to temp file: ${tempFilePath}`);
-      } else {
-        const resolvedPath = path.isAbsolute(imagePath)
-          ? imagePath
-          : path.resolve(baseDir || process.cwd(), imagePath);
-
-        if (!fs.existsSync(resolvedPath)) {
-          throw new Error(`Image not found: ${resolvedPath}`);
+    for (let i = 0; i <= retries; i++) {
+      let tempFilePath: string | null = null;
+      try {
+        if (i > 0) {
+          LogService.info(`Retrying WeChat resource upload (${i}/${retries}) for: ${imagePath}`);
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, i - 1) * 1000));
         }
 
-        fileBuffer = fs.readFileSync(resolvedPath);
-        filename = path.basename(resolvedPath);
-        const ext = path.extname(filename).toLowerCase();
-        const mimeTypes: Record<string, string> = {
-          '.jpg': 'image/jpeg',
-          '.jpeg': 'image/jpeg',
-          '.png': 'image/png',
-          '.gif': 'image/gif',
-          '.webp': 'image/webp',
-        };
-        contentType = mimeTypes[ext] || 'image/jpeg';
-      }
+        const accessToken = await this.getAccessToken();
+        let fileBuffer: Buffer;
+        let filename: string;
+        let contentType: string;
 
-      // 处理不支持的格式 (如 AVIF)，转换为 JPEG
-      if (contentType === 'image/avif' || filename.toLowerCase().endsWith('.avif')) {
-        LogService.info(`Converting AVIF to JPEG for WeChat: ${filename}`);
-        try {
-          // 使用 Promise.race 防止 sharp 挂起
-          fileBuffer = await Promise.race([
-            sharp(fileBuffer).jpeg({ quality: 90 }).toBuffer(),
-            new Promise<Buffer>((_, reject) => setTimeout(() => reject(new Error('Sharp conversion timeout')), 30000))
-          ]);
-          LogService.info(`Successfully converted AVIF to JPEG: ${filename}`);
-          filename = filename.replace(/\.avif$/i, '.jpg');
-          contentType = 'image/jpeg';
-        } catch (err: any) {
-          LogService.warn(`Failed to convert AVIF to JPEG: ${err.message}. Trying to upload as-is.`);
+        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+          const response = await axios.get(imagePath, { responseType: 'arraybuffer', timeout: 60000 });
+          fileBuffer = Buffer.from(response.data);
+          const urlPath = imagePath.split('?')[0];
+          filename = path.basename(urlPath) || 'image.jpg';
+          if (!path.extname(filename)) {
+            filename += '.jpg';
+          }
+          contentType = response.headers['content-type'] || 'image/jpeg';
+
+          // 将下载的内容写入临时文件
+          const tempDir = os.tmpdir();
+          const hash = crypto.createHash('md5').update(imagePath).digest('hex');
+          tempFilePath = path.join(tempDir, `wechat_upload_${hash}_${filename}`);
+          fs.writeFileSync(tempFilePath, fileBuffer);
+          LogService.info(`Downloaded remote resource to temp file: ${tempFilePath}`);
+        } else {
+          const resolvedPath = path.isAbsolute(imagePath)
+            ? imagePath
+            : path.resolve(baseDir || process.cwd(), imagePath);
+
+          if (!fs.existsSync(resolvedPath)) {
+            throw new Error(`Image not found: ${resolvedPath}`);
+          }
+
+          fileBuffer = fs.readFileSync(resolvedPath);
+          filename = path.basename(resolvedPath);
+          const ext = path.extname(filename).toLowerCase();
+          const mimeTypes: Record<string, string> = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+          };
+          contentType = mimeTypes[ext] || 'image/jpeg';
         }
-      }
 
-      const boundary = `----WebKitFormBoundary${Date.now().toString(16)}`;
-      const header = `--${boundary}\r\n` +
-        `Content-Disposition: form-data; name="media"; filename="${filename}"\r\n` +
-        `Content-Type: ${contentType}\r\n\r\n`;
-      const footer = `\r\n--${boundary}--\r\n`;
+        // 处理不支持的格式 (如 AVIF) 或过大的图片，转换为 JPEG 并压缩
+        const isAVIF = contentType === 'image/avif' || filename.toLowerCase().endsWith('.avif');
+        const isLarge = fileBuffer.length > 2 * 1024 * 1024; // 2MB
 
-      const body = Buffer.concat([
-        Buffer.from(header, 'utf-8'),
-        fileBuffer,
-        Buffer.from(footer, 'utf-8'),
-      ]);
+        if (isAVIF || isLarge) {
+          LogService.info(`Compressing/Converting image for WeChat: ${filename} (size: ${fileBuffer.length} bytes, type: ${contentType})`);
+          try {
+            // 使用 Promise.race 防止 sharp 挂起
+            fileBuffer = await Promise.race([
+              sharp(fileBuffer).jpeg({ quality: 80 }).toBuffer(),
+              new Promise<Buffer>((_, reject) => setTimeout(() => reject(new Error('Sharp processing timeout')), 30000))
+            ]);
+            LogService.info(`Successfully compressed image: ${filename}. New size: ${fileBuffer.length} bytes`);
+            filename = filename.replace(/\.(avif|png|webp)$/i, '.jpg');
+            if (!filename.toLowerCase().endsWith('.jpg')) {
+              filename += '.jpg';
+            }
+            contentType = 'image/jpeg';
+          } catch (err: any) {
+            LogService.warn(`Failed to compress image: ${err.message}. Trying to upload as-is.`);
+          }
+        }
 
-      const url = `${this.getBaseUrl()}/cgi-bin/material/add_material?access_token=${accessToken}&type=image`;
+        const boundary = `----WebKitFormBoundary${Date.now().toString(16)}`;
+        const header = `--${boundary}\r\n` +
+          `Content-Disposition: form-data; name="media"; filename="${filename}"\r\n` +
+          `Content-Type: ${contentType}\r\n\r\n`;
+        const footer = `\r\n--${boundary}--\r\n`;
 
-      LogService.info(`Uploading to WeChat API: ${url.split('?')[0]} (size: ${body.length} bytes)`);
+        const body = Buffer.concat([
+          Buffer.from(header, 'utf-8'),
+          fileBuffer,
+          Buffer.from(footer, 'utf-8'),
+        ]);
 
-      const response = await axios.post(url, body, {
-        headers: {
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-        },
-        timeout: 90000,
-        maxContentLength: Infinity,
-        maxBodyLength: Infinity,
-      });
+        const url = `${this.getBaseUrl()}/cgi-bin/material/add_material?access_token=${accessToken}&type=image`;
 
-      const data = response.data;
-      if (data.errcode) {
-        throw new Error(`WeChat Upload error: ${data.errmsg} (${data.errcode})`);
-      }
+        LogService.info(`Uploading to WeChat API: ${url.split('?')[0]} (size: ${body.length} bytes)`);
 
-      LogService.info(`Successfully uploaded image to WeChat: ${filename}. media_id: ${data.media_id}`);
+        const response = await axios.post(url, body, {
+          headers: {
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          },
+          timeout: 90000,
+          maxContentLength: Infinity,
+          maxBodyLength: Infinity,
+        });
 
-      if (data.url?.startsWith('http://')) {
-        data.url = data.url.replace(/^http:\/\//i, 'https://');
-      }
+        const data = response.data;
+        if (data.errcode) {
+          throw new Error(`WeChat Upload error: ${data.errmsg} (${data.errcode})`);
+        }
 
-      return data;
-    } catch (error: any) {
-      LogService.error(`Failed to upload image to WeChat: ${error.message}`);
-      throw error;
-    } finally {
-      // 如果创建了临时文件，则删除它
-      if (tempFilePath && fs.existsSync(tempFilePath)) {
-        try {
-          fs.unlinkSync(tempFilePath);
-          LogService.info(`Deleted temp file: ${tempFilePath}`);
-        } catch (e: any) {
-          LogService.warn(`Failed to delete temp file ${tempFilePath}: ${e.message}`);
+        LogService.info(`Successfully uploaded image to WeChat: ${filename}. media_id: ${data.media_id}`);
+
+        if (data.url?.startsWith('http://')) {
+          data.url = data.url.replace(/^http:\/\//i, 'https://');
+        }
+
+        return data;
+      } catch (error: any) {
+        lastError = error;
+        LogService.warn(`Attempt ${i + 1} failed for WeChat resource upload: ${error.message}`);
+        
+        // 关键错误（如文件未找到）不重试
+        if (error.message.includes('Image not found')) {
+          throw error;
+        }
+      } finally {
+        // 如果创建了临时文件，则删除它
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+          try {
+            fs.unlinkSync(tempFilePath);
+            LogService.info(`Deleted temp file: ${tempFilePath}`);
+          } catch (e: any) {
+            LogService.warn(`Failed to delete temp file ${tempFilePath}: ${e.message}`);
+          }
         }
       }
     }
+
+    LogService.error(`Failed to upload image to WeChat after ${retries} retries: ${lastError.message}`);
+    throw lastError;
   }
 
   /**
@@ -343,57 +366,75 @@ export class WechatService {
   /**
    * 发布到草稿箱
    */
-  public async publishToDraft(options: PublishOptions): Promise<{ media_id: string }> {
-    const accessToken = await this.getAccessToken();
-    const url = `${this.getBaseUrl()}/cgi-bin/draft/add?access_token=${accessToken}`;
+  public async publishToDraft(options: PublishOptions, retries: number = 3): Promise<{ media_id: string }> {
+    let lastError: any;
+    
+    for (let i = 0; i <= retries; i++) {
+      try {
+        const accessToken = await this.getAccessToken();
+        const url = `${this.getBaseUrl()}/cgi-bin/draft/add?access_token=${accessToken}`;
 
-    LogService.info(`Publishing to WeChat draft: ${options.title}`);
+        if (i > 0) {
+          LogService.info(`Retrying WeChat publish (${i}/${retries}) for: ${options.title}`);
+          // 递增延迟：1s, 2s, 4s...
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, i - 1) * 1000));
+        } else {
+          LogService.info(`Publishing to WeChat draft: ${options.title}`);
+        }
 
-    if (!options.thumbMediaId && options.articleType !== 'newspic') {
-      throw new Error('WeChat Publish error: thumbMediaId is required but not found. Please ensure your content has at least one image or a valid fallback.');
-    }
+        if (!options.thumbMediaId && options.articleType !== 'newspic') {
+          throw new Error('WeChat Publish error: thumbMediaId is required but not found. Please ensure your content has at least one image or a valid fallback.');
+        }
 
-    let article: any;
-    if (options.articleType === 'newspic') {
-      article = {
-        article_type: 'newspic',
-        title: options.title,
-        content: options.content,
-        need_open_comment: 1,
-        only_fans_can_comment: 0,
-        image_info: {
-          image_list: options.imageMediaIds!.map(id => ({ image_media_id: id })),
-        },
-      };
-      if (options.author) article.author = options.author;
-    } else {
-      article = {
-        title: options.title,
-        content: options.content,
-        thumb_media_id: options.thumbMediaId,
-        need_open_comment: 1,
-        only_fans_can_comment: 0,
-      };
-      if (options.author) article.author = options.author;
-      if (options.digest) article.digest = options.digest;
-    }
+        let article: any;
+        if (options.articleType === 'newspic') {
+          article = {
+            article_type: 'newspic',
+            title: options.title,
+            content: options.content,
+            need_open_comment: 1,
+            only_fans_can_comment: 0,
+            image_info: {
+              image_list: options.imageMediaIds!.map(id => ({ image_media_id: id })),
+            },
+          };
+          if (options.author) article.author = options.author;
+        } else {
+          article = {
+            title: options.title,
+            content: options.content,
+            thumb_media_id: options.thumbMediaId,
+            need_open_comment: 1,
+            only_fans_can_comment: 0,
+          };
+          if (options.author) article.author = options.author;
+          if (options.digest) article.digest = options.digest;
+        }
 
-    try {
-      const response = await axios.post(url, {
-        articles: [article],
-      });
+        const response = await axios.post(url, {
+          articles: [article],
+        });
 
-      const data = response.data;
-      if (data.errcode) {
-        throw new Error(`WeChat Publish error: ${data.errmsg} (${data.errcode})`);
+        const data = response.data;
+        if (data.errcode) {
+          throw new Error(`WeChat Publish error: ${data.errmsg} (${data.errcode})`);
+        }
+
+        LogService.info(`Successfully published to WeChat draft. media_id: ${data.media_id}`);
+        return data;
+      } catch (error: any) {
+        lastError = error;
+        LogService.warn(`Attempt ${i + 1} failed for WeChat publish: ${error.message}`);
+        
+        // 如果是特定不可重试的错误（如缺少参数），直接抛出
+        if (error.message.includes('thumbMediaId is required')) {
+          throw error;
+        }
       }
-
-      LogService.info(`Successfully published to WeChat draft. media_id: ${data.media_id}`);
-      return data;
-    } catch (error: any) {
-      LogService.error(`Failed to publish to WeChat draft: ${error.message}`);
-      throw error;
     }
+
+    LogService.error(`Failed to publish to WeChat draft after ${retries} retries: ${lastError.message}`);
+    throw lastError;
   }
 }
 

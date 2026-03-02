@@ -46,6 +46,13 @@ export class GeminiProvider implements AIProvider {
     }
 
     const data = await response.json() as any;
+    
+    // Handle API errors in the response
+    if (data.error) {
+      const msg = data.error.message || JSON.stringify(data.error);
+      throw new Error(`Gemini API Error: ${msg}`);
+    }
+
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     
     const result: AIResponse = { content };
@@ -150,6 +157,13 @@ export class GeminiProvider implements AIProvider {
     }
 
     const data = await response.json() as any;
+    
+    // Handle API errors in the response
+    if (data.error) {
+      const msg = data.error.message || JSON.stringify(data.error);
+      throw new Error(`Gemini API Error: ${msg}`);
+    }
+
     const parts = data.candidates?.[0]?.content?.parts || [];
     const content = parts
       .filter((p: any) => typeof p.text === 'string')
@@ -265,41 +279,51 @@ export class GeminiProvider implements AIProvider {
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            const parts = data.candidates?.[0]?.content?.parts || [];
-            const content = parts
-              .filter((p: any) => typeof p.text === 'string')
-              .map((p: any) => p.text)
-              .join('') || '';
-
-            const functionCalls = parts
-              .filter((p: any) => p.functionCall)
-              .map((p: any, idx: number) => ({
-                id: p.functionCall?.id || `call_${idx}`,
-                name: p.functionCall?.name,
-                arguments: p.functionCall?.args || {}
-              }))
-              .filter((tc: any) => tc.name);
-
-            if (content || functionCalls.length > 0) {
-              const result: AIResponse = {
-                content,
-                tool_calls: functionCalls.length > 0 ? functionCalls : undefined,
-                raw_parts: parts
-              };
-              if (data.usageMetadata) {
-                result.usage = {
-                  prompt_tokens: data.usageMetadata.promptTokenCount,
-                  completion_tokens: data.usageMetadata.candidatesTokenCount,
-                  total_tokens: data.usageMetadata.totalTokenCount
-                };
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              // Handle API errors in the stream
+              if (data.error) {
+                const msg = data.error.message || JSON.stringify(data.error);
+                throw new Error(`Gemini Stream Error: ${msg}`);
               }
-              yield result;
+
+              const parts = data.candidates?.[0]?.content?.parts || [];
+              const content = parts
+                .filter((p: any) => typeof p.text === 'string')
+                .map((p: any) => p.text)
+                .join('') || '';
+
+              const functionCalls = parts
+                .filter((p: any) => p.functionCall)
+                .map((p: any, idx: number) => ({
+                  id: p.functionCall?.id || `call_${idx}`,
+                  name: p.functionCall?.name,
+                  arguments: p.functionCall?.args || {}
+                }))
+                .filter((tc: any) => tc.name);
+
+              if (content || functionCalls.length > 0) {
+                const result: AIResponse = {
+                  content,
+                  tool_calls: functionCalls.length > 0 ? functionCalls : undefined,
+                  raw_parts: parts
+                };
+                if (data.usageMetadata) {
+                  result.usage = {
+                    prompt_tokens: data.usageMetadata.promptTokenCount,
+                    completion_tokens: data.usageMetadata.candidatesTokenCount,
+                    total_tokens: data.usageMetadata.totalTokenCount
+                  };
+                }
+                yield result;
+              }
+            } catch (e: any) {
+              if (e.message?.includes('Stream Error:')) {
+                throw e;
+              }
+              console.error('[Gemini] Stream Parse Error:', e);
             }
-          } catch (e) {
-            console.error('[Gemini] Stream Parse Error:', e);
-          }
         }
       }
     }
@@ -361,6 +385,13 @@ export class OpenAIProvider implements AIProvider {
     }
 
     const data = await response.json() as any;
+    
+    // Handle API errors in the response
+    if (data.error) {
+      const msg = data.error.message || JSON.stringify(data.error);
+      throw new Error(`OpenAI API Error: ${msg}`);
+    }
+
     const result: AIResponse = {
       content: data.choices?.[0]?.message?.content || '',
       tool_calls: data.choices?.[0]?.message?.tool_calls
@@ -438,6 +469,13 @@ export class OpenAIProvider implements AIProvider {
     }
 
     const data = await response.json() as any;
+
+    // Handle API errors in the response
+    if (data.error) {
+      const msg = data.error.message || JSON.stringify(data.error);
+      throw new Error(`OpenAI API Error: ${msg}`);
+    }
+
     const message = data.choices?.[0]?.message;
     
     const result: AIResponse = {
@@ -537,31 +575,41 @@ export class OpenAIProvider implements AIProvider {
         const trimmed = line.trim();
         if (!trimmed || trimmed === 'data: [DONE]') continue;
         if (trimmed.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(trimmed.slice(6));
-            const choice = data.choices?.[0];
-            const content = choice?.delta?.content || '';
-            const tool_calls = choice?.delta?.tool_calls?.map((tc: any) => ({
-              id: tc.id,
-              name: tc.function?.name,
-              arguments: tc.function?.arguments // Note: arguments come in chunks here too
-            }));
-
-            if (content || tool_calls || data.usage) {
-              const result: AIResponse = { content };
-              if (tool_calls) result.tool_calls = tool_calls;
-              if (data.usage) {
-                result.usage = {
-                  prompt_tokens: data.usage.prompt_tokens,
-                  completion_tokens: data.usage.completion_tokens,
-                  total_tokens: data.usage.total_tokens
-                };
+            try {
+              const data = JSON.parse(trimmed.slice(6));
+              
+              // Handle API errors in the stream
+              if (data.error) {
+                const msg = data.error.message || JSON.stringify(data.error);
+                throw new Error(`OpenAI Stream Error: ${msg}`);
               }
-              yield result;
+
+              const choice = data.choices?.[0];
+              const content = choice?.delta?.content || '';
+              const tool_calls = choice?.delta?.tool_calls?.map((tc: any) => ({
+                id: tc.id,
+                name: tc.function?.name,
+                arguments: tc.function?.arguments // Note: arguments come in chunks here too
+              }));
+
+              if (content || tool_calls || data.usage) {
+                const result: AIResponse = { content };
+                if (tool_calls) result.tool_calls = tool_calls;
+                if (data.usage) {
+                  result.usage = {
+                    prompt_tokens: data.usage.prompt_tokens,
+                    completion_tokens: data.usage.completion_tokens,
+                    total_tokens: data.usage.total_tokens
+                  };
+                }
+                yield result;
+              }
+            } catch (e: any) {
+              if (e.message?.includes('Stream Error:')) {
+                throw e;
+              }
+              console.error('[OpenAI] Stream Parse Error:', e);
             }
-          } catch (e) {
-            console.error('[OpenAI] Stream Parse Error:', e);
-          }
         }
       }
     }
@@ -628,6 +676,13 @@ export class AnthropicProvider implements AIProvider {
     }
 
     const data = await response.json() as any;
+    
+    // Handle API errors in the response
+    if (data.type === 'error') {
+      const msg = data.error?.message || JSON.stringify(data.error || data);
+      throw new Error(`Anthropic API Error: ${msg}`);
+    }
+
     const content = data.content?.[0]?.text || '';
     
     const result: AIResponse = { content };
@@ -720,6 +775,13 @@ export class AnthropicProvider implements AIProvider {
     }
 
     const data = await response.json() as any;
+    
+    // Handle API errors in the response
+    if (data.type === 'error') {
+      const msg = data.error?.message || JSON.stringify(data.error || data);
+      throw new Error(`Anthropic API Error: ${msg}`);
+    }
+
     const blocks = data.content || [];
     const content = blocks
       .filter((b: any) => b.type === 'text' && typeof b.text === 'string')
@@ -838,31 +900,41 @@ export class AnthropicProvider implements AIProvider {
 
       for (const line of lines) {
         if (line.startsWith('data: ')) {
-          try {
-            const data = JSON.parse(line.slice(6));
-            if (data.type === 'content_block_delta') {
-              if (data.delta?.type === 'text_delta') {
-                yield { content: data.delta.text };
-              } else if (data.delta?.type === 'input_json_delta') {
-                // Partial JSON for tool input
-                yield { content: '', tool_calls: [{ id: '', name: '', arguments: data.delta.partial_json }] };
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              // Handle error message types in Anthropic stream
+              if (data.type === 'error') {
+                const msg = data.error?.message || JSON.stringify(data.error || data);
+                throw new Error(`Anthropic Stream Error: ${msg}`);
               }
-            } else if (data.type === 'message_delta' && data.usage) {
-              yield { content: '', usage: {
-                prompt_tokens: 0, // Anthropic doesn't provide prompt_tokens in message_delta usually
-                completion_tokens: data.usage.output_tokens,
-                total_tokens: data.usage.output_tokens
-              }};
-            } else if (data.type === 'message_start' && data.message?.usage) {
+
+              if (data.type === 'content_block_delta') {
+                if (data.delta?.type === 'text_delta') {
+                  yield { content: data.delta.text };
+                } else if (data.delta?.type === 'input_json_delta') {
+                  // Partial JSON for tool input
+                  yield { content: '', tool_calls: [{ id: '', name: '', arguments: data.delta.partial_json }] };
+                }
+              } else if (data.type === 'message_delta' && data.usage) {
                 yield { content: '', usage: {
-                    prompt_tokens: data.message.usage.input_tokens,
-                    completion_tokens: 0,
-                    total_tokens: data.message.usage.input_tokens
+                  prompt_tokens: 0, // Anthropic doesn't provide prompt_tokens in message_delta usually
+                  completion_tokens: data.usage.output_tokens,
+                  total_tokens: data.usage.output_tokens
                 }};
+              } else if (data.type === 'message_start' && data.message?.usage) {
+                  yield { content: '', usage: {
+                      prompt_tokens: data.message.usage.input_tokens,
+                      completion_tokens: 0,
+                      total_tokens: data.message.usage.input_tokens
+                  }};
+              }
+            } catch (e: any) {
+              if (e.message?.includes('Stream Error:')) {
+                throw e;
+              }
+              console.error('[Anthropic] Stream Parse Error:', e);
             }
-          } catch (e) {
-            console.error('[Anthropic] Stream Parse Error:', e);
-          }
         }
       }
     }
@@ -926,6 +998,9 @@ export class OllamaProvider implements AIProvider {
     }
 
     const data = await response.json() as any;
+    if (data.error) {
+      throw new Error(`Ollama Error: ${data.error}`);
+    }
     const content = data.response || '';
     
     const result: AIResponse = { content };
@@ -993,6 +1068,9 @@ export class OllamaProvider implements AIProvider {
 
       if (response.ok) {
         const data = await response.json() as any;
+        if (data.error) {
+          throw new Error(`Ollama Error: ${data.error}`);
+        }
         const message = data.message;
         const toolCalls = message?.tool_calls
           ?.map((tc: any, idx: number) => {
@@ -1105,31 +1183,39 @@ export class OllamaProvider implements AIProvider {
 
       for (const line of lines) {
         if (!line.trim()) continue;
-        try {
-          const data = JSON.parse(line);
-          const message = data.message;
-          const content = message?.content || '';
-          const tool_calls = message?.tool_calls?.map((tc: any, idx: number) => ({
-            id: tc.id || `call_${idx}`,
-            name: tc.function?.name,
-            arguments: tc.function?.arguments
-          }));
-
-          if (content || tool_calls || data.done) {
-            const result: AIResponse = { content };
-            if (tool_calls) result.tool_calls = tool_calls;
-            if (data.done) {
-              result.usage = {
-                prompt_tokens: data.prompt_eval_count || 0,
-                completion_tokens: data.eval_count || 0,
-                total_tokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
-              };
+          try {
+            const data = JSON.parse(line);
+            
+            if (data.error) {
+              throw new Error(`Ollama Stream Error: ${data.error}`);
             }
-            yield result;
+
+            const message = data.message;
+            const content = message?.content || '';
+            const tool_calls = message?.tool_calls?.map((tc: any, idx: number) => ({
+              id: tc.id || `call_${idx}`,
+              name: tc.function?.name,
+              arguments: tc.function?.arguments
+            }));
+
+            if (content || tool_calls || data.done) {
+              const result: AIResponse = { content };
+              if (tool_calls) result.tool_calls = tool_calls;
+              if (data.done) {
+                result.usage = {
+                  prompt_tokens: data.prompt_eval_count || 0,
+                  completion_tokens: data.eval_count || 0,
+                  total_tokens: (data.prompt_eval_count || 0) + (data.eval_count || 0)
+                };
+              }
+              yield result;
+            }
+          } catch (e: any) {
+            if (e.message?.includes('Stream Error:')) {
+              throw e;
+            }
+            console.error('[Ollama] Stream Parse Error:', e);
           }
-        } catch (e) {
-          console.error('[Ollama] Stream Parse Error:', e);
-        }
       }
     }
   }
