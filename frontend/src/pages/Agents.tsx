@@ -4,6 +4,8 @@ import { agentService } from '../services/agentService';
 import type { Agent, Skill, Tool, Workflow, WorkflowStep, MCPServerConfig } from '../services/agentService';
 import { getSettings } from '../services/settingsService';
 import { useToast } from '../context/ToastContext.js';
+import { copyToClipboard } from '../utils/clipboardUtils';
+import { genericImport } from '../services/importService';
 
 const FileTreeNode: React.FC<{
   items: any[];
@@ -90,6 +92,38 @@ const Agents: React.FC = () => {
   const [storeResults, setStoreResults] = useState<any[]>([]);
   const [isStoreLoading, setIsStoreLoading] = useState(false);
   const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
+
+  const handleCopy = async (text: string) => {
+    if (!text) return;
+    const success = await copyToClipboard(text);
+    if (success) {
+      toastSuccess('复制成功');
+    } else {
+      toastError('复制失败');
+    }
+  };
+
+  const handleImportAsDataSource = async (content: string, titlePrefix: string) => {
+    if (!content) return;
+    
+    const confirmed = window.confirm(`确定将此结果导入为数据源吗？`);
+    if (!confirmed) return;
+
+    try {
+      // 1. 获取默认分类
+      const defaultCategory = settings.CATEGORIES?.[0]?.id || 'news';
+      
+      // 2. 执行导入（统一按 TEXT 导入）
+      await genericImport('TEXT', defaultCategory, { 
+        title: `${titlePrefix} - ${new Date().toLocaleString()}`, 
+        content 
+      });
+      
+      toastSuccess('导入成功，请在“内容筛选”页面查看');
+    } catch (error: any) {
+      toastError('导入失败: ' + error.message);
+    }
+  };
 
   useEffect(() => {
 
@@ -693,8 +727,29 @@ const Agents: React.FC = () => {
                 </button>
 
                 {testResults[testingAgentId] && (
-                  <div className="w-full p-4 bg-slate-50 dark:bg-black/20 rounded-xl text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-pre-wrap break-words max-h-60 overflow-y-auto border border-slate-200 dark:border-white/5">
-                    {testResults[testingAgentId]}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center px-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">测试结果</label>
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => handleCopy(testResults[testingAgentId])}
+                          className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-sm">content_copy</span>
+                          复制
+                        </button>
+                        <button 
+                          onClick={() => handleImportAsDataSource(testResults[testingAgentId], `智能体测试: ${agents.find(a => a.id === testingAgentId)?.name}`)}
+                          className="flex items-center gap-1 text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-sm">input</span>
+                          导入为数据源
+                        </button>
+                      </div>
+                    </div>
+                    <div className="w-full p-4 bg-slate-50 dark:bg-black/20 rounded-xl text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-pre-wrap break-words max-h-60 overflow-y-auto border border-slate-200 dark:border-white/5">
+                      {testResults[testingAgentId]}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2110,8 +2165,29 @@ const Agents: React.FC = () => {
                 </button>
 
                 {workflowTestResult[testingWorkflowId] && (
-                  <div className="w-full p-4 bg-slate-50 dark:bg-black/20 rounded-xl text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-pre-wrap break-words max-h-60 overflow-y-auto border border-slate-200 dark:border-white/5">
-                    {workflowTestResult[testingWorkflowId]}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center px-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">执行结果</label>
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => handleCopy(workflowTestResult[testingWorkflowId])}
+                          className="flex items-center gap-1 text-[10px] font-bold text-emerald-600 hover:text-emerald-500 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-sm">content_copy</span>
+                          复制
+                        </button>
+                        <button 
+                          onClick={() => handleImportAsDataSource(workflowTestResult[testingWorkflowId], `工作流运行: ${workflows.find(w => w.id === testingWorkflowId)?.name}`)}
+                          className="flex items-center gap-1 text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-sm">input</span>
+                          导入为数据源
+                        </button>
+                      </div>
+                    </div>
+                    <div className="w-full p-4 bg-slate-50 dark:bg-black/20 rounded-xl text-xs text-slate-600 dark:text-slate-300 font-mono whitespace-pre-wrap break-words max-h-60 overflow-y-auto border border-slate-200 dark:border-white/5">
+                      {workflowTestResult[testingWorkflowId]}
+                    </div>
                   </div>
                 )}
               </div>
@@ -2282,7 +2358,25 @@ const Agents: React.FC = () => {
 
                 {toolExecutionResult && (
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">执行结果</label>
+                    <div className="flex justify-between items-center px-1">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">执行结果</label>
+                      <div className="flex items-center gap-3">
+                        <button 
+                          onClick={() => handleCopy(JSON.stringify(toolExecutionResult, null, 2))}
+                          className="flex items-center gap-1 text-[10px] font-bold text-primary hover:text-primary/80 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-sm">content_copy</span>
+                          复制
+                        </button>
+                        <button 
+                          onClick={() => handleImportAsDataSource(JSON.stringify(toolExecutionResult, null, 2), `工具执行: ${executingTool.name}`)}
+                          className="flex items-center gap-1 text-[10px] font-bold text-blue-500 hover:text-blue-400 transition-colors"
+                        >
+                          <span className="material-symbols-outlined text-sm">input</span>
+                          导入为数据源
+                        </button>
+                      </div>
+                    </div>
                     <div className={`w-full p-4 rounded-xl text-xs font-mono whitespace-pre-wrap break-words max-h-60 overflow-y-auto border ${toolExecutionResult.success === false ? 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-600 dark:text-red-400' : 'bg-slate-50 dark:bg-black/20 border-slate-200 dark:border-white/5 text-slate-600 dark:text-slate-300'}`}>
                       {JSON.stringify(toolExecutionResult, null, 2)}
                     </div>

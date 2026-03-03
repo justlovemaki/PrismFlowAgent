@@ -175,16 +175,18 @@ const ContentCard = memo(({
                 <span className="material-symbols-outlined text-xs text-amber-500">star</span> {item.stars}
               </div>
             )}
-            <a 
-              href={item.url} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-primary hover:bg-primary/10 transition-all"
-              title="打开链接"
-            >
-              <span className="material-symbols-outlined text-xl">open_in_new</span>
-            </a>
+            {item.url && (
+              <a 
+                href={item.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-slate-100 dark:bg-white/5 text-slate-400 hover:text-primary hover:bg-primary/10 transition-all"
+                title="打开链接"
+              >
+                <span className="material-symbols-outlined text-xl">open_in_new</span>
+              </a>
+            )}
           </div>
         </div>
       </div>
@@ -1042,15 +1044,17 @@ const Selection: React.FC = () => {
                 >
                   关闭
                 </button>
-                <a 
-                  href={previewItem.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="px-6 py-2 rounded-xl bg-primary text-white hover:bg-cyan-400 transition-all text-sm font-medium flex items-center gap-2"
-                >
-                  <span className="material-symbols-outlined text-sm">open_in_new</span>
-                  查看详情
-                </a>
+                {previewItem.url && (
+                  <a 
+                    href={previewItem.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-6 py-2 rounded-xl bg-primary text-white hover:bg-cyan-400 transition-all text-sm font-medium flex items-center gap-2"
+                  >
+                    <span className="material-symbols-outlined text-sm">open_in_new</span>
+                    查看详情
+                  </a>
+                )}
               </div>
             </motion.div>
           </motion.div>

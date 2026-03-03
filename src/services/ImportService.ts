@@ -33,7 +33,7 @@ export class ImportService {
       // 解码 HTML 实体（简单处理）
       title = stripHtml(title).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 
-      const description = plainText.substring(0, 500) + (plainText.length > 500 ? '...' : '');
+      const description = plainText.substring(0, 5000) + (plainText.length > 5000 ? '...' : '');
 
       const item: UnifiedData = {
         id: `manual-url-${crypto.createHash('md5').update(url).digest('hex').substring(0, 12)}`,
@@ -46,7 +46,7 @@ export class ImportService {
         category: categoryId,
         metadata: {
           import_mode: 'URL',
-          full_html: plainText.substring(0, 50000) // 只存储纯文本
+          full_html: plainText.substring(0, 100000) // 只存储纯文本
         }
       };
 
@@ -70,7 +70,7 @@ export class ImportService {
       id: `manual-text-${crypto.createHash('md5').update(plainContent + Date.now()).digest('hex').substring(0, 12)}`,
       title: plainTitle,
       url: '#',
-      description: plainContent.substring(0, 1000),
+      description: plainContent.substring(0, 20000),
       published_date: new Date().toISOString(),
       ingestion_date: getISODate(),
       source: '手动文本导入',
