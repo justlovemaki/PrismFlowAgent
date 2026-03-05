@@ -325,13 +325,13 @@ const Agents: React.FC = () => {
         {agents.map(agent => (
           <div key={agent.id} className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-6 shadow-sm hover:shadow-md transition-all group">
             <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
                   <span className="material-symbols-outlined text-3xl">smart_toy</span>
                 </div>
-                <div>
-                  <h4 className="font-bold text-slate-900 dark:text-white">{agent.name}</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">{agent.description}</p>
+                <div className="min-w-0 flex-1">
+                  <h4 className="font-bold text-slate-900 dark:text-white break-words max-w-[160px]">{agent.name}</h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1 break-words">{agent.description}</p>
                 </div>
               </div>
               <div className="flex gap-2">
@@ -956,13 +956,13 @@ const Agents: React.FC = () => {
             {skills.map(skill => (
               <div key={skill.id} onClick={() => handlePreviewSkill(skill)} className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-6 shadow-sm hover:shadow-md transition-all group cursor-pointer">
                 <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-500/20 text-blue-600 flex items-center justify-center">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-500/20 text-blue-600 flex items-center justify-center shrink-0">
                       <span className="material-symbols-outlined text-2xl">bolt</span>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-slate-900 dark:text-white">{skill.name}</h4>
-                      <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1">{skill.description}</p>
+                    <div className="min-w-0 flex-1">
+                      <h4 className="font-bold text-slate-900 dark:text-white break-words max-w-[120px]">{skill.name}</h4>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1 break-words">{skill.description}</p>
                     </div>
                   </div>
                   <button
@@ -1127,20 +1127,20 @@ const Agents: React.FC = () => {
           {tools.map(tool => (
             <div key={tool.id} className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-6 shadow-sm flex flex-col">
               <div className="flex justify-between items-start mb-4">
-                <div className="flex items-center gap-4">
-                  <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 text-slate-500 flex items-center justify-center">
+                <div className="flex items-center gap-4 min-w-0">
+                  <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-white/5 text-slate-500 flex items-center justify-center shrink-0">
                     <span className="material-symbols-outlined text-2xl">construction</span>
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h4 className="font-bold text-slate-900 dark:text-white">{tool.name}</h4>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h4 className="font-bold text-slate-900 dark:text-white break-words max-w-[140px]">{tool.name}</h4>
                       {(tool as any).isBuiltin ? (
-                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider">内置</span>
+                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider shrink-0">内置</span>
                       ) : (
-                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider">自定义</span>
+                        <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider shrink-0">自定义</span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400">ID: {tool.id}</p>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 break-all">ID: {tool.id}</p>
                   </div>
                 </div>
                 <button
@@ -1155,10 +1155,10 @@ const Agents: React.FC = () => {
                   执行
                 </button>
               </div>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4 flex-1">{tool.description}</p>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed mb-4 flex-1 break-words">{tool.description}</p>
               <div className="p-3 bg-slate-50 dark:bg-black/20 rounded-xl max-h-40 overflow-y-auto no-scrollbar">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block mb-2">参数定义 (JSON Schema)</span>
-                <pre className="text-[10px] text-slate-500 font-mono whitespace-pre-wrap">{JSON.stringify(tool.parameters, null, 2)}</pre>
+                <pre className="text-[10px] text-slate-500 font-mono whitespace-pre-wrap break-all">{JSON.stringify(tool.parameters, null, 2)}</pre>
               </div>
             </div>
           ))}
@@ -1191,18 +1191,18 @@ const Agents: React.FC = () => {
             {mcpConfigs.map(mcp => (
               <div key={mcp.id} className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-6 shadow-sm hover:shadow-md transition-all group">
                 <div className="flex justify-between items-start mb-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${mcp.enabled ? 'bg-violet-100 dark:bg-violet-500/20 text-violet-600' : 'bg-slate-100 dark:bg-white/5 text-slate-400'}`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${mcp.enabled ? 'bg-violet-100 dark:bg-violet-500/20 text-violet-600' : 'bg-slate-100 dark:bg-white/5 text-slate-400'}`}>
                       <span className="material-symbols-outlined text-2xl">hub</span>
                     </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-bold text-slate-900 dark:text-white">{mcp.name || '未命名'}</h4>
-                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${mcp.enabled ? 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400' : 'bg-slate-100 dark:bg-white/5 text-slate-400'}`}>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <h4 className="font-bold text-slate-900 dark:text-white break-words max-w-[140px]">{mcp.name || '未命名'}</h4>
+                        <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 ${mcp.enabled ? 'bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400' : 'bg-slate-100 dark:bg-white/5 text-slate-400'}`}>
                           {mcp.enabled ? '已启用' : '已禁用'}
                         </span>
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1">{mcp.description || '无描述'}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1 break-words">{mcp.description || '无描述'}</p>
                     </div>
                   </div>
                   <div className="flex gap-1">

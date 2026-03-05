@@ -109,16 +109,16 @@ const PluginManagement: React.FC = () => {
                 {plugin.icon || (type === 'adapter' ? 'extension' : type === 'publisher' ? 'send' : type === 'storage' ? 'cloud_upload' : type === 'tool' ? 'build' : 'psychology')}
               </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h4 className="font-bold text-slate-900 dark:text-white">{plugin.name}</h4>
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h4 className="font-bold text-slate-900 dark:text-white break-words max-w-[140px]">{plugin.name}</h4>
                 {isBuiltin ? (
-                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider">内置</span>
+                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-primary/10 text-primary uppercase tracking-wider shrink-0">内置</span>
                 ) : (
-                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider">自定义</span>
+                  <span className="px-1.5 py-0.5 rounded text-[8px] font-black bg-amber-100 dark:bg-amber-500/20 text-amber-600 uppercase tracking-wider shrink-0">自定义</span>
                 )}
               </div>
-              <p className="text-[10px] font-mono text-slate-400 uppercase tracking-tight">{id}</p>
+              <p className="text-[10px] font-mono text-slate-400 uppercase tracking-tight break-all">{id}</p>
             </div>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
