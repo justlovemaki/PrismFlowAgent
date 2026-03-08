@@ -115,9 +115,9 @@ export function getRandomUserAgent(): string {
 
 export function extractContentFromSecondHash(content: string): string {
   const parts = content.split('###');
-  if (parts.length > 2) {
-    // 原始逻辑：重新组合从第二个 ### 开始的所有部分
-    let newcontent = '###' + parts.slice(2).join('###');
+  if (parts.length > 1) {
+    // 调整逻辑：重新组合从第一个 ### 开始的所有部分
+    let newcontent = '###' + parts.slice(1).join('###');
     const lastHashIndex = newcontent.lastIndexOf('AI资讯日报多渠道');
     if (lastHashIndex !== -1) {
       newcontent = newcontent.substring(0, lastHashIndex - 10);
