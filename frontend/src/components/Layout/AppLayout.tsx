@@ -5,6 +5,8 @@ interface AppLayoutProps {
   children: React.ReactNode;
 }
 
+const APP_VERSION = __APP_VERSION__;
+
 const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
@@ -16,7 +18,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
     <div className="relative flex h-screen w-full flex-row overflow-hidden bg-background-light dark:bg-background-dark transition-colors duration-300">
       {/* Desktop Sidebar */}
       <div className="hidden md:block">
-        <Sidebar />
+        <Sidebar version={APP_VERSION} />
       </div>
 
       {/* Mobile Sidebar Overlay */}
@@ -29,7 +31,7 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
 
       {/* Mobile Sidebar */}
       <div className={`fixed inset-y-0 left-0 z-[70] w-64 transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} transition-transform duration-300 ease-in-out md:hidden`}>
-        <Sidebar onMobileClose={() => setIsSidebarOpen(false)} />
+        <Sidebar onMobileClose={() => setIsSidebarOpen(false)} version={APP_VERSION} />
       </div>
 
       <main className="flex-1 flex flex-col h-full overflow-y-auto relative scroll-smooth text-slate-900 dark:text-white">
@@ -39,9 +41,12 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <div className="w-8 h-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
               <span className="material-symbols-outlined text-lg">auto_awesome</span>
             </div>
-            <span className="font-bold text-slate-900 dark:text-white">流光 PrismFlowAgent</span>
+            <div className="flex flex-col leading-tight">
+              <span className="font-bold text-slate-900 dark:text-white">流光 PrismFlowAgent</span>
+              <span className="text-[11px] text-slate-500 dark:text-slate-400">v{APP_VERSION}</span>
+            </div>
           </div>
-          <button 
+          <button
             className="text-slate-600 dark:text-white p-2"
             onClick={toggleSidebar}
           >

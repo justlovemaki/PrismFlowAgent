@@ -19,10 +19,11 @@ export class PublishToGitHubTool extends BaseTool {
     const context = await ServiceContext.getInstance();
     const githubPublisher = context.publisherInstances.find(p => p.id === 'github') as any;
     const prefix = githubPublisher?.config?.pathPrefix || 'daily';
+    const displayDate = args.date.replace(/-/g, '/').replace(/\b0(\d)\b/g, '$1');
 
     return await context.taskService.publish('github', args.dailyMd, {
       filePath: `${prefix}/${args.date}.md`,
-      message: args.title || `Push Github for ${args.date}`,
+      message: args.title || `AI资讯日报 ${displayDate}`,
       title: args.title,
       date: args.date
     });

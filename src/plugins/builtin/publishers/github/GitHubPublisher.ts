@@ -54,7 +54,8 @@ export class GitHubPublisher implements IPublisher {
   async publish(content: string, options: { filePath?: string; message?: string; date?: string; repo?: string; branch?: string; title?: string }) {
     const date = options.date || new Date().toISOString().split('T')[0];
     const filePath = options.filePath || `${this.config.pathPrefix || 'daily'}/${date}.md`;
-    const message = options.message || options.title || `Push Github for ${date}`;
+    const displayDate = date.replace(/-/g, '/').replace(/\b0(\d)\b/g, '$1');
+    const message = options.message || options.title || `AI资讯日报 ${displayDate}`;
     
     let owner = this.owner;
     let repo = this.repo;

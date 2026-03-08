@@ -5,9 +5,10 @@ import { useAuth } from '../../context/AuthContext';
 
 interface SidebarProps {
   onMobileClose?: () => void;
+  version?: string;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ onMobileClose }) => {
+const Sidebar: React.FC<SidebarProps> = ({ onMobileClose, version }) => {
   const { theme, toggleTheme } = useTheme();
   const { logout } = useAuth();
   const navigate = useNavigate();
@@ -70,7 +71,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onMobileClose }) => {
       </div>
 
       <div className="mt-auto p-6 border-t border-slate-200 dark:border-white/5">
-        <button 
+        <button
           onClick={toggleTheme}
           className="flex items-center gap-3 p-2 w-full rounded-lg hover:bg-slate-100 dark:hover:bg-white/5 cursor-pointer transition-colors text-slate-600 dark:text-text-secondary hover:text-primary dark:hover:text-white mb-2"
         >
@@ -79,8 +80,8 @@ const Sidebar: React.FC<SidebarProps> = ({ onMobileClose }) => {
           </span>
           <span className="text-sm font-medium">{theme === 'dark' ? '切换浅色' : '切换深色'}</span>
         </button>
-
-        <button 
+ 
+        <button
           onClick={handleLogout}
           className="flex items-center gap-3 p-2 w-full rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 cursor-pointer transition-colors text-slate-600 dark:text-text-secondary hover:text-red-600 dark:hover:text-red-400"
         >
@@ -89,6 +90,12 @@ const Sidebar: React.FC<SidebarProps> = ({ onMobileClose }) => {
           </span>
           <span className="text-sm font-medium">退出登录</span>
         </button>
+
+        {version && (
+          <div className="mt-4 px-2 text-xs text-slate-400 dark:text-slate-500">
+            版本 v{version}
+          </div>
+        )}
       </div>
     </aside>
   );

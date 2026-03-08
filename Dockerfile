@@ -11,7 +11,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy root package files and config
-COPY package*.json tsconfig.json ./
+COPY package*.json tsconfig.json version ./
 RUN npm install
 
 # Copy backend source and build
