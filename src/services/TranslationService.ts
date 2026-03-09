@@ -24,7 +24,7 @@ export class TranslationService {
 
     try {
       const prompt = `Translate the following text to ${targetLang}. Only return the translated text without any explanations or extra characters.\n\nText:\n${text}`;
-      const response = await this.ai.generateContent(prompt, 'You are a professional translator.');
+      const response = await this.ai.generateContent(prompt, [], 'You are a professional translator.');
       
       if (response && response.content) {
         return response.content.trim();

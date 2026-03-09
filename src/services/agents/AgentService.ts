@@ -111,7 +111,7 @@ export class AgentService {
         LogService.info(`[Agent ${agentDef.name}] Round ${rounds + 1} starting...`);
       }
 
-      const response = await provider.generateWithTools(messages, combinedTools);
+      const response = await provider.generateContent(messages, combinedTools);
       
       const responseContent = response.content || '';
       if (!options.silent && responseContent) {
