@@ -16,13 +16,13 @@ export abstract class BaseAdapter {
   appendDateToId?: boolean;
 
   abstract fetch(config: any): Promise<any>;
-  abstract transform(rawData: any, config?: any): UnifiedData[];
+  abstract transform(rawData: any, config?: any): UnifiedData[] | Promise<UnifiedData[]>;
 
   async fetchAndTransform(config: any): Promise<UnifiedData[]> {
     LogService.info(`[Adapter: ${this.name}] Starting fetch and transform...`);
     try {
       const rawData = await this.fetch(config);
-      let transformedData = this.transform(rawData, config);
+      let transformedData = await this.transform(rawData, config);
       
       // 执行翻译逻辑
       if (this.enableTranslation && this.translationService) {

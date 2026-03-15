@@ -24,7 +24,46 @@ export function escapeHtml(unsafe: any): string {
   return str.replace(/[&<>"']/g, (m) => map[m]);
 }
 
+/**
+ * 尝试从文本中提取并解析 JSON 数据
+ * 优先匹配最外层的 [ ] 或 { }
+ */
+export function extractJson<T = any>(text: string): T | null {
+  if (!text) return null;
+
+  // 1. 先尝试直接解析（清理掉 Markdown 标记后）
+  const cleaned = removeMarkdownCodeBlock(text).trim();
+  try {
+    return JSON.parse(cleaned) as T;
+  } catch (e) {
+    // 忽略错误，继续正则提取
+  }
+
+  // 2. 尝试匹配数组 [ ... ]
+  const arrayMatch = text.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    try {
+      return JSON.parse(arrayMatch[0]) as T;
+    } catch (e) {
+      // 忽略解析错误
+    }
+  }
+
+  // 3. 尝试匹配对象 { ... }
+  const objectMatch = text.match(/\{[\s\S]*\}/);
+  if (objectMatch) {
+    try {
+      return JSON.parse(objectMatch[0]) as T;
+    } catch (e) {
+      // 忽略解析错误
+    }
+  }
+
+  return null;
+}
+
 export function removeMarkdownCodeBlock(text: string): string {
+// ... existing code ...
   if (!text) return '';
   let cleanedText = text.trim();
 

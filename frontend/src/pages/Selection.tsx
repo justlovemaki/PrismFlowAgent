@@ -731,335 +731,339 @@ const Selection: React.FC = () => {
         </div>
       </div>
 
-      {loading ? (
-        <div className="flex flex-col items-center justify-center py-20 space-y-4">
-          <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-          <p className="text-slate-500 dark:text-text-secondary animate-pulse">流光溢彩，正在获取深度洞察...</p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {columns.map((column, columnIndex) => (
-            <div key={`${columnCount}-${columnIndex}`} className="flex flex-col gap-4">
-              {column.map((item) => (
-                <ContentCard 
-                  key={`${item.category}-${item.id}`}
-                  item={item}
-                  onToggle={toggleItem}
-                  onPreview={setPreviewItem}
-                  onRegenerate={handleRegenerateClick}
-                  onDelete={handleDeleteItem}
-                  aiMode={aiMode}
-                  imageProxy={imageProxy}
-                  categories={categories}
-                />
-              ))}
-            </div>
-          ))}
-          {filteredItems.length === 0 && (
-            <div className="col-span-full py-20 text-center text-slate-500">
-              暂无内容
-            </div>
-          )}
-        </div>
-      )}
-
-      <AnimatePresence>
-        {selectedCount > 0 && (
-          <motion.div 
-            key="selection-bar"
-            initial={{ y: 100, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            exit={{ y: 100, opacity: 0 }}
-            className="fixed bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none px-4"
-          >
-            <div className="bg-white/95 dark:bg-surface-dark/95 border border-slate-200 dark:border-white/5 shadow-2xl rounded-2xl p-2 pl-6 pr-2 flex items-center gap-6 pointer-events-auto backdrop-blur-md max-w-lg w-full justify-between">
-              <div className="flex flex-col">
-                <span className="text-slate-900 dark:text-white font-bold text-sm">已选择 {selectedCount} 个项目</span>
-                <span className="text-slate-500 dark:text-text-secondary text-xs">预计生成内容字数: ~{selectedCount * 200}字</span>
+      <div key="content-area" className="relative min-h-[400px]">
+        {loading ? (
+          <div key="loading-state" className="flex flex-col items-center justify-center py-20 space-y-4">
+            <div className="w-12 h-12 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+            <p className="text-slate-500 dark:text-text-secondary animate-pulse">流光溢彩，正在获取深度洞察...</p>
+          </div>
+        ) : (
+          <div key="content-grid" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {columns.map((column, columnIndex) => (
+              <div key={`${columnCount}-${columnIndex}`} className="flex flex-col gap-4">
+                {column.map((item) => (
+                  <ContentCard 
+                    key={`${item.category}-${item.id}`}
+                    item={item}
+                    onToggle={toggleItem}
+                    onPreview={setPreviewItem}
+                    onRegenerate={handleRegenerateClick}
+                    onDelete={handleDeleteItem}
+                    aiMode={aiMode}
+                    imageProxy={imageProxy}
+                    categories={categories}
+                  />
+                ))}
               </div>
-              <button 
-                onClick={handleGenerate}
-                className="bg-primary hover:bg-cyan-400 text-white dark:text-background-dark font-bold text-sm px-5 py-2.5 rounded-xl shadow-lg shadow-primary/20 flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95"
-              >
-                <span className="material-symbols-outlined text-xl">auto_awesome</span>
-                生成 AI 内容
-              </button>
-            </div>
-          </motion.div>
+            ))}
+            {filteredItems.length === 0 && (
+              <div className="col-span-full py-20 text-center text-slate-500">
+                暂无内容
+              </div>
+            )}
+          </div>
         )}
-      </AnimatePresence>
+      </div>
 
-      <AnimatePresence>
-        {showScrollTop && (
-          <motion.button
-            key="scroll-to-top"
-            initial={{ opacity: 0, scale: 0.5, y: 20 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.5, y: 20 }}
-            onClick={scrollToTop}
-            className={`fixed right-6 z-40 w-12 h-12 flex items-center justify-center rounded-full bg-primary text-white shadow-lg hover:bg-cyan-400 transition-all ${
-              selectedCount > 0 ? 'bottom-28' : 'bottom-8'
-            }`}
-            title="回到顶部"
-          >
-            <span className="material-symbols-outlined text-2xl">arrow_upward</span>
-          </motion.button>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {showAgentSelector && (
-          <motion.div 
-            key="agent-selector-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-            onClick={() => !regenerating && setShowAgentSelector(false)}
-          >
+      <div className="fixed-overlays">
+        <AnimatePresence>
+          {selectedCount > 0 && (
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-surface-dark border border-slate-200 dark:border-border-dark rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col"
+              key="selection-bar"
+              initial={{ y: 100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 100, opacity: 0 }}
+              className="fixed bottom-8 left-0 right-0 z-30 flex justify-center pointer-events-none px-4"
             >
-              <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50 dark:bg-slate-500/5">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">选择执行器</h3>
-                  <p className="text-xs text-slate-500 mt-1">选择一个 Agent 或工作流来重新生成 AI 摘要</p>
+              <div className="bg-white/95 dark:bg-surface-dark/95 border border-slate-200 dark:border-white/5 shadow-2xl rounded-2xl p-2 pl-6 pr-2 flex items-center gap-6 pointer-events-auto backdrop-blur-md max-w-lg w-full justify-between">
+                <div className="flex flex-col">
+                  <span className="text-slate-900 dark:text-white font-bold text-sm">已选择 {selectedCount} 个项目</span>
+                  <span className="text-slate-500 dark:text-text-secondary text-xs">预计生成内容字数: ~{selectedCount * 200}字</span>
+                </div>
+                <button 
+                  onClick={handleGenerate}
+                  className="bg-primary hover:bg-cyan-400 text-white dark:text-background-dark font-bold text-sm px-5 py-2.5 rounded-xl shadow-lg shadow-primary/20 flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95"
+                >
+                  <span className="material-symbols-outlined text-xl">auto_awesome</span>
+                  生成 AI 内容
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showScrollTop && (
+            <motion.button
+              key="scroll-to-top"
+              initial={{ opacity: 0, scale: 0.5, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.5, y: 20 }}
+              onClick={scrollToTop}
+              className={`fixed right-6 z-40 w-12 h-12 flex items-center justify-center rounded-full bg-primary text-white shadow-lg hover:bg-cyan-400 transition-all ${
+                selectedCount > 0 ? 'bottom-28' : 'bottom-8'
+              }`}
+              title="回到顶部"
+            >
+              <span className="material-symbols-outlined text-2xl">arrow_upward</span>
+            </motion.button>
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence>
+          {showAgentSelector && (
+            <motion.div 
+              key="agent-selector-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              onClick={() => !regenerating && setShowAgentSelector(false)}
+            >
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white dark:bg-surface-dark border border-slate-200 dark:border-border-dark rounded-2xl shadow-2xl max-w-md w-full overflow-hidden flex flex-col"
+              >
+                <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50 dark:bg-slate-500/5">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">选择执行器</h3>
+                    <p className="text-xs text-slate-500 mt-1">选择一个 Agent 或工作流来重新生成 AI 摘要</p>
+                  </div>
+                  {!regenerating && (
+                    <button 
+                      onClick={() => setShowAgentSelector(false)}
+                      className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all"
+                    >
+                      <span className="material-symbols-outlined">close</span>
+                    </button>
+                  )}
+                </div>
+                <div className="p-6 max-h-[60vh] overflow-y-auto">
+                  {regenerating ? (
+                    <div className="py-10 flex flex-col items-center justify-center space-y-4">
+                      <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
+                      <p className="text-sm text-slate-500 animate-pulse">正在重新生成 AI 摘要...</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Agents Section */}
+                      {agents.length > 0 && (
+                        <div className="space-y-3">
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-sm">smart_toy</span>
+                            智能体 (Agents)
+                          </h4>
+                          {agents.map(agent => (
+                            <button
+                              key={agent.id}
+                              onClick={() => onSelectAgent(`agent:${agent.id}`)}
+                              className="w-full text-left p-4 rounded-xl border border-slate-100 dark:border-white/5 hover:border-primary hover:bg-primary/5 transition-all group"
+                            >
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">
+                                  {agent.name}
+                                </span>
+                                <span className="text-[10px] bg-slate-100 dark:bg-white/10 px-2 py-0.5 rounded text-slate-500 uppercase">
+                                  {agent.model}
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 line-clamp-2">
+                                {agent.description || '暂无描述'}
+                              </p>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Workflows Section */}
+                      {workflows.length > 0 && (
+                        <div className="space-y-3">
+                          <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
+                            <span className="material-symbols-outlined text-sm">account_tree</span>
+                            工作流 (Workflows)
+                          </h4>
+                          {workflows.map(wf => (
+                            <button
+                              key={wf.id}
+                              onClick={() => onSelectAgent(`workflow:${wf.id}`)}
+                              className="w-full text-left p-4 rounded-xl border border-slate-100 dark:border-white/5 hover:border-emerald-500 hover:bg-emerald-500/5 transition-all group"
+                            >
+                              <div className="flex justify-between items-center mb-1">
+                                <span className="font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">
+                                  {wf.name}
+                                </span>
+                                <span className="text-[10px] bg-emerald-100 dark:bg-emerald-500/10 px-2 py-0.5 rounded text-emerald-600 uppercase">
+                                  Workflow
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-500 line-clamp-2">
+                                {wf.description || '暂无描述'}
+                              </p>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {agents.length === 0 && workflows.length === 0 && (
+                        <div className="py-10 text-center text-slate-500">
+                          暂无可用智能体或工作流，请先在设置中创建
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
                 {!regenerating && (
+                  <div className="p-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
+                    <button 
+                      onClick={() => setShowAgentSelector(false)}
+                      className="px-6 py-2 rounded-xl border border-slate-200 dark:border-border-dark text-slate-600 dark:text-text-secondary hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-sm font-medium"
+                    >
+                      取消
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        <AnimatePresence>
+          {previewItem && (
+            <motion.div 
+              key="preview-modal-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+              onClick={() => setPreviewItem(null)}
+            >
+              <motion.div 
+                initial={{ scale: 0.9, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                exit={{ scale: 0.9, opacity: 0 }}
+                onClick={(e) => e.stopPropagation()}
+                className="bg-white dark:bg-surface-dark border border-slate-200 dark:border-border-dark rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
+              >
+                <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50 dark:bg-slate-500/5">
+                  <div>
+                    <h3 className="text-xl font-bold text-slate-900 dark:text-white">数据预览</h3>
+                    <p className="text-xs text-slate-500 mt-1">{previewItem.metadata?.translated_title || previewItem.title}</p>
+                  </div>
                   <button 
-                    onClick={() => setShowAgentSelector(false)}
+                    onClick={() => setPreviewItem(null)}
                     className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all"
                   >
                     <span className="material-symbols-outlined">close</span>
                   </button>
-                )}
-              </div>
-              <div className="p-6 max-h-[60vh] overflow-y-auto">
-                {regenerating ? (
-                  <div className="py-10 flex flex-col items-center justify-center space-y-4">
-                    <div className="w-10 h-10 border-4 border-primary/20 border-t-primary rounded-full animate-spin"></div>
-                    <p className="text-sm text-slate-500 animate-pulse">正在重新生成 AI 摘要...</p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {/* Agents Section */}
-                    {agents.length > 0 && (
-                      <div className="space-y-3">
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
-                          <span className="material-symbols-outlined text-sm">smart_toy</span>
-                          智能体 (Agents)
-                        </h4>
-                        {agents.map(agent => (
-                          <button
-                            key={agent.id}
-                            onClick={() => onSelectAgent(`agent:${agent.id}`)}
-                            className="w-full text-left p-4 rounded-xl border border-slate-100 dark:border-white/5 hover:border-primary hover:bg-primary/5 transition-all group"
-                          >
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">
-                                {agent.name}
-                              </span>
-                              <span className="text-[10px] bg-slate-100 dark:bg-white/10 px-2 py-0.5 rounded text-slate-500 uppercase">
-                                {agent.model}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-500 line-clamp-2">
-                              {agent.description || '暂无描述'}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Workflows Section */}
-                    {workflows.length > 0 && (
-                      <div className="space-y-3">
-                        <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
-                          <span className="material-symbols-outlined text-sm">account_tree</span>
-                          工作流 (Workflows)
-                        </h4>
-                        {workflows.map(wf => (
-                          <button
-                            key={wf.id}
-                            onClick={() => onSelectAgent(`workflow:${wf.id}`)}
-                            className="w-full text-left p-4 rounded-xl border border-slate-100 dark:border-white/5 hover:border-emerald-500 hover:bg-emerald-500/5 transition-all group"
-                          >
-                            <div className="flex justify-between items-center mb-1">
-                              <span className="font-bold text-slate-900 dark:text-white group-hover:text-emerald-500 transition-colors">
-                                {wf.name}
-                              </span>
-                              <span className="text-[10px] bg-emerald-100 dark:bg-emerald-500/10 px-2 py-0.5 rounded text-emerald-600 uppercase">
-                                Workflow
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-500 line-clamp-2">
-                              {wf.description || '暂无描述'}
-                            </p>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {agents.length === 0 && workflows.length === 0 && (
-                      <div className="py-10 text-center text-slate-500">
-                        暂无可用智能体或工作流，请先在设置中创建
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              {!regenerating && (
-                <div className="p-4 border-t border-slate-100 dark:border-white/5 flex justify-end">
-                  <button 
-                    onClick={() => setShowAgentSelector(false)}
-                    className="px-6 py-2 rounded-xl border border-slate-200 dark:border-border-dark text-slate-600 dark:text-text-secondary hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-sm font-medium"
-                  >
-                    取消
-                  </button>
                 </div>
-              )}
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-      <AnimatePresence>
-        {previewItem && (
-          <motion.div 
-            key="preview-modal-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
-            onClick={() => setPreviewItem(null)}
-          >
-            <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.9, opacity: 0 }}
-              onClick={(e) => e.stopPropagation()}
-              className="bg-white dark:bg-surface-dark border border-slate-200 dark:border-border-dark rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-hidden flex flex-col"
-            >
-              <div className="p-6 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50 dark:bg-slate-500/5">
-                <div>
-                  <h3 className="text-xl font-bold text-slate-900 dark:text-white">数据预览</h3>
-                  <p className="text-xs text-slate-500 mt-1">{previewItem.metadata?.translated_title || previewItem.title}</p>
-                </div>
-                <button 
-                  onClick={() => setPreviewItem(null)}
-                  className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all"
-                >
-                  <span className="material-symbols-outlined">close</span>
-                </button>
-              </div>
-              <div className="p-6 overflow-y-auto">
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 gap-4">
-                    {previewItem.url && (
-                      <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
-                        <span className="text-xs font-bold text-primary uppercase tracking-wider">链接</span>
-                        <a href={previewItem.url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all flex items-center gap-1">
-                          {previewItem.url}
-                          <span className="material-symbols-outlined text-[14px]">open_in_new</span>
-                        </a>
-                      </div>
-                    )}
-                    {previewItem.category && (
-                      <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
-                        <span className="text-xs font-bold text-primary uppercase tracking-wider">分类</span>
-                        <p className="text-sm text-slate-600 dark:text-slate-300">{previewItem.category}</p>
-                      </div>
-                    )}
-                    {previewItem.source && (
-                      <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
-                        <span className="text-xs font-bold text-primary uppercase tracking-wider">来源</span>
-                        <p className="text-sm text-slate-600 dark:text-slate-300">{previewItem.source}</p>
-                      </div>
-                    )}
-                    {previewItem.author && (
-                      <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
-                        <span className="text-xs font-bold text-primary uppercase tracking-wider">作者</span>
-                        <p className="text-sm text-slate-600 dark:text-slate-300">{previewItem.author}</p>
-                      </div>
-                    )}
-                    {previewItem.published_date && (
-                      <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
-                        <span className="text-xs font-bold text-primary uppercase tracking-wider">发布日期</span>
-                        <p className="text-sm text-slate-600 dark:text-slate-300">{previewItem.published_date}</p>
-                      </div>
-                    )}
-                    {Object.entries(previewItem.metadata || {}).map(([key, value]) => {
-                      if (key === 'description' || key === 'translated_title' || key === 'translated_description' || key === 'ai_summary') return null; // 已经在下面显示了
-                      return (
-                        <div key={key} className="flex flex-col gap-2 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
-                          <span className="text-xs font-bold text-primary uppercase tracking-wider">{key}</span>
-                          <div className="text-sm text-slate-600 dark:text-slate-300 break-words leading-relaxed max-w-none">
-                            {typeof value === 'string' ? (
-                              <ContentRenderer content={value} imageProxy={imageProxy} />
-                            ) : (
-                              <pre className="whitespace-pre-wrap font-mono text-xs bg-slate-50 dark:bg-slate-900/50 p-2 rounded">
-                                {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
-                              </pre>
-                            )}
+                <div className="p-6 overflow-y-auto">
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-4">
+                      {previewItem.url && (
+                        <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
+                          <span className="text-xs font-bold text-primary uppercase tracking-wider">链接</span>
+                          <a href={previewItem.url} target="_blank" rel="noopener noreferrer" className="text-sm text-primary hover:underline break-all flex items-center gap-1">
+                            {previewItem.url}
+                            <span className="material-symbols-outlined text-[14px]">open_in_new</span>
+                          </a>
+                        </div>
+                      )}
+                      {previewItem.category && (
+                        <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
+                          <span className="text-xs font-bold text-primary uppercase tracking-wider">分类</span>
+                          <p className="text-sm text-slate-600 dark:text-slate-300">{previewItem.category}</p>
+                        </div>
+                      )}
+                      {previewItem.source && (
+                        <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
+                          <span className="text-xs font-bold text-primary uppercase tracking-wider">来源</span>
+                          <p className="text-sm text-slate-600 dark:text-slate-300">{previewItem.source}</p>
+                        </div>
+                      )}
+                      {previewItem.author && (
+                        <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
+                          <span className="text-xs font-bold text-primary uppercase tracking-wider">作者</span>
+                          <p className="text-sm text-slate-600 dark:text-slate-300">{previewItem.author}</p>
+                        </div>
+                      )}
+                      {previewItem.published_date && (
+                        <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
+                          <span className="text-xs font-bold text-primary uppercase tracking-wider">发布日期</span>
+                          <p className="text-sm text-slate-600 dark:text-slate-300">{previewItem.published_date}</p>
+                        </div>
+                      )}
+                      {Object.entries(previewItem.metadata || {}).map(([key, value]) => {
+                        if (key === 'description' || key === 'translated_title' || key === 'translated_description' || key === 'ai_summary') return null; // 已经在下面显示了
+                        return (
+                          <div key={key} className="flex flex-col gap-2 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
+                            <span className="text-xs font-bold text-primary uppercase tracking-wider">{key}</span>
+                            <div className="text-sm text-slate-600 dark:text-slate-300 break-words leading-relaxed max-w-none">
+                              {typeof value === 'string' ? (
+                                <ContentRenderer content={value} imageProxy={imageProxy} />
+                              ) : (
+                                <pre className="whitespace-pre-wrap font-mono text-xs bg-slate-50 dark:bg-slate-900/50 p-2 rounded">
+                                  {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
+                                </pre>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {aiMode && previewItem.metadata?.ai_summary && (
+                        <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
+                          <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                            AI 总结
+                          </span>
+                          <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                            <ContentRenderer 
+                              content={previewItem.metadata.ai_summary} 
+                              imageProxy={imageProxy} 
+                            />
                           </div>
                         </div>
-                      );
-                    })}
-                    {aiMode && previewItem.metadata?.ai_summary && (
-                      <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
-                        <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                          AI 总结
-                        </span>
-                        <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                          <ContentRenderer 
-                            content={previewItem.metadata.ai_summary} 
-                            imageProxy={imageProxy} 
-                          />
+                      )}
+                      {(previewItem.metadata?.translated_description || previewItem.description) && (
+                        <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
+                          <span className="text-xs font-bold text-primary uppercase tracking-wider">
+                            描述
+                          </span>
+                          <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                            <ContentRenderer 
+                              content={previewItem.metadata?.translated_description || previewItem.description} 
+                              imageProxy={imageProxy} 
+                            />
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    {(previewItem.metadata?.translated_description || previewItem.description) && (
-                      <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
-                        <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                          描述
-                        </span>
-                        <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-                          <ContentRenderer 
-                            content={previewItem.metadata?.translated_description || previewItem.description} 
-                            imageProxy={imageProxy} 
-                          />
-                        </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div className="p-4 border-t border-slate-100 dark:border-white/5 flex justify-end gap-3">
-                <button 
-                  onClick={() => setPreviewItem(null)}
-                  className="px-6 py-2 rounded-xl border border-slate-200 dark:border-border-dark text-slate-600 dark:text-text-secondary hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-sm font-medium"
-                >
-                  关闭
-                </button>
-                {previewItem.url && (
-                  <a 
-                    href={previewItem.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-6 py-2 rounded-xl bg-primary text-white hover:bg-cyan-400 transition-all text-sm font-medium flex items-center gap-2"
+                <div className="p-4 border-t border-slate-100 dark:border-white/5 flex justify-end gap-3">
+                  <button 
+                    onClick={() => setPreviewItem(null)}
+                    className="px-6 py-2 rounded-xl border border-slate-200 dark:border-border-dark text-slate-600 dark:text-text-secondary hover:bg-slate-50 dark:hover:bg-white/5 transition-all text-sm font-medium"
                   >
-                    <span className="material-symbols-outlined text-sm">open_in_new</span>
-                    查看详情
-                  </a>
-                )}
-              </div>
+                    关闭
+                  </button>
+                  {previewItem.url && (
+                    <a 
+                      href={previewItem.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-6 py-2 rounded-xl bg-primary text-white hover:bg-cyan-400 transition-all text-sm font-medium flex items-center gap-2"
+                    >
+                      <span className="material-symbols-outlined text-sm">open_in_new</span>
+                      查看详情
+                    </a>
+                  )}
+                </div>
+              </motion.div>
             </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

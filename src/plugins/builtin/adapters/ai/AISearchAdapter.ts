@@ -5,7 +5,7 @@ import { LogService } from '../../../../services/LogService.js';
 import type { AgentService } from '../../../../services/agents/AgentService.js';
 import type { WorkflowEngine } from '../../../../services/agents/WorkflowEngine.js';
 import { PromptService } from '../../../../services/PromptService.js';
-import { removeMarkdownCodeBlock } from '../../../../utils/helpers.js';
+import { removeMarkdownCodeBlock, extractJson } from '../../../../utils/helpers.js';
 
 export class AISearchAdapter extends BaseAdapter {
   static metadata: AdapterMetadata = {
@@ -72,18 +72,16 @@ export class AISearchAdapter extends BaseAdapter {
         content = response.content.trim();
       }
 
-      // 尝试清理可能存在的 Markdown 标记
-      const cleanedContent = removeMarkdownCodeBlock(content).trim();
+      // 使用通用的 extractJson 提取数据，它能处理包含描述性文字的情况
+      const data = extractJson(content);
       
-      try {
-        const data = JSON.parse(cleanedContent);
-        if (Array.isArray(data)) {
-          return data;
-        }
-        LogService.warn(`[AISearchAdapter: ${this.name}] Response is not an array: ${cleanedContent}`);
+      if (Array.isArray(data)) {
+        return data;
+      } else if (data) {
+        LogService.warn(`[AISearchAdapter: ${this.name}] Response is not an array: ${JSON.stringify(data).slice(0, 100)}...`);
         return [];
-      } catch (e) {
-        LogService.error(`[AISearchAdapter: ${this.name}] Failed to parse response as JSON: ${cleanedContent}`);
+      } else {
+        LogService.error(`[AISearchAdapter: ${this.name}] Failed to parse response as JSON array from: ${content.slice(0, 200)}...`);
         return [];
       }
     } catch (error: any) {

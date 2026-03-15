@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -11,7 +11,7 @@ interface ContentRendererProps {
   className?: string;
 }
 
-const ContentRenderer: React.FC<ContentRendererProps> = ({ content, imageProxy, className = "" }) => {
+const ContentRenderer: React.FC<ContentRendererProps> = memo(({ content, imageProxy, className = "" }) => {
   if (!content) return null;
 
   // 启发式检测：如果是以 < 开头，或者包含明显的 HTML 结构
@@ -81,6 +81,6 @@ const ContentRenderer: React.FC<ContentRendererProps> = ({ content, imageProxy, 
       </ReactMarkdown>
     </div>
   );
-};
+});
 
 export default ContentRenderer;
