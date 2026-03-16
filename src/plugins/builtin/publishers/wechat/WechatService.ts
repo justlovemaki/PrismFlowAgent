@@ -146,6 +146,11 @@ export class WechatService {
             '.webp': 'image/webp',
           };
           contentType = mimeTypes[ext] || 'image/jpeg';
+
+          // 如果是本地临时文件（例如来自 AI 生成的 base64 转换），标记为上传后删除
+          if (resolvedPath.startsWith(os.tmpdir())) {
+            tempFilePath = resolvedPath;
+          }
         }
 
         // 处理不支持的格式 (如 AVIF) 或过大的图片，转换为 JPEG 并压缩
@@ -437,5 +442,3 @@ export class WechatService {
     throw lastError;
   }
 }
-
-

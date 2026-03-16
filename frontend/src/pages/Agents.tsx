@@ -204,30 +204,31 @@ const Agents: React.FC = () => {
         return next;
       });
       
-      setTestResults(prev => ({ ...prev, [id]: '运行中...' }));
+      setTestResults(prev => ({ ...prev, [id]: '正在思考...' }));
 
       if (agent?.streaming) {
         let fullContent = '';
         await agentService.runAgentStream(id, input, undefined, (chunk) => {
           if (chunk.type === 'error') {
             fullContent += `\n[错误: ${chunk.error}]\n`;
-            setTestResults(prev => ({ ...prev, [id]: fullContent }));
+            setTestResults(prev => ({ ...prev, [id]: fullContent || '无响应内容' }));
           } else if (chunk.type === 'content') {
             fullContent += chunk.content;
-            setTestResults(prev => ({ ...prev, [id]: fullContent }));
+            setTestResults(prev => ({ ...prev, [id]: fullContent || '正在思考...' }));
           } else if (chunk.type === 'tool_start') {
             fullContent += `\n[调用工具: ${chunk.tool}...]\n`;
-            setTestResults(prev => ({ ...prev, [id]: fullContent }));
+            setTestResults(prev => ({ ...prev, [id]: fullContent || '正在思考...' }));
           } else if (chunk.type === 'tool_error') {
             fullContent += `\n[工具错误: ${chunk.error}]\n`;
-            setTestResults(prev => ({ ...prev, [id]: fullContent }));
+            setTestResults(prev => ({ ...prev, [id]: fullContent || '正在思考...' }));
           } else if (chunk.type === 'final_content') {
             // fullContent is already updated by 'content' chunks
           }
         });
+        setTestResults(prev => ({ ...prev, [id]: fullContent || '无响应内容' }));
       } else {
         const result = await agentService.runAgent(id, input);
-        setTestResults(prev => ({ ...prev, [id]: result.content }));
+        setTestResults(prev => ({ ...prev, [id]: result.content || '无响应内容' }));
       }
     } catch (error: any) {
       setTestResults(prev => ({ ...prev, [id]: `错误: ${error.message}` }));
@@ -366,6 +367,18 @@ const Agents: React.FC = () => {
             </div>
 
             <div className="space-y-3 mb-6">
+              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 overflow-hidden">
+                {agent.providerId && (
+                  <span className="flex items-center gap-1 shrink-0">
+                    <span className="material-symbols-outlined text-[12px]">memory</span>
+                    {settings.AI_PROVIDERS?.find((p: any) => p.id === agent.providerId)?.name || agent.providerId}
+                  </span>
+                )}
+                {agent.providerId && agent.model && <span className="shrink-0 opacity-50">/</span>}
+                {agent.model && (
+                  <span className="font-mono truncate" title={agent.model}>{agent.model}</span>
+                )}
+              </div>
               <div className="flex flex-wrap gap-2">
                 {agent.skillIds.map(sid => (
                   <span key={sid} className="px-2 py-1 bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg text-[10px] font-bold">
@@ -717,13 +730,13 @@ const Agents: React.FC = () => {
                 />
                 <button 
                   onClick={() => handleRunAgent(testingAgentId, testInput)}
-                  disabled={!testInput.trim() || testResults[testingAgentId] === '运行中...'}
+                  disabled={!testInput.trim() || testResults[testingAgentId] === '正在思考...'}
                   className="w-full py-3 bg-green-500 text-white rounded-2xl font-bold hover:bg-green-600 transition-all shadow-lg shadow-green-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-xl">
-                    {testResults[testingAgentId] === '运行中...' ? 'hourglass_top' : 'send'}
+                    {testResults[testingAgentId] === '正在思考...' ? 'hourglass_top' : 'send'}
                   </span>
-                  {testResults[testingAgentId] === '运行中...' ? '运行中...' : '运行测试'}
+                  {testResults[testingAgentId] === '正在思考...' ? '正在思考...' : '运行测试'}
                 </button>
 
                 {testResults[testingAgentId] && (
@@ -1487,9 +1500,15 @@ const Agents: React.FC = () => {
         return next;
       });
 
-      setWorkflowTestResult(prev => ({ ...prev, [id]: '运行中...' }));
+      setWorkflowTestResult(prev => ({ ...prev, [id]: '正在思考...' }));
       const result = await agentService.runWorkflow(id, input);
-      setWorkflowTestResult(prev => ({ ...prev, [id]: result?.content || (typeof result === 'string' ? result : JSON.stringify(result, null, 2)) }));
+      let content = '';
+      if (result) {
+        if (typeof result === 'string') content = result;
+        else if (result && typeof result.content === 'string') content = result.content;
+        else content = JSON.stringify(result, null, 2);
+      }
+      setWorkflowTestResult(prev => ({ ...prev, [id]: content || '无响应内容' }));
     } catch (error: any) {
       setWorkflowTestResult(prev => ({ ...prev, [id]: `错误: ${error.message}` }));
     }
@@ -2155,13 +2174,13 @@ const Agents: React.FC = () => {
                 />
                 <button
                   onClick={() => handleRunWorkflow(testingWorkflowId, workflowTestInput)}
-                  disabled={!workflowTestInput.trim() || workflowTestResult[testingWorkflowId] === '运行中...'}
+                  disabled={!workflowTestInput.trim() || workflowTestResult[testingWorkflowId] === '正在思考...'}
                   className="w-full py-3 bg-emerald-600 text-white rounded-2xl font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-500/20 disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   <span className="material-symbols-outlined text-xl">
-                    {workflowTestResult[testingWorkflowId] === '运行中...' ? 'hourglass_top' : 'send'}
+                    {workflowTestResult[testingWorkflowId] === '正在思考...' ? 'hourglass_top' : 'send'}
                   </span>
-                  {workflowTestResult[testingWorkflowId] === '运行中...' ? '运行中...' : '执行工作流'}
+                  {workflowTestResult[testingWorkflowId] === '正在思考...' ? '正在思考...' : '执行工作流'}
                 </button>
 
                 {workflowTestResult[testingWorkflowId] && (

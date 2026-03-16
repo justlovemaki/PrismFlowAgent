@@ -71,8 +71,18 @@ function fromLangChainMessage(message: BaseMessage | any): AIResponse {
     content = message.content;
   } else if (Array.isArray(message.content)) {
     content = message.content
-      .filter((part: any) => part.type === 'text')
-      .map((part: any) => part.text)
+      .map((part: any) => {
+        if (part.type === 'text') return part.text;
+        if (part.type === 'image_url') {
+          const url = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url;
+          return `\n\n![image](${url})\n\n`;
+        }
+        if (part.type === 'inlineData' && part.inlineData?.mimeType && part.inlineData?.data) {
+          const dataUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+          return `\n\n![image](${dataUrl})\n\n`;
+        }
+        return '';
+      })
       .join('');
   }
 

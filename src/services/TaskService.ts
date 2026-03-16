@@ -219,13 +219,13 @@ export class TaskService {
       };
     }
 
-    // 重新计算
-    const allTodayData = await this.getAggregatedData(today, { includePreviousDay: false });
+    // 重新计算：仪表盘统计应始终基于抓取日期 (ingestion_date)，不受筛选设置影响
+    const allTodayData = await this.getAggregatedData(today, { includePreviousDay: false, queryField: 'ingestion_date' });
     
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayDate = yesterday.toISOString().split('T')[0];
-    const allYesterdayData = await this.getAggregatedData(yesterdayDate, { includePreviousDay: false });
+    const allYesterdayData = await this.getAggregatedData(yesterdayDate, { includePreviousDay: false, queryField: 'ingestion_date' });
 
     const stats = {
       todayCount: Object.entries(allTodayData)
@@ -302,10 +302,10 @@ export class TaskService {
   /**
    * 聚合指定日期的所有适配器数据
    */
-  async getAggregatedData(date: string, options: { includePreviousDay?: boolean, settings?: SystemSettings } = {}): Promise<Record<string, UnifiedData[]>> {
+  async getAggregatedData(date: string, options: { includePreviousDay?: boolean, settings?: SystemSettings, queryField?: 'published_date' | 'ingestion_date' } = {}): Promise<Record<string, UnifiedData[]>> {
     const settings = options.settings || this.settings;
-    const fetchDays = settings?.SELECTION_FETCH_DAYS || (options.includePreviousDay !== false ? 2 : 1);
-    const queryField = settings?.SELECTION_QUERY_FIELD || 'published_date';
+    const fetchDays = options.includePreviousDay !== false ? settings?.SELECTION_FETCH_DAYS ? settings?.SELECTION_FETCH_DAYS:2 : 1;
+    const queryField = options.queryField || settings?.SELECTION_QUERY_FIELD || 'published_date';
     
     const dates = [];
     const targetDate = new Date(date);

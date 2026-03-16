@@ -165,6 +165,13 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
     }
   };
 
+  const getImageUrl = (url: string) => {
+    if (!url) return '';
+    const token = localStorage.getItem('auth_token');
+    // 统一通过 /api/temp-image 接口处理，并携带 token 保证安全
+    return `/api/temp-image?path=${encodeURIComponent(url)}${token ? `&token=${token}` : ''}`;
+  };
+
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-2 sm:p-4 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}>
       <div className="bg-white dark:bg-surface-dark w-full max-w-lg rounded-2xl shadow-2xl border border-slate-200 dark:border-border-dark overflow-hidden flex flex-col max-h-[95vh] sm:max-h-none" onClick={e => e.stopPropagation()}>
@@ -294,7 +301,7 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
                 <div className="relative rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-white/10 aspect-[2.35/1] bg-slate-50 dark:bg-black/20 flex items-center justify-center group">
                   {wechatCoverUrl ? (
                     <>
-                      <img src={wechatCoverUrl} className="w-full h-full object-cover" alt="Cover" />
+                      <img src={getImageUrl(wechatCoverUrl)} className="w-full h-full object-cover" alt="Cover" />
                       <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                         <button 
                           onClick={() => {
@@ -366,7 +373,7 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
                         wechatCoverUrl === url ? 'border-primary shadow-sm' : 'border-slate-200 dark:border-white/10 hover:border-primary/50'
                       }`}
                     >
-                      <img src={url} className="w-full h-full object-cover" alt={`Option ${index + 1}`} />
+                      <img src={getImageUrl(url)} className="w-full h-full object-cover" alt={`Option ${index + 1}`} />
                       {wechatCoverUrl === url && (
                         <div className="absolute inset-0 bg-primary/10 flex items-center justify-center">
                           <span className="material-symbols-outlined text-primary text-xs bg-white rounded-full">check_circle</span>

@@ -6,9 +6,11 @@ import fastifyStatic from '@fastify/static';
 import multipart from '@fastify/multipart';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import AdmZip from 'adm-zip';
+import sharp from 'sharp';
 import YAML from 'yaml';
 import { LocalStore } from '../services/LocalStore.js';
 import { AIService } from '../services/AIService.js';
@@ -58,6 +60,13 @@ export async function createServer(existingStore?: LocalStore) {
     }
 
     try {
+      // 允许通过 query 参数携带 token (用于 <img> 标签访问)
+      const queryToken = (request.query as any)?.token;
+      if (queryToken) {
+        await fastify.jwt.verify(queryToken);
+        return;
+      }
+
       await request.jwtVerify();
     } catch (err) {
       reply.status(401).send({ error: 'Unauthorized' });
@@ -299,22 +308,50 @@ export async function createServer(existingStore?: LocalStore) {
           urls.push(result.data.url);
         }
         
-        // If no URLs found in data, look for all URLs in result.content
-        if (urls.length === 0) {
-          const matches = result.content.match(/https?:\/\/[^\s)]+/gi);
-          if (matches) {
-            for (const m of matches) {
-              if (!urls.includes(m)) urls.push(m);
-            }
+        // Match HTTP URLs
+        const httpMatches = result.content.match(/https?:\/\/[^\s)]+/gi);
+        if (httpMatches) {
+          for (const m of httpMatches) {
+            if (!urls.includes(m)) urls.push(m);
+          }
+        }
+        // Match Base64 data URLs
+        const base64Matches = result.content.match(/data:image\/[a-zA-Z+]+;base64,[a-zA-Z0-9+/=]+/gi);
+        if (base64Matches) {
+          for (const m of base64Matches) {
+            if (!urls.includes(m)) urls.push(m);
           }
         }
 
         if (urls.length > 0) {
-          // 确保所有 URL 都是唯一的
-          const uniqueUrls = Array.from(new Set(urls));
+          // 确保所有 URL 都是唯一的并处理 base64
+          const processedUrls = await Promise.all(urls.map(async (u) => {
+            if (u.startsWith('data:image/')) {
+              try {
+                const matches = u.match(/^data:image\/([a-zA-Z+]+);base64,(.+)$/);
+                if (!matches) return u;
+                
+                const buffer = Buffer.from(matches[2], 'base64');
+                const tempDir = os.tmpdir();
+                const filename = `ai_cover_${crypto.randomBytes(8).toString('hex')}.jpg`;
+                const fullPath = path.resolve(tempDir, filename);
+                
+                await sharp(buffer).jpeg({ quality: 80 }).toFile(fullPath);
+                LogService.info(`Saved base64 image to temp file: ${fullPath}`);
+                return fullPath;
+              } catch (err: any) {
+                LogService.error(`Failed to save base64 image: ${err.message}`);
+                return u;
+              }
+            }
+            return u;
+          }));
+
+          const uniqueUrls = Array.from(new Set(processedUrls));
           // 返回第一个作为默认，同时返回所有
           return { status: 'success', url: uniqueUrls[0], urls: uniqueUrls };
         }
+        // 如果是封面图生成但没找到 URL，才抛出错误
         throw new Error('AI 未能成功生成图片 URL');
       }
 
@@ -348,6 +385,38 @@ export async function createServer(existingStore?: LocalStore) {
       const { id } = request.params as any;
       await context.taskService.deleteSourceData(id);
       return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.get('/api/temp-image', async (request, reply) => {
+    try {
+      const { path: filePath } = request.query as any;
+      if (!filePath) {
+        return reply.status(400).send({ error: 'Missing path parameter' });
+      }
+
+      // 对于 http 链接，直接返回 302 重定向
+      if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+        return reply.redirect(filePath);
+      }
+
+      // 仅允许访问临时目录下的文件，防止路径遍历
+      const resolvedPath = path.resolve(filePath);
+      const tempDir = os.tmpdir();
+      
+      if (!resolvedPath.startsWith(tempDir)) {
+        return reply.status(403).send({ error: 'Forbidden: Can only access temp files' });
+      }
+
+      if (!fs.existsSync(resolvedPath)) {
+        return reply.status(404).send({ error: 'File not found' });
+      }
+
+      const buffer = fs.readFileSync(resolvedPath);
+      reply.header('content-type', 'image/jpeg');
+      return buffer;
     } catch (error: any) {
       reply.status(500).send({ error: error.message });
     }
