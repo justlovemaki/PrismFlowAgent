@@ -8,6 +8,8 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.join(__dirname, '..');
 const srcPrompts = path.join(rootDir, 'src', 'prompts');
 const distPrompts = path.join(rootDir, 'dist', 'prompts');
+const srcSkills = path.join(rootDir, 'skills');
+const distSkills = path.join(rootDir, 'dist', 'skills');
 
 async function copyAssets() {
   try {
@@ -16,8 +18,13 @@ async function copyAssets() {
       await fs.ensureDir(distPrompts);
       await fs.copy(srcPrompts, distPrompts);
       console.log('✅ Prompts copied to dist/prompts');
-    } else {
-      console.warn('⚠️ src/prompts directory not found');
+    }
+    
+    // Copy skills
+    if (await fs.pathExists(srcSkills)) {
+      await fs.ensureDir(distSkills);
+      await fs.copy(srcSkills, distSkills);
+      console.log('✅ Skills copied to dist/skills');
     }
     
     // You can add more assets to copy here if needed

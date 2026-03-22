@@ -1,4 +1,5 @@
 import { LocalStore } from './LocalStore.js';
+import { LogService } from './LogService.js';
 import { ConfigService } from './ConfigService.js';
 import { TaskService } from './TaskService.js';
 import { AIService } from './AIService.js';
@@ -10,6 +11,8 @@ import { MCPService } from './agents/MCPService.js';
 import { SkillStoreService } from './agents/SkillStoreService.js';
 
 import { SkillService } from './agents/SkillService.js';
+import { MemoryService } from './agents/MemoryService.js';
+import { KnowledgeBaseService } from './knowledge/KnowledgeBaseService.js';
 import { ToolRegistry } from '../registries/ToolRegistry.js';
 import { WorkflowEngine } from './agents/WorkflowEngine.js';
 import { ProxyAgent } from 'undici';
@@ -34,6 +37,8 @@ export interface AppServices {
   taskService: TaskService;
   schedulerService: SchedulerService;
   agentService: AgentService | null;
+  memoryService: MemoryService;
+  knowledgeBaseService: KnowledgeBaseService;
   mcpService: MCPService;
 
   workflowEngine: WorkflowEngine | null;
@@ -88,6 +93,17 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
 
   const mcpService = new MCPService(proxyAgent);
   const agentService = aiProvider ? new AgentService(store, aiProvider, skillService, mcpService, proxyAgent) : null;
+  const memoryService = new MemoryService(store, agentService);
+  const knowledgeBaseService = new KnowledgeBaseService(store, agentService);
+  
+  // 根据配置切换记忆系统
+  const memoryType = settings.MEMORY_SYSTEM_TYPE || 'hierarchical';
+  await memoryService.switchSystem(memoryType);
+
+  // 根据配置切换知识库系统
+  const kbType = settings.KNOWLEDGE_SYSTEM_TYPE || 'hierarchical';
+  await knowledgeBaseService.switchSystem(kbType);
+
   const workflowEngine = (agentService && aiProvider) ? new WorkflowEngine(store, agentService, aiProvider) : null;
 
   // 5. Initialize Adapters & Publishers & Storages
@@ -105,10 +121,18 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   // 7. Seed Data
   if (agentService) {
     await seedDefaultAgents(store, agentService, settings);
+    
+    // 如果启用层级方案，执行记忆系统迁移 (如果需要)
+    if (settings.MEMORY_SYSTEM_TYPE === 'hierarchical') {
+      memoryService.migrateFromSqlite().catch(err => LogService.error(`Memory migration failed: ${err.message}`));
+    }
   }
 
   // Seed Default Schedules if none exist
   await seedDefaultSchedules(store, adapterInstances);
+
+  // Seed Default Skills from filesystem
+  await seedDefaultSkills(store, skillService);
 
   // Restore status
   taskService.initStatus().catch(err => console.error('Failed to init task status:', err));
@@ -127,6 +151,8 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
     taskService,
     schedulerService,
     agentService,
+    memoryService,
+    knowledgeBaseService,
     mcpService,
     workflowEngine,
     skillService,
@@ -292,7 +318,6 @@ function initStorages(settings: SystemSettings): IStorageProvider[] {
 
 async function seedDefaultAgents(store: LocalStore, agentService: AgentService, settings: SystemSettings) {
   const agents = await store.listAgents();
-  if (agents.length > 0) return;
 
   const activeProviderConfig = settings.AI_PROVIDERS.find(p => p.id === settings.ACTIVE_AI_PROVIDER_ID);
   const defaultModel = activeProviderConfig?.models?.[0] || '';
@@ -327,6 +352,54 @@ async function seedDefaultAgents(store: LocalStore, agentService: AgentService, 
       mcpServerIds: []
     });
   }
+
+  const memoryAssistant = agents.find(a => a.id === 'memory_assistant');
+  if (!memoryAssistant) {
+    await store.saveAgent({
+      id: 'memory_assistant',
+      name: '流光记忆助手',
+      description: '一个拥有长期记忆能力的智能助手，能够通过渐进式披露回顾之前的对话内容。',
+      systemPrompt: '你是一个拥有记忆能力的助手。请随时在对话中使用 `save_memory` 记录重要信息，并在需要时通过 `query_memory` 回顾。保持对话的连贯性和针对性。',
+      providerId: settings.ACTIVE_AI_PROVIDER_ID,
+      model: defaultModel,
+      temperature: 0.7,
+      toolIds: ['save_memory', 'query_memory'],
+      skillIds: ['memory'],
+      mcpServerIds: [],
+      isHidden: true
+    });
+  } else if (!memoryAssistant.isHidden) {
+    memoryAssistant.isHidden = true;
+    await store.saveAgent(memoryAssistant);
+  }
+
+  const knowledgeAssistant = agents.find(a => a.id === 'knowledge_assistant');
+  if (!knowledgeAssistant) {
+    await store.saveAgent({
+      id: 'knowledge_assistant',
+      name: '知识库助手',
+      description: '负责分析、分类和检索知识库中的专业文档（PDF, Word, Markdown）。',
+      systemPrompt: `你是一个极度严谨的知识库管理助手。
+
+你的核心原则：
+1. **绝对忠实于文档**：在回答用户查询时，必须完全依赖 \`query_knowledge\` 工具返回的内容。
+2. **禁止过度发挥**：如果工具返回的结果中没有相关信息，或者信息不足以回答用户的问题，你必须诚实地告知用户："抱歉，知识库中没有关于此问题的相关记录。"
+3. **禁止使用内部知识**：严禁使用你自己的预训练知识来回答知识库中不存在的事实。
+4. **时间敏感性**：注意查询中的时间范围（如"上周"）。如果检索到的文档日期不匹配，请明确指出。
+
+你负责从用户上传的专业文档中提取核心信息，进行准确的总结和分类，并在用户查询时提供精准的知识检索。`,
+      providerId: settings.ACTIVE_AI_PROVIDER_ID,
+      model: defaultModel,
+      temperature: 0.1,
+      toolIds: ['query_knowledge'],
+      skillIds: [],
+      mcpServerIds: [],
+      isHidden: true
+    });
+  } else if (!knowledgeAssistant.isHidden) {
+    knowledgeAssistant.isHidden = true;
+    await store.saveAgent(knowledgeAssistant);
+  }
 }
 
 async function seedDefaultSchedules(store: LocalStore, adapters: any[]) {
@@ -348,4 +421,22 @@ async function seedDefaultSchedules(store: LocalStore, adapters: any[]) {
   }
 }
 
+async function seedDefaultSkills(store: LocalStore, skillService: SkillService) {
+  const existingSkills = await store.listSkills();
+  const fsSkills = skillService.listSkills();
 
+  for (const skill of fsSkills) {
+    if (!existingSkills.find(s => s.id === skill.id)) {
+      console.log(`Seeding skill from filesystem: ${skill.name} (${skill.id})`);
+      await store.saveSkill({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        instructions: skill.instructions,
+        files: [],
+        dirPath: skill.dirPath,
+        isBuiltin: true
+      });
+    }
+  }
+}

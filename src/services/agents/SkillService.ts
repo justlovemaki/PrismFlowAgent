@@ -1,9 +1,13 @@
 import fs from 'fs-extra';
 import path from 'path';
 import yaml from 'yaml';
+import { fileURLToPath } from 'url';
 import { SkillEntry, SkillFrontmatter } from '../../types/skill.js';
 import { LogService } from '../LogService.js';
 import { execSync } from 'child_process';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export class SkillService {
   private skills: Map<string, SkillEntry> = new Map();
@@ -14,7 +18,9 @@ export class SkillService {
       path.join(process.cwd(), 'skills'),
       path.join(process.cwd(), '.agents', 'skills'),
       path.join(process.cwd(), 'data', 'skills'),
-      // Add more paths if needed
+      // Add path relative to compiled code (for production)
+      path.join(__dirname, '..', '..', '..', 'skills'),
+      path.join(__dirname, '..', '..', '..', 'dist', 'skills'),
     ];
   }
 
@@ -53,6 +59,9 @@ export class SkillService {
     const content = await fs.readFile(filePath, 'utf-8');
     const dirPath = path.dirname(filePath);
     const id = path.basename(dirPath);
+    
+    // Determine if built-in (if it's in the default 'skills' directory)
+    const isBuiltin = dirPath.includes(path.join(process.cwd(), 'skills'));
 
     // Parse Frontmatter
     const match = content.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n([\s\S]*)$/);
@@ -71,7 +80,8 @@ export class SkillService {
       instructions,
       frontmatter,
       dirPath,
-      fullPath: filePath
+      fullPath: filePath,
+      isBuiltin
     };
   }
 

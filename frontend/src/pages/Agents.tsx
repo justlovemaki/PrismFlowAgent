@@ -390,21 +390,11 @@ const Agents: React.FC = () => {
                     {tools.find(t => t.id === tid)?.name || tid}
                   </span>
                 ))}
-                {agent.toolIds.includes('search_knowledge_base') && (
-                  <span className="px-2 py-1 bg-green-100 dark:bg-green-500/20 text-green-600 dark:text-green-400 rounded-lg text-[10px] font-bold">
-                    RAG 已开启
-                  </span>
-                )}
                 {(agent.mcpServerIds || []).map(mid => (
                   <span key={mid} className="px-2 py-1 bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 rounded-lg text-[10px] font-bold">
                     {mcpConfigs.find(m => m.id === mid)?.name || mid}
                   </span>
                 ))}
-                {agent.streaming && (
-                  <span className="px-2 py-1 bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg text-[10px] font-bold flex items-center gap-1">
-                    <span className="material-symbols-outlined text-[10px]">stream</span>流式已开启
-                  </span>
-                )}
               </div>
             </div>
 
@@ -574,7 +564,7 @@ const Agents: React.FC = () => {
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">可用工具</label>
                   <div className="flex flex-wrap gap-2">
-                    {tools.filter(t => t.id !== 'search_knowledge_base').map(tool => (
+                    {tools.map(tool => (
                       <button
                         key={tool.id}
                         onClick={() => {
@@ -643,30 +633,6 @@ const Agents: React.FC = () => {
                     </label>
                   </div>
                   <p className="text-[10px] text-slate-400 mt-2">开启后，智能体将以流式方式返回响应，提升交互体验。</p>
-                </div>
-
-                <div className="p-4 bg-slate-50 dark:bg-white/[0.02] rounded-2xl border border-slate-200 dark:border-white/5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="material-symbols-outlined text-green-500">database</span>
-                      <span className="text-xs font-bold dark:text-white">RAG 知识库检索</span>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input 
-                        type="checkbox" 
-                        className="sr-only peer"
-                        checked={editingAgent.toolIds.includes('search_knowledge_base')}
-                        onChange={e => {
-                          const toolIds = e.target.checked
-                            ? [...editingAgent.toolIds, 'search_knowledge_base']
-                            : editingAgent.toolIds.filter(id => id !== 'search_knowledge_base');
-                          setEditingAgent({ ...editingAgent, toolIds });
-                        }}
-                      />
-                      <div className="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-green-500 transition-all after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-full"></div>
-                    </label>
-                  </div>
-                  <p className="text-[10px] text-slate-400 mt-2">开启后，Agent 将调用 search_knowledge_base 工具检索历史资讯。</p>
                 </div>
 
                 <div className="flex gap-4 pt-4">
@@ -978,12 +944,15 @@ const Agents: React.FC = () => {
                       <p className="text-[10px] text-slate-500 dark:text-slate-400 line-clamp-1 break-words">{skill.description}</p>
                     </div>
                   </div>
-                  <button
-                    onClick={e => { e.stopPropagation(); handleDeleteSkill(skill.id); }}
-                    className="w-8 h-8 inline-flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all opacity-0 group-hover:opacity-100"
-                  >
-                    <span className="material-symbols-outlined text-lg">delete</span>
-                  </button>
+                  {!skill.isBuiltin && (
+                    <button
+                      onClick={e => { e.stopPropagation(); handleDeleteSkill(skill.id); }}
+                      className="w-8 h-8 inline-flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                    >
+                      <span className="material-symbols-outlined text-lg">delete</span>
+                    </button>
+                  )}
+
                 </div>
                 {skill.instructions && (
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-3 line-clamp-3 font-mono bg-slate-50 dark:bg-white/[0.02] p-2 rounded-lg whitespace-pre-wrap">{skill.instructions.slice(0, 200)}{skill.instructions.length > 200 ? '...' : ''}</p>
@@ -1069,7 +1038,7 @@ const Agents: React.FC = () => {
                       <textarea
                         value={selectedFileContent || ''}
                         onChange={e => setSelectedFileContent(e.target.value)}
-                        className="flex-1 w-full text-[12px] text-slate-700 dark:text-slate-300 font-mono whitespace-pre bg-slate-50 dark:bg-black/20 p-4 rounded-2xl border border-slate-200 dark:border-white/5 leading-relaxed outline-none focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
+                        className="flex-1 w-full text-[12px] text-slate-700 dark:text-slate-300 font-mono whitespace-pre-wrap bg-slate-50 dark:bg-black/20 p-4 rounded-2xl border border-slate-200 dark:border-white/5 leading-relaxed outline-none focus:ring-2 focus:ring-blue-500/20 transition-all resize-none"
                         spellCheck={false}
                       />
                     </div>
@@ -1129,7 +1098,7 @@ const Agents: React.FC = () => {
           <h4 className="font-bold">关于工具箱</h4>
         </div>
         <p className="text-sm text-blue-600/80 dark:text-blue-400/80 leading-relaxed">
-          工具是 Agent 与外部系统交互的能力集合。目前支持抓取、发布和 RAG 检索。系统内置工具不可修改，可通过 MCP 协议扩展自定义工具。
+          工具是 Agent 与外部系统交互的能力集合。目前支持抓取和发布。系统内置工具不可修改，可通过 MCP 协议扩展自定义工具。
         </p>
       </div>
 

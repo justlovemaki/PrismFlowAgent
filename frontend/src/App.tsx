@@ -10,6 +10,7 @@ import StandalonePreview from './pages/StandalonePreview';
 import History from './pages/History';
 import TaskManagement from './pages/TaskManagement';
 import Agents from './pages/Agents';
+import KnowledgeBase from './pages/KnowledgeBase';
 import PluginManagement from './pages/PluginManagement';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
@@ -47,6 +48,7 @@ function App() {
                          <Route path="/history" element={<History />} />
                          <Route path="/tasks" element={<TaskManagement />} />
                          <Route path="/agents" element={<Agents />} />
+                         <Route path="/knowledge" element={<KnowledgeBase />} />
                          <Route path="/plugins" element={<PluginManagement />} />
                          <Route path="/settings" element={<Settings />} />
                        </Routes>

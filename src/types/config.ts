@@ -84,6 +84,8 @@ export interface SystemSettings {
   CATEGORIES: CategoryConfig[];
   SELECTION_FETCH_DAYS: number;
   SELECTION_QUERY_FIELD: 'ingestion_date' | 'published_date';
+  MEMORY_SYSTEM_TYPE?: 'sqlite' | 'hierarchical';
+  KNOWLEDGE_SYSTEM_TYPE?: 'sqlite' | 'hierarchical';
   SKILL_STORE_API_KEY?: string;
   GLOBAL_GITHUB_TOKEN?: string;
   ARK_API_KEY?: string;

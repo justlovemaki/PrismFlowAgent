@@ -36,6 +36,7 @@ export interface AgentDefinition {
   skillIds: string[];
   mcpServerIds: string[];
   streaming?: boolean;
+  isHidden?: boolean;
 }
 
 export interface WorkflowStep {

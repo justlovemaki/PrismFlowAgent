@@ -21,6 +21,7 @@ export interface Skill {
   instructions: string;
   files: string[];
   dirPath: string;
+  isBuiltin?: boolean;
 }
 
 export interface Agent {
@@ -35,6 +36,7 @@ export interface Agent {
   skillIds: string[];
   mcpServerIds: string[];
   streaming?: boolean;
+  isHidden?: boolean;
 }
 
 export interface WorkflowStep {

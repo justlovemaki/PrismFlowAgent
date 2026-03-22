@@ -24,7 +24,7 @@ export class AgentService {
     this.proxyAgent = proxyAgent;
   }
 
-  async runAgent(agentId: string, input: string, date?: string, options: { silent?: boolean } = {}): Promise<AgentExecutionResult> {
+  async runAgent(agentId: string, input: string, date?: string, options: { silent?: boolean; noTools?: boolean } = {}): Promise<AgentExecutionResult> {
     const agentDef = await this.store.getAgent(agentId);
     if (!agentDef) throw new Error(`Agent ${agentId} not found`);
 
@@ -54,13 +54,16 @@ export class AgentService {
     const combinedSkillInstructions = await this.skillService.buildSkillsPrompt(agentDef.skillIds || []);
 
     // 2. Prepare Tools
-    const toolIds = new Set<string>([
-      ...(agentDef.toolIds || [])
-    ]);
-
-    // If skills are present, ensure execute_command is available
-    if ((agentDef.skillIds || []).length > 0) {
-      toolIds.add('execute_command');
+    const toolIds = new Set<string>();
+    
+    if (!options.noTools) {
+      if (agentDef.toolIds) {
+        agentDef.toolIds.forEach((id: string) => toolIds.add(id));
+      }
+      // If skills are present, ensure execute_command is available
+      if ((agentDef.skillIds || []).length > 0) {
+        toolIds.add('execute_command');
+      }
     }
 
     const settings = await this.store.get('system_settings');
@@ -73,7 +76,7 @@ export class AgentService {
 
     // 2.1 Prepare MCP Tools
     const mcpConfigs = [];
-    if (agentDef.mcpServerIds && agentDef.mcpServerIds.length > 0) {
+    if (!options.noTools && agentDef.mcpServerIds && agentDef.mcpServerIds.length > 0) {
       for (const id of agentDef.mcpServerIds) {
         const config = await this.store.getMCPConfig(id);
         if (config) {
@@ -82,7 +85,7 @@ export class AgentService {
       }
     }
 
-    const mcpTools = await this.mcpService.getTools(mcpConfigs);
+    const mcpTools = options.noTools ? [] : await this.mcpService.getTools(mcpConfigs);
     const combinedTools = [...tools, ...mcpTools];
 
     // 3. Construct System Message
@@ -113,6 +116,14 @@ export class AgentService {
 
       const response = await provider.generateContent(messages, combinedTools);
       
+      if (!options.silent) {
+        LogService.info(`[Agent ${agentDef.name}] Provider raw response: ${JSON.stringify({
+          content: response.content,
+          tool_calls: response.tool_calls?.map(tc => tc.name),
+          has_raw_parts: !!response.raw_parts
+        })}`);
+      }
+
       const responseContent = response.content || '';
       if (!options.silent && responseContent) {
         LogService.info(`[Agent ${agentDef.name}] Round ${rounds + 1} AI Response: "${responseContent.slice(0, 500)}${responseContent.length > 500 ? '...' : ''}"`);

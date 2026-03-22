@@ -63,6 +63,10 @@ export class LocalStore {
     }
   }
 
+  public getDbPath(): string {
+    return this.dbPath;
+  }
+
   async init() {
     try {
       this.db = await open({
@@ -97,6 +101,99 @@ export class LocalStore {
           id TEXT PRIMARY KEY,
           data TEXT NOT NULL
         )
+      `);
+
+      // 创建记忆相关表
+      await this.db.exec(`
+        CREATE TABLE IF NOT EXISTS agent_memories (
+          id TEXT PRIMARY KEY,
+          agent_id TEXT,
+          content TEXT NOT NULL,
+          importance INTEGER DEFAULT 1,
+          tags TEXT,
+          metadata TEXT,
+          created_at INTEGER NOT NULL
+        )
+      `);
+
+      // 创建 FTS5 虚表 (使用 content='agent_memories' 建立内容联动)
+      // 注意：FTS5 在某些环境下可能由于外部内容表限制而无法通过 rowid 直接映射
+      // 我们这里使用一个简单的虚表并由触发器保持同步
+      await this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS agent_memories_fts USING fts5(
+          id UNINDEXED,
+          content,
+          tags,
+          tokenize='unicode61'
+        )
+      `);
+
+      // 保持同步的触发器
+      await this.db.exec(`
+        CREATE TRIGGER IF NOT EXISTS trg_mem_ai AFTER INSERT ON agent_memories BEGIN
+          INSERT INTO agent_memories_fts(id, content, tags) VALUES (new.id, new.content, new.tags);
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_mem_ad AFTER DELETE ON agent_memories BEGIN
+          DELETE FROM agent_memories_fts WHERE id = old.id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_mem_au AFTER UPDATE ON agent_memories BEGIN
+          DELETE FROM agent_memories_fts WHERE id = old.id;
+          INSERT INTO agent_memories_fts(id, content, tags) VALUES (new.id, new.content, new.tags);
+        END;
+      `);
+
+      // 创建知识库相关表
+      await this.db.exec(`
+        CREATE TABLE IF NOT EXISTS kb_categories (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          document_count INTEGER DEFAULT 0,
+          updated_at INTEGER NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS kb_documents (
+          id TEXT PRIMARY KEY,
+          category_id TEXT NOT NULL,
+          name TEXT NOT NULL,
+          file_name TEXT NOT NULL,
+          type TEXT NOT NULL,
+          summary TEXT,
+          chunk_count INTEGER DEFAULT 0,
+          metadata TEXT,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL,
+          FOREIGN KEY (category_id) REFERENCES kb_categories(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS kb_chunks (
+          id TEXT PRIMARY KEY,
+          document_id TEXT NOT NULL,
+          content TEXT NOT NULL,
+          chunk_index INTEGER NOT NULL,
+          metadata TEXT,
+          FOREIGN KEY (document_id) REFERENCES kb_documents(id) ON DELETE CASCADE
+        );
+
+        CREATE VIRTUAL TABLE IF NOT EXISTS kb_chunks_fts USING fts5(
+          id UNINDEXED,
+          content,
+          tokenize='unicode61'
+        );
+      `);
+
+      // 保持同步的触发器 (知识库)
+      await this.db.exec(`
+        CREATE TRIGGER IF NOT EXISTS trg_kb_chunks_ai AFTER INSERT ON kb_chunks BEGIN
+          INSERT INTO kb_chunks_fts(id, content) VALUES (new.id, new.content);
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_kb_chunks_ad AFTER DELETE ON kb_chunks BEGIN
+          DELETE FROM kb_chunks_fts WHERE id = old.id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_kb_chunks_au AFTER UPDATE ON kb_chunks BEGIN
+          DELETE FROM kb_chunks_fts WHERE id = old.id;
+          INSERT INTO kb_chunks_fts(id, content) VALUES (new.id, new.content);
+        END;
       `);
 
       await this.db.exec(`
@@ -384,6 +481,236 @@ export class LocalStore {
 
   async deleteAgent(id: string): Promise<void> {
     await this.db?.run('DELETE FROM agents WHERE id = ?', id);
+  }
+
+  // --- Memory System CRUD ---
+
+  async saveMemory(memory: any): Promise<void> {
+    const val = {
+      id: memory.id,
+      agent_id: memory.agentId || null,
+      content: memory.content,
+      importance: memory.importance || 1,
+      tags: memory.tags ? JSON.stringify(memory.tags) : null,
+      metadata: memory.metadata ? JSON.stringify(memory.metadata) : null,
+      created_at: memory.createdAt || Date.now()
+    };
+    
+    await this.db?.run(
+      `INSERT OR REPLACE INTO agent_memories (id, agent_id, content, importance, tags, metadata, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      val.id, val.agent_id, val.content, val.importance, val.tags, val.metadata, val.created_at
+    );
+  }
+
+  async searchMemories(query: string, options: {
+    agentId?: string;
+    tags?: string[];
+    limit?: number;
+    minImportance?: number;
+  } = {}): Promise<any[]> {
+    // 构造 FTS5 查询，支持前缀匹配
+    const ftsQuery = query.split(/\s+/).filter(Boolean).map(t => `${t}*`).join(' AND ');
+    
+    let sql = `
+      SELECT 
+        m.*, 
+        bm25(agent_memories_fts) as search_rank,
+        snippet(agent_memories_fts, 1, '【', '】', '...', 20) as snippet
+      FROM agent_memories m
+      JOIN agent_memories_fts ON m.id = agent_memories_fts.id
+      WHERE agent_memories_fts MATCH ?
+    `;
+    
+    const params: any[] = [ftsQuery];
+    
+    if (options.agentId) {
+      sql += ' AND m.agent_id = ?';
+      params.push(options.agentId);
+    }
+    
+    if (options.minImportance) {
+      sql += ' AND m.importance >= ?';
+      params.push(options.minImportance);
+    }
+    
+    // 排序逻辑：相关性 + 重要度 + 时间
+    sql += ` ORDER BY (
+      (m.importance * 2.0) + 
+      (1.0 / (bm25(agent_memories_fts) + 10)) + 
+      (m.created_at / 1e12)
+    ) DESC`;
+    
+    if (options.limit) {
+      sql += ' LIMIT ?';
+      params.push(options.limit);
+    } else {
+      sql += ' LIMIT 20';
+    }
+
+    const rows = await this.db?.all(sql, ...params);
+    return (rows || []).map(row => ({
+      id: row.id,
+      agentId: row.agent_id,
+      content: row.content,
+      importance: row.importance,
+      tags: row.tags ? JSON.parse(row.tags) : [],
+      metadata: row.metadata ? JSON.parse(row.metadata) : {},
+      createdAt: row.created_at,
+      rank: row.search_rank,
+      snippet: row.snippet
+    }));
+  }
+
+  async deleteMemory(id: string): Promise<void> {
+    await this.db?.run('DELETE FROM agent_memories WHERE id = ?', id);
+  }
+
+  /**
+   * 获取所有原始记忆记录 (用于迁移)
+   */
+  async listAllMemories(): Promise<any[]> {
+    const rows = await this.db?.all('SELECT * FROM agent_memories ORDER BY created_at DESC');
+    return (rows || []).map(row => ({
+      id: row.id,
+      agentId: row.agent_id,
+      content: row.content,
+      importance: row.importance,
+      tags: row.tags ? JSON.parse(row.tags) : [],
+      metadata: row.metadata ? JSON.parse(row.metadata) : {},
+      createdAt: row.created_at
+    }));
+  }
+
+  // --- Knowledge Base System CRUD ---
+
+  async listKBCategories(): Promise<any[]> {
+    const rows = await this.db?.all('SELECT * FROM kb_categories ORDER BY updated_at DESC');
+    return (rows || []).map(row => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      documentCount: row.document_count,
+      updatedAt: row.updated_at
+    }));
+  }
+
+  async getKBCategory(id: string): Promise<any | null> {
+    const row = await this.db?.get('SELECT * FROM kb_categories WHERE id = ?', id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      documentCount: row.document_count,
+      updatedAt: row.updated_at
+    };
+  }
+
+  async saveKBCategory(category: any): Promise<void> {
+    await this.db?.run(
+      'INSERT OR REPLACE INTO kb_categories (id, name, description, document_count, updated_at) VALUES (?, ?, ?, ?, ?)',
+      category.id, category.name, category.description || '', category.documentCount || 0, category.updatedAt || Date.now()
+    );
+  }
+
+  async deleteKBCategory(id: string): Promise<void> {
+    await this.db?.run('DELETE FROM kb_categories WHERE id = ?', id);
+  }
+
+  async listKBDocuments(categoryId: string): Promise<any[]> {
+    const rows = await this.db?.all('SELECT * FROM kb_documents WHERE category_id = ? ORDER BY created_at DESC', categoryId);
+    return (rows || []).map(row => ({
+      id: row.id,
+      categoryId: row.category_id,
+      name: row.name,
+      fileName: row.file_name,
+      type: row.type,
+      summary: row.summary,
+      chunkCount: row.chunk_count,
+      metadata: row.metadata ? JSON.parse(row.metadata) : {},
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    }));
+  }
+
+  async getKBDocument(id: string): Promise<any | null> {
+    const row = await this.db?.get('SELECT * FROM kb_documents WHERE id = ?', id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      categoryId: row.category_id,
+      name: row.name,
+      fileName: row.file_name,
+      type: row.type,
+      summary: row.summary,
+      chunkCount: row.chunk_count,
+      metadata: row.metadata ? JSON.parse(row.metadata) : {},
+      createdAt: row.created_at,
+      updatedAt: row.updated_at
+    };
+  }
+
+  async saveKBDocument(doc: any): Promise<void> {
+    await this.db?.run(
+      `INSERT OR REPLACE INTO kb_documents (
+        id, category_id, name, file_name, type, summary, chunk_count, metadata, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      doc.id, doc.categoryId, doc.name, doc.fileName, doc.type, doc.summary, 
+      doc.chunkCount, JSON.stringify(doc.metadata || {}), doc.createdAt, doc.updatedAt
+    );
+  }
+
+  async deleteKBDocument(id: string): Promise<void> {
+    await this.db?.run('DELETE FROM kb_documents WHERE id = ?', id);
+  }
+
+  async saveKBChunk(chunk: any): Promise<void> {
+    await this.db?.run(
+      'INSERT OR REPLACE INTO kb_chunks (id, document_id, content, chunk_index, metadata) VALUES (?, ?, ?, ?, ?)',
+      chunk.id, chunk.documentId, chunk.content, chunk.index, JSON.stringify(chunk.metadata || {})
+    );
+  }
+
+  async searchKBChunks(query: string, options: { categoryIds?: string[]; limit?: number } = {}): Promise<any[]> {
+    const ftsQuery = query.split(/\s+/).filter(Boolean).map(t => `${t}*`).join(' AND ');
+    
+    let sql = `
+      SELECT 
+        c.*, 
+        d.name as doc_name,
+        d.category_id,
+        bm25(kb_chunks_fts) as search_rank,
+        snippet(kb_chunks_fts, 1, '【', '】', '...', 30) as snippet
+      FROM kb_chunks c
+      JOIN kb_chunks_fts ON c.id = kb_chunks_fts.id
+      JOIN kb_documents d ON c.document_id = d.id
+      WHERE kb_chunks_fts MATCH ?
+    `;
+    
+    const params: any[] = [ftsQuery];
+    
+    if (options.categoryIds && options.categoryIds.length > 0) {
+      const placeholders = options.categoryIds.map(() => '?').join(',');
+      sql += ` AND d.category_id IN (${placeholders})`;
+      params.push(...options.categoryIds);
+    }
+    
+    sql += ` ORDER BY search_rank ASC LIMIT ?`;
+    params.push(options.limit || 10);
+
+    const rows = await this.db?.all(sql, ...params);
+    return (rows || []).map(row => ({
+      id: row.id,
+      documentId: row.document_id,
+      content: row.content,
+      index: row.chunk_index,
+      metadata: row.metadata ? JSON.parse(row.metadata) : {},
+      docName: row.doc_name,
+      categoryId: row.category_id,
+      rank: row.search_rank,
+      snippet: row.snippet
+    }));
   }
 
   getSkillsDir(): string {

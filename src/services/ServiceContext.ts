@@ -68,6 +68,14 @@ export class ServiceContext {
     return this.services.agentService;
   }
 
+  public get memoryService() {
+    return this.services.memoryService;
+  }
+
+  public get knowledgeBaseService() {
+    return this.services.knowledgeBaseService;
+  }
+
   public get mcpService() {
     return this.services.mcpService;
   }

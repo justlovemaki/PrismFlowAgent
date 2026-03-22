@@ -645,7 +645,8 @@ export async function createServer(existingStore?: LocalStore) {
   // --- Agent & Workflow API ---
 
   fastify.get('/api/agents', async () => {
-    return await store.listAgents();
+    const agents = await store.listAgents();
+    return agents.filter((a: any) => !a.isHidden);
   });
 
   fastify.post('/api/agents', async (request) => {
@@ -1008,12 +1009,20 @@ export async function createServer(existingStore?: LocalStore) {
   fastify.delete('/api/skills/:id', async (request, reply) => {
     try {
       const { id } = request.params as any;
-      // 删除技能文件目录
+      const skill = await store.getSkill(id);
+      
+      if (skill && skill.isBuiltin) {
+        return reply.status(403).send({ error: '系统内置技能不可删除' });
+      }
+
+      // 仅当目录在 data/skills 下时才物理删除文件夹
       const skillsDir = store.getSkillsDir();
-      const skillDir = path.join(skillsDir, id);
-      if (fs.existsSync(skillDir)) {
+      const skillDir = (skill && skill.dirPath) || path.join(skillsDir, id);
+      
+      if (fs.existsSync(skillDir) && skillDir.startsWith(skillsDir)) {
         fs.rmSync(skillDir, { recursive: true, force: true });
       }
+      
       await store.deleteSkill(id);
       await context.skillService.refreshSkills();
       return { status: 'success' };
@@ -1029,7 +1038,9 @@ export async function createServer(existingStore?: LocalStore) {
       if (!skill) {
         return reply.status(404).send({ error: '技能不存在' });
       }
-      const skillDir = path.join(store.getSkillsDir(), id);
+      // 优先使用数据库中存储的路径，否则使用默认路径
+      const skillDir = skill.dirPath || path.join(store.getSkillsDir(), id);
+      
       if (!fs.existsSync(skillDir)) {
         return { files: [] };
       }
@@ -1059,8 +1070,10 @@ export async function createServer(existingStore?: LocalStore) {
       if (!skill) {
         return reply.status(404).send({ error: '技能不存在' });
       }
-      const skillDir = path.join(store.getSkillsDir(), id);
+      // 优先使用数据库中存储的路径，否则使用默认路径
+      const skillDir = skill.dirPath || path.join(store.getSkillsDir(), id);
       const fullPath = path.join(skillDir, filePath);
+      
       // 防止路径穿越
       if (!fullPath.startsWith(skillDir)) {
         return reply.status(403).send({ error: 'Forbidden' });
@@ -1083,8 +1096,10 @@ export async function createServer(existingStore?: LocalStore) {
       if (!skill) {
         return reply.status(404).send({ error: '技能不存在' });
       }
-      const skillDir = path.join(store.getSkillsDir(), id);
+      // 优先使用数据库中存储的路径，否则使用默认路径
+      const skillDir = skill.dirPath || path.join(store.getSkillsDir(), id);
       const fullPath = path.join(skillDir, filePath);
+      
       // 防止路径穿越
       if (!fullPath.startsWith(skillDir)) {
         return reply.status(403).send({ error: 'Forbidden' });
@@ -1326,6 +1341,56 @@ export async function createServer(existingStore?: LocalStore) {
     } catch (error: any) {
       reply.status(500).send({ error: error.message });
     }
+  });
+
+  // --- Knowledge Base API ---
+
+  fastify.get('/api/kb/categories', async () => {
+    return await context.knowledgeBaseService.getCategories();
+  });
+
+  fastify.post('/api/kb/categories', async (request) => {
+    const { name, description } = request.body as any;
+    const id = await context.knowledgeBaseService.addCategory(name, description);
+    return { status: 'success', id };
+  });
+
+  fastify.get('/api/kb/documents', async (request) => {
+    const { categoryId } = request.query as any;
+    if (!categoryId) return [];
+    return await context.knowledgeBaseService.getDocuments(categoryId);
+  });
+
+  fastify.post('/api/kb/documents', async (request, reply) => {
+    try {
+      const data = await request.file();
+      if (!data) return reply.status(400).send({ error: 'No file uploaded' });
+      
+      const categoryId = (data.fields.categoryId as any)?.value;
+      if (!categoryId) return reply.status(400).send({ error: 'Missing categoryId' });
+
+      const buffer = await data.toBuffer();
+      const id = await context.knowledgeBaseService.addDocument(categoryId, {
+        name: data.filename,
+        path: data.filename,
+        buffer
+      });
+      return { status: 'success', id };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.delete('/api/kb/documents/:id', async (request) => {
+    const { id } = request.params as any;
+    await context.knowledgeBaseService.deleteDocument(id);
+    return { status: 'success' };
+  });
+
+  fastify.post('/api/kb/query', async (request) => {
+    const { query, categoryIds, limit } = request.body as any;
+    const answer = await context.knowledgeBaseService.queryKnowledge(query, { categoryIds, limit });
+    return { answer };
   });
 
   fastify.setNotFoundHandler((request, reply) => {

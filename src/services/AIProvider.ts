@@ -66,9 +66,10 @@ function toLangChainMessages(prompt: string | AIMessage[], systemInstruction?: s
  */
 function fromLangChainMessage(message: BaseMessage | any): AIResponse {
   // Handle content which can be string or array of parts
+  // console.log(JSON.stringify(message))
   let content = '';
   if (typeof message.content === 'string') {
-    content = message.content;
+    content = message.content;  
   } else if (Array.isArray(message.content)) {
     content = message.content
       .map((part: any) => {

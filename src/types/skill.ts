@@ -15,6 +15,7 @@ export interface SkillEntry {
   frontmatter: SkillFrontmatter;
   dirPath: string;
   fullPath: string;
+  isBuiltin?: boolean;
 }
 
 export interface SkillExecutionConfig {
