@@ -56,23 +56,17 @@ export class SkillService {
   }
 
   private async parseSkillFile(filePath: string): Promise<SkillEntry> {
-    let content = await fs.readFile(filePath, 'utf-8');
-    // Strip BOM and normalize line endings
-    content = content.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    
+    const content = await fs.readFile(filePath, 'utf-8');
     const dirPath = path.dirname(filePath);
     const id = path.basename(dirPath);
     
-    // Determine if built-in (if it's in a directory named 'skills' or 'dist/skills')
-    const isBuiltin = dirPath.includes(path.sep + 'skills' + path.sep) || 
-                     dirPath.includes(path.sep + 'dist' + path.sep + 'skills' + path.sep) ||
-                     dirPath.endsWith(path.sep + 'skills') ||
-                     dirPath.endsWith(path.sep + 'dist' + path.sep + 'skills');
+    // Determine if built-in (if it's in the default 'skills' directory)
+    const isBuiltin = dirPath.includes(path.join(process.cwd(), 'skills'));
 
     // Parse Frontmatter
-    const match = content.match(/^---[ \t]*\n([\s\S]*?)\n---[ \t]*\n([\s\S]*)$/);
+    const match = content.match(/^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n([\s\S]*)$/);
     if (!match) {
-      throw new Error('Invalid Skill format: Missing Frontmatter or invalid markers');
+      throw new Error('Invalid Skill format: Missing Frontmatter');
     }
 
     const frontmatterRaw = match[1];

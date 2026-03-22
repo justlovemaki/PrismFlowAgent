@@ -52,20 +52,19 @@ async function scanAndRegister(
           // 处理工具插件 (Tool)
           else if (type as string === 'tool') {
             try {
-              // 确保是一个类（不是普通函数）且原型链上有 handler
-              if (ExportedClass.prototype && typeof ExportedClass.prototype.handler === 'function') {
-                const toolInstance = new ExportedClass();
-                if (toolInstance.id && toolInstance.handler) {
-                  // 如果是工具，我们需要在类或者实例上标记 isBuiltin
-                  (toolInstance as any).isBuiltin = isBuiltin;
-                  registry.register(toolInstance.id, ExportedClass, { 
-                    id: toolInstance.id, 
-                    name: toolInstance.name, 
-                    description: toolInstance.description,
-                    isBuiltin 
-                  });
-                  LogService.info(`Auto-registered tool: ${toolInstance.id} (builtin: ${isBuiltin})`);
-                }
+              const toolInstance = new ExportedClass();
+              if (toolInstance.id && toolInstance.handler) {
+                // 如果是工具，我们需要在类或者实例上标记 isBuiltin
+                // 由于目前 ToolRegistry 只存储类，我们可以在实例上标记然后传递，或者在注册时处理
+                // 修改: 给实例设置 isBuiltin
+                (toolInstance as any).isBuiltin = isBuiltin;
+                registry.register(toolInstance.id, ExportedClass, { 
+                  id: toolInstance.id, 
+                  name: toolInstance.name, 
+                  description: toolInstance.description,
+                  isBuiltin 
+                });
+                LogService.info(`Auto-registered tool: ${toolInstance.id} (builtin: ${isBuiltin})`);
               }
             } catch (e) {
               // Ignore if not a valid tool class
