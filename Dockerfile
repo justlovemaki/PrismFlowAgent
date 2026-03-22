@@ -14,9 +14,10 @@ RUN apt-get update && apt-get install -y \
 COPY package*.json tsconfig.json version ./
 RUN npm install
 
-# Copy backend source and build
+# Copy backend source, skills and build
 COPY src ./src
 COPY scripts ./scripts
+COPY skills ./skills
 RUN npm run build
 
 # Build Frontend
@@ -42,6 +43,7 @@ RUN npm install --omit=dev
 
 # Copy built backend
 COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/skills ./skills
 
 # Copy built frontend
 # Note: In production, Fastify should serve the frontend dist directory
