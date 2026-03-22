@@ -271,6 +271,21 @@ export class LocalStore {
       // 系统启动时，将所有运行中的任务状态设置为中断
       await this.db.exec(`UPDATE task_logs SET status = 'interrupted', message = '系统重启导致任务中断' WHERE status = 'running'`);
 
+      // 创建 API Key 表
+      await this.db.exec(`
+        CREATE TABLE IF NOT EXISTS api_keys (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          key_hash TEXT NOT NULL,
+          prefix TEXT NOT NULL,
+          source_fingerprint TEXT,
+          verification_token TEXT,
+          status TEXT DEFAULT 'pending',
+          created_at INTEGER NOT NULL,
+          last_used_at INTEGER
+        )
+      `);
+
       console.log('Database initialized successfully');
 
     } catch (err) {
@@ -1151,6 +1166,71 @@ export class LocalStore {
     }
 
     await this.db?.run(query, ...params);
+  }
+
+  // --- API Key CRUD ---
+
+  async listApiKeys(): Promise<any[]> {
+    const rows = await this.db?.all('SELECT * FROM api_keys ORDER BY created_at DESC');
+    return (rows || []).map(row => ({
+      id: row.id,
+      name: row.name,
+      prefix: row.prefix,
+      sourceFingerprint: row.source_fingerprint,
+      status: row.status,
+      createdAt: row.created_at,
+      lastUsedAt: row.last_used_at
+    }));
+  }
+
+  async saveApiKey(apiKey: { 
+    id: string; 
+    name: string; 
+    keyHash: string; 
+    prefix: string; 
+    sourceFingerprint?: string;
+    verificationToken?: string;
+    status?: string;
+    createdAt?: number 
+  }): Promise<void> {
+    await this.db?.run(
+      `INSERT OR REPLACE INTO api_keys (
+        id, name, key_hash, prefix, source_fingerprint, verification_token, status, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      apiKey.id, 
+      apiKey.name, 
+      apiKey.keyHash, 
+      apiKey.prefix, 
+      apiKey.sourceFingerprint || null,
+      apiKey.verificationToken || null,
+      apiKey.status || 'pending',
+      apiKey.createdAt || Date.now()
+    );
+  }
+
+  async getApiKeyByVerificationToken(token: string): Promise<any | null> {
+    return await this.db?.get('SELECT * FROM api_keys WHERE verification_token = ?', token) || null;
+  }
+
+  async updateApiKeyStatus(id: string, status: string): Promise<void> {
+    await this.db?.run('UPDATE api_keys SET status = ? WHERE id = ?', status, id);
+  }
+
+  async getApiKeyByFingerprint(fingerprint: string): Promise<any | null> {
+    return await this.db?.get('SELECT * FROM api_keys WHERE source_fingerprint = ?', fingerprint) || null;
+  }
+
+  async deleteApiKey(id: string): Promise<void> {
+    await this.db?.run('DELETE FROM api_keys WHERE id = ?', id);
+  }
+
+  async getApiKeysByPrefix(prefix: string): Promise<any[]> {
+    const rows = await this.db?.all('SELECT * FROM api_keys WHERE prefix = ?', prefix);
+    return (rows || []);
+  }
+
+  async updateApiKeyLastUsed(id: string): Promise<void> {
+    await this.db?.run('UPDATE api_keys SET last_used_at = ? WHERE id = ?', Date.now(), id);
   }
 }
 

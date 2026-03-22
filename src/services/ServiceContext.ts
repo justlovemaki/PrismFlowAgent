@@ -88,6 +88,10 @@ export class ServiceContext {
     return this.services.skillStoreService;
   }
 
+  public get interopService() {
+    return this.services.interopService;
+  }
+
   public get workflowEngine() {
     return this.services.workflowEngine;
   }

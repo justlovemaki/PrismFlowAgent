@@ -15,6 +15,7 @@ import { MemoryService } from './agents/MemoryService.js';
 import { KnowledgeBaseService } from './knowledge/KnowledgeBaseService.js';
 import { ToolRegistry } from '../registries/ToolRegistry.js';
 import { WorkflowEngine } from './agents/WorkflowEngine.js';
+import { InteropService } from './interop/InteropService.js';
 import { ProxyAgent } from 'undici';
 import { SystemSettings } from '../types/config.js';
 import { initRegistries } from '../registries/PluginInit.js';
@@ -44,6 +45,7 @@ export interface AppServices {
   workflowEngine: WorkflowEngine | null;
   skillService: SkillService;
   skillStoreService: SkillStoreService;
+  interopService: InteropService;
   adapterInstances: any[];
   publisherInstances: IPublisher[];
   storageInstances: IStorageProvider[];
@@ -106,6 +108,8 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
 
   const workflowEngine = (agentService && aiProvider) ? new WorkflowEngine(store, agentService, aiProvider) : null;
 
+  const interopService = new InteropService(store, agentService, skillService, workflowEngine, settings);
+
   // 5. Initialize Adapters & Publishers & Storages
   const adapterInstances = initAdapters(settings, proxyAgent, translationService, agentService, workflowEngine);
   const publisherInstances = initPublishers(settings);
@@ -157,6 +161,7 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
     workflowEngine,
     skillService,
     skillStoreService,
+    interopService,
     adapterInstances,
     publisherInstances,
     storageInstances,

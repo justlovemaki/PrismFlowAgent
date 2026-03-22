@@ -54,19 +54,36 @@ export async function createServer(existingStore?: LocalStore) {
 
   // --- Auth Middleware ---
   fastify.addHook('preHandler', async (request, reply) => {
-    // 排除登录接口和静态资源
-    if (request.url === '/api/login' || !request.url.startsWith('/api')) {
+    // 排除登录接口、注册接口、验证页面和静态资源
+    const publicPaths = ['/api/login', '/api/ai/v1/register', '/api/ai/v1/verify'];
+    if (publicPaths.some(path => request.url.startsWith(path)) || !request.url.startsWith('/api')) {
       return;
     }
 
     try {
-      // 允许通过 query 参数携带 token (用于 <img> 标签访问)
+      // 1. 检查 API Key (优先)
+      const apiKey = request.headers['x-api-key'] as string;
+      if (apiKey) {
+        const isValid = await context.interopService.verifyApiKey(apiKey);
+        if (isValid) {
+          // 如果是 API Key 认证，仅允许访问 /api/ai/v1 路径
+          if (request.url.startsWith('/api/ai/v1')) {
+            (request as any).isApiKeyAuth = true;
+            return;
+          } else {
+            return reply.status(403).send({ error: 'API Key is only authorized for /api/ai/v1 endpoints' });
+          }
+        }
+      }
+
+      // 2. 允许通过 query 参数携带 token (用于 <img> 标签访问)
       const queryToken = (request.query as any)?.token;
       if (queryToken) {
         await fastify.jwt.verify(queryToken);
         return;
       }
 
+      // 3. 标准 JWT 认证
       await request.jwtVerify();
     } catch (err) {
       reply.status(401).send({ error: 'Unauthorized' });
@@ -559,6 +576,27 @@ export async function createServer(existingStore?: LocalStore) {
     }
   });
 
+  // --- API Key Management API (Admin Only) ---
+
+  fastify.get('/api/settings/api-keys', async (request, reply) => {
+    if ((request as any).isApiKeyAuth) return reply.status(403).send({ error: 'Forbidden' });
+    return await store.listApiKeys();
+  });
+
+  fastify.post('/api/settings/api-keys', async (request, reply) => {
+    if ((request as any).isApiKeyAuth) return reply.status(403).send({ error: 'Forbidden' });
+    const { name } = request.body as any;
+    if (!name) return reply.status(400).send({ error: 'Missing name' });
+    return await context.interopService.createApiKey({ name, status: 'active' });
+  });
+
+  fastify.delete('/api/settings/api-keys/:id', async (request, reply) => {
+    if ((request as any).isApiKeyAuth) return reply.status(403).send({ error: 'Forbidden' });
+    const { id } = request.params as any;
+    await store.deleteApiKey(id);
+    return { status: 'success' };
+  });
+
   fastify.get('/api/history/commits', async (request, reply) => {
     try {
       const { date, platform, limit, offset, search } = request.query as any;
@@ -638,6 +676,183 @@ export async function createServer(existingStore?: LocalStore) {
       return { status: 'success', data: result };
     } catch (error: any) {
       LogService.error(`Failed to republish: ${error.message}`);
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  // --- AI Interop API (v1) ---
+
+  fastify.post('/api/ai/v1/register', async (request, reply) => {
+    try {
+      const { name } = request.body as any;
+      const userAgent = request.headers['user-agent'] || 'unknown';
+      const ip = request.ip;
+      
+      // 技术识别：基于 IP 和 UA 的哈希指纹
+      const fingerprint = crypto.createHash('sha256')
+        .update(`${ip}-${userAgent}`)
+        .digest('hex');
+      
+      const result = await context.interopService.registerPendingKey(name, fingerprint);
+      
+      // 域名补全
+      const host = request.headers.host || 'localhost';
+      const protocol = (request.headers['x-forwarded-proto'] as string) || 'http';
+      const fullVerificationUrl = `${protocol}://${host}${result.verificationUrl}`;
+
+      return { 
+        status: 'pending', 
+        apiKey: result.key,
+        verificationUrl: fullVerificationUrl,
+        message: 'Your API Key has been generated but is currently PENDING. A human must visit the verificationUrl to approve your access.'
+      };
+    } catch (error: any) {
+      reply.status(400).send({ error: error.message });
+    }
+  });
+
+  fastify.get('/api/ai/v1/verify/:token', async (request, reply) => {
+    const { token } = request.params as any;
+    const record = await store.getApiKeyByVerificationToken(token);
+    
+    reply.type('text/html');
+    if (!record) {
+      return `
+        <html>
+          <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #fef2f2; margin: 0;">
+            <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
+              <div style="font-size: 3rem; margin-bottom: 1rem;">❌</div>
+              <h1 style="color: #991b1b; margin-top: 0;">验证链接无效</h1>
+              <p style="color: #4b5563;">该验证令牌不存在或已过期。</p>
+            </div>
+          </body>
+        </html>
+      `;
+    }
+
+    if (record.status === 'active') {
+      return `
+        <html>
+          <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f0fdf4; margin: 0;">
+            <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
+              <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
+              <h1 style="color: #166534; margin-top: 0;">权限已激活</h1>
+              <p style="color: #4b5563;">该 API Key 已经是激活状态，无需重复验证。</p>
+            </div>
+          </body>
+        </html>
+      `;
+    }
+
+    return `
+      <html>
+        <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f8fafc; margin: 0;">
+          <div style="padding: 2.5rem; background: white; border-radius: 16px; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); text-align: center; max-width: 450px; width: 90%;">
+            <h1 style="color: #1e293b; margin-top: 0; font-size: 1.5rem;">确认 AI 接入申请</h1>
+            <p style="color: #64748b; margin-bottom: 2rem;">系统收到了一个新的 AI 接入申请，请核对来源信息后手动批准。</p>
+            
+            <div style="text-align: left; background: #f1f5f9; padding: 1.25rem; border-radius: 8px; margin-bottom: 2rem; font-size: 0.9rem;">
+              <div style="margin-bottom: 0.5rem;"><span style="color: #64748b;">申请名称:</span> <span style="color: #334155; font-weight: 600;">${record.name}</span></div>
+              <div style="margin-bottom: 0.5rem;"><span style="color: #64748b;">来源指纹:</span> <code style="background: #e2e8f0; padding: 2px 4px; border-radius: 4px; color: #475569;">${record.prefix}...</code></div>
+              <div><span style="color: #64748b;">申请时间:</span> <span style="color: #334155;">${new Date(record.created_at).toLocaleString()}</span></div>
+            </div>
+
+            <form method="POST">
+              <button type="submit" style="width: 100%; padding: 0.75rem; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                确认并批准接入
+              </button>
+            </form>
+            <p style="margin-top: 1rem; font-size: 0.8rem; color: #94a3b8;">批准后，该 AI 系统将获得访问 /api/ai/v1 接口的权限。</p>
+          </div>
+        </body>
+      </html>
+    `;
+  });
+
+  fastify.post('/api/ai/v1/verify/:token', async (request, reply) => {
+    const { token } = request.params as any;
+    const success = await context.interopService.approveKey(token);
+    
+    reply.type('text/html');
+    if (success) {
+      return `
+        <html>
+          <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f0fdf4; margin: 0;">
+            <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
+              <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
+              <h1 style="color: #166534; margin-top: 0;">验证成功</h1>
+              <p style="color: #4b5563; line-height: 1.5;">该 AI 系统的访问权限已成功激活。它现在可以开始交互了。</p>
+              <button onclick="window.close()" style="margin-top: 1.5rem; padding: 0.5rem 1rem; background: #22c55e; color: white; border: none; border-radius: 6px; cursor: pointer;">关闭页面</button>
+            </div>
+          </body>
+        </html>
+      `;
+    } else {
+      return `
+        <html>
+          <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #fef2f2; margin: 0;">
+            <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
+              <div style="font-size: 3rem; margin-bottom: 1rem;">❌</div>
+              <h1 style="color: #991b1b; margin-top: 0;">批准失败</h1>
+              <p style="color: #4b5563;">无法完成批准操作。请刷新页面重试。</p>
+            </div>
+          </body>
+        </html>
+      `;
+    }
+  });
+
+  fastify.get('/api/ai/v1/discovery', async () => {
+    return await context.interopService.getDiscovery();
+  });
+
+  fastify.get('/api/ai/v1/context', async (request, reply) => {
+    const md = await context.interopService.getSystemContextMarkdown();
+    reply.type('text/markdown');
+    return md;
+  });
+
+  fastify.get('/api/ai/v1/tools', async () => {
+    return await context.interopService.getToolsAsOpenAIFormat();
+  });
+
+  fastify.get('/api/ai/v1/skills', async () => {
+    return await context.skillService.listSkills();
+  });
+
+  fastify.post('/api/ai/v1/execute', async (request, reply) => {
+    try {
+      const body = request.body as any;
+      if (body.stream) {
+        if (body.action !== 'agent') {
+          return reply.status(400).send({ error: 'Streaming is only supported for agent action' });
+        }
+        
+        reply.raw.setHeader('Content-Type', 'text/event-stream');
+        reply.raw.setHeader('Cache-Control', 'no-cache');
+        reply.raw.setHeader('Connection', 'keep-alive');
+
+        try {
+          const result = await context.interopService.execute(body);
+          if (typeof (result as any)[Symbol.asyncIterator] === 'function') {
+            for await (const chunk of (result as any)) {
+              if (!reply.raw.writable) break;
+              reply.raw.write(`data: ${JSON.stringify(chunk)}\n\n`);
+            }
+          } else {
+            reply.raw.write(`data: ${JSON.stringify(result)}\n\n`);
+          }
+          if (reply.raw.writable) reply.raw.write('data: [DONE]\n\n');
+        } catch (err: any) {
+          if (reply.raw.writable) reply.raw.write(`data: ${JSON.stringify({ type: 'error', error: err.message })}\n\n`);
+        } finally {
+          if (!reply.raw.destroyed) reply.raw.end();
+        }
+        return;
+      }
+
+      return await context.interopService.execute(body);
+    } catch (error: any) {
       reply.status(500).send({ error: error.message });
     }
   });
