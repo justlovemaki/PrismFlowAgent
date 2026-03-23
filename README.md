@@ -82,7 +82,7 @@
 
 ### 接入示例 (Quick Access)
 
-发给AGENT：请阅读 [AI_INTEROP.md](https://github.com/justlovemaki/PrismFlowAgent/blob/main/AI_INTEROP.md) 指引，按照流程完成自助注册并接入本系统。
+发给AGENT：请阅读  https://github.com/justlovemaki/PrismFlowAgent/blob/main/AI_INTEROP.md 指引，按照流程完成自助注册并接入本系统，系统访问地址为： http://xxx.xxx.xxx:3000/。
 
 ---
 
