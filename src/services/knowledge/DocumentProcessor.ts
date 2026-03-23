@@ -1,5 +1,7 @@
 import { PDFParse } from 'pdf-parse';
 import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
+import { parse as csvParse } from 'csv-parse/sync';
 import { LogService } from '../LogService.js';
 
 export interface ProcessedDocument {
@@ -34,6 +36,23 @@ export class DocumentProcessor {
         const result = await mammoth.extractRawText({ buffer });
         text = result.value;
         metadata.messages = result.messages;
+      } else if (ext === 'csv') {
+        const records: string[][] = csvParse(buffer, {
+          skip_empty_lines: true,
+          trim: true
+        });
+        text = records.map(row => row.join(' ')).join('\n');
+      } else if (ext === 'xlsx' || ext === 'xls') {
+        const workbook = XLSX.read(buffer, { type: 'buffer' });
+        const sheetTexts: string[] = [];
+        workbook.SheetNames.forEach(sheetName => {
+          const sheet = workbook.Sheets[sheetName];
+          const csv = XLSX.utils.sheet_to_csv(sheet);
+          if (csv) {
+            sheetTexts.push(`--- Sheet: ${sheetName} ---\n${csv}`);
+          }
+        });
+        text = sheetTexts.join('\n\n');
       } else if (ext === 'md' || ext === 'txt' || ext === 'markdown') {
         text = buffer.toString('utf8');
       } else {

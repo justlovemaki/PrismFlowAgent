@@ -394,6 +394,10 @@ export class TaskService {
 
     const result = await publisher.publish(content, options);
 
+    if (options?.skipHistory) {
+      return result;
+    }
+
     // 保存提交历史记录
     // 根据不同的平台，构造历史记录
     let historyDate = options.date || options.displayDate || getISODate();

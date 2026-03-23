@@ -6,40 +6,94 @@ import { useToast } from '../context/ToastContext';
 
 const KnowledgeBase: React.FC = () => {
   const { success, error: toastError } = useToast();
+  const [activeTab, setActiveTab] = useState<'knowledge' | 'memory'>('knowledge');
+
+  // Knowledge State
   const [categories, setCategories] = useState<KBCategory[]>([]);
   const [documents, setDocuments] = useState<KBDocument[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  
+  // Memory State
+  const [memoryCategories, setMemoryCategories] = useState<KBCategory[]>([]);
+  const [selectedMemoryCategoryId, setSelectedMemoryCategoryId] = useState<string | null>(null);
+  const [memoryEntries, setMemoryEntries] = useState<any[]>([]);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
   const [newCategory, setNewCategory] = useState({ name: '', description: '' });
   
   const [query, setQuery] = useState('');
   const [searchResult, setSearchResult] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
 
-  useEffect(() => {
-    loadCategories();
-  }, []);
+  // Detail Modal State
+  const [selectedItem, setSelectedItem] = useState<{ id: string, name: string, type: 'knowledge' | 'memory' } | null>(null);
+  const [itemContent, setItemContent] = useState<string | null>(null);
+  const [isLoadingContent, setIsLoadingContent] = useState(false);
 
   useEffect(() => {
-    if (selectedCategoryId) {
+    if (activeTab === 'knowledge') {
+      loadCategories();
+    } else {
+      loadMemoryCategories();
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (selectedCategoryId && activeTab === 'knowledge') {
       loadDocuments(selectedCategoryId);
     } else {
       setDocuments([]);
     }
-  }, [selectedCategoryId]);
+  }, [selectedCategoryId, activeTab]);
+
+  useEffect(() => {
+    if (selectedMemoryCategoryId && activeTab === 'memory') {
+      loadMemoryDetails(selectedMemoryCategoryId);
+    } else {
+      setMemoryEntries([]);
+    }
+  }, [selectedMemoryCategoryId, activeTab]);
 
   const loadCategories = async () => {
     try {
       setIsLoading(true);
       const data = await knowledgeService.getCategories();
       setCategories(data);
-      if (data.length > 0 && !selectedCategoryId) {
+
+      if (data.length === 0) {
+        setSelectedCategoryId(null);
+        return;
+      }
+
+      if (!selectedCategoryId || !data.some(category => category.id === selectedCategoryId)) {
         setSelectedCategoryId(data[0].id);
       }
     } catch (err: any) {
       toastError('加载分类失败: ' + err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const loadMemoryCategories = async () => {
+    try {
+      setIsLoading(true);
+      const data = await knowledgeService.getMemoryCategories();
+      setMemoryCategories(data);
+
+      if (data.length === 0) {
+        setSelectedMemoryCategoryId(null);
+        return;
+      }
+
+      if (!selectedMemoryCategoryId || !data.some(category => category.id === selectedMemoryCategoryId)) {
+        setSelectedMemoryCategoryId(data[0].id);
+      }
+    } catch (err: any) {
+      toastError('加载记忆分类失败: ' + err.message);
     } finally {
       setIsLoading(false);
     }
@@ -54,6 +108,15 @@ const KnowledgeBase: React.FC = () => {
     }
   };
 
+  const loadMemoryDetails = async (catId: string) => {
+    try {
+      const data = await knowledgeService.getMemoryCategoryDetails(catId);
+      setMemoryEntries(data.entries || []);
+    } catch (err: any) {
+      toastError('加载记忆详情失败: ' + err.message);
+    }
+  };
+
   const handleAddCategory = async () => {
     if (!newCategory.name.trim()) return;
     try {
@@ -64,6 +127,27 @@ const KnowledgeBase: React.FC = () => {
       await loadCategories();
     } catch (err: any) {
       toastError('创建分类失败: ' + err.message);
+    }
+  };
+
+  const handleDeleteCategory = async (category: KBCategory) => {
+    const confirmed = confirm(`确定删除分类“${category.name}”吗？这将同时删除该分类下的所有文档与分块。`);
+    if (!confirmed) return;
+
+    try {
+      setDeletingCategoryId(category.id);
+      const nextCategory = categories.find(item => item.id !== category.id) ?? null;
+      await knowledgeService.deleteCategory(category.id);
+      success('分类已删除');
+      setSearchResult(null);
+      if (selectedCategoryId === category.id) {
+        setSelectedCategoryId(nextCategory?.id ?? null);
+      }
+      await loadCategories();
+    } catch (err: any) {
+      toastError('删除分类失败: ' + err.message);
+    } finally {
+      setDeletingCategoryId(null);
     }
   };
 
@@ -99,12 +183,74 @@ const KnowledgeBase: React.FC = () => {
     }
   };
 
+  const handleDeleteMemory = async (memId: string) => {
+    if (!confirm('确定删除该记忆条目吗？')) return;
+    try {
+      await knowledgeService.deleteMemory(memId);
+      success('记忆已删除');
+      if (selectedMemoryCategoryId) {
+        await loadMemoryDetails(selectedMemoryCategoryId);
+        await loadMemoryCategories();
+      }
+    } catch (err: any) {
+      toastError('删除失败: ' + err.message);
+    }
+  };
+
+  const handleDeleteMemoryCategory = async (category: KBCategory) => {
+    const confirmed = confirm(`确定删除记忆主题“${category.name}”吗？这将同时删除该主题下的所有记忆片段。`);
+    if (!confirmed) return;
+
+    try {
+      setDeletingCategoryId(category.id);
+      const nextCategory = memoryCategories.find(item => item.id !== category.id) ?? null;
+      await knowledgeService.deleteMemoryCategory(category.id);
+      success('记忆主题已删除');
+      setSearchResult(null);
+      if (selectedMemoryCategoryId === category.id) {
+        setSelectedMemoryCategoryId(nextCategory?.id ?? null);
+      }
+      await loadMemoryCategories();
+    } catch (err: any) {
+      toastError('删除记忆主题失败: ' + err.message);
+    } finally {
+      setDeletingCategoryId(null);
+    }
+  };
+
+  const handleShowDetail = async (id: string, name: string, type: 'knowledge' | 'memory') => {
+    setSelectedItem({ id, name, type });
+    setItemContent(null);
+    setIsLoadingContent(true);
+    try {
+      if (type === 'knowledge') {
+        const res = await knowledgeService.getDocumentContent(id);
+        setItemContent(res.content);
+      } else {
+        const res = await knowledgeService.getMemoryContent(id);
+        setItemContent(res.content);
+      }
+    } catch (err: any) {
+      toastError('获取内容失败: ' + err.message);
+      setSelectedItem(null);
+    } finally {
+      setIsLoadingContent(false);
+    }
+  };
+
   const handleQuery = async () => {
     if (!query.trim()) return;
     try {
       setIsSearching(true);
       setSearchResult(null);
-      const res = await knowledgeService.queryKnowledge(query, selectedCategoryId ? [selectedCategoryId] : undefined);
+      
+      let res;
+      if (activeTab === 'knowledge') {
+        res = await knowledgeService.queryKnowledge(query, selectedCategoryId ? [selectedCategoryId] : undefined);
+      } else {
+        res = await knowledgeService.queryMemory(query, selectedMemoryCategoryId ? [selectedMemoryCategoryId] : undefined);
+      }
+      
       setSearchResult(res.answer);
     } catch (err: any) {
       toastError('检索失败: ' + err.message);
@@ -115,35 +261,64 @@ const KnowledgeBase: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-end">
         <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">知识库 (Knowledge Base)</h2>
-          <p className="text-sm text-slate-500">管理您的 PDF、Word 和 Markdown 文档，为 AI 提供专业背景知识。</p>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">知识与记忆 (Knowledge & Memory)</h2>
+          <p className="text-sm text-slate-500">
+            {activeTab === 'knowledge' 
+              ? '管理您的专业文档，为 AI 提供行业背景知识。' 
+              : '查看 AI 在对话中沉淀的长期记忆与经验。'}
+          </p>
+          
+          <div className="flex gap-1 mt-4 bg-slate-100 dark:bg-white/5 p-1 rounded-xl w-fit">
+            <button 
+              onClick={() => { setActiveTab('knowledge'); setSearchResult(null); }}
+              className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'knowledge' 
+                  ? 'bg-white dark:bg-white/10 text-primary dark:text-white shadow-sm' 
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              本地知识库
+            </button>
+            <button 
+              onClick={() => { setActiveTab('memory'); setSearchResult(null); }}
+              className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${
+                activeTab === 'memory' 
+                  ? 'bg-white dark:bg-white/10 text-primary dark:text-white shadow-sm' 
+                  : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+              }`}
+            >
+              长期记忆库
+            </button>
+          </div>
         </div>
-        <div className="flex gap-3">
-          <button 
-            onClick={() => setIsAddingCategory(true)}
-            className="px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-xl hover:bg-slate-50 transition-all text-sm font-bold"
-          >
-            新建分类
-          </button>
-          <label className={`px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all text-sm font-bold cursor-pointer shadow-lg shadow-primary/20 ${!selectedCategoryId ? 'opacity-50 cursor-not-allowed' : ''}`}>
-            <input 
-              type="file" 
-              className="hidden" 
-              disabled={!selectedCategoryId || isUploading}
-              onChange={handleFileUpload}
-              accept=".pdf,.docx,.doc,.md,.txt"
-            />
-            {isUploading ? '处理中...' : '上传文档'}
-          </label>
-        </div>
+        
+        {activeTab === 'knowledge' && (
+          <div className="flex gap-3">
+            <button 
+              onClick={() => setIsAddingCategory(true)}
+              className="px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-xl hover:bg-slate-50 transition-all text-sm font-bold"
+            >
+              新建分类
+            </button>
+            <label className={`px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all text-sm font-bold cursor-pointer shadow-lg shadow-primary/20 ${!selectedCategoryId ? 'opacity-50 cursor-not-allowed' : ''}`}>
+              <input 
+                type="file" 
+                className="hidden" 
+                disabled={!selectedCategoryId || isUploading}
+                onChange={handleFileUpload}
+                accept=".pdf,.docx,.doc,.md,.txt,.csv,.xlsx,.xls"
+              />
+              {isUploading ? '处理中...' : '上传文档'}
+            </label>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Categories Sidebar */}
+        {/* Sidebar */}
         <div className="lg:col-span-1 space-y-4">
-          {/* Semantic Search Box (Moved back to sidebar top) */}
           <div className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-4 shadow-sm">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 px-2">语义检索测试</h3>
             <div className="space-y-3">
@@ -156,7 +331,7 @@ const KnowledgeBase: React.FC = () => {
                     handleQuery();
                   }
                 }}
-                placeholder="输入问题，Enter 提交..."
+                placeholder={activeTab === 'knowledge' ? "查询知识库文档..." : "检索历史记忆片段..."}
                 className="w-full p-3 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-2xl text-[11px] outline-none focus:ring-2 focus:ring-primary/20 resize-none dark:text-white"
                 rows={3}
               />
@@ -168,7 +343,7 @@ const KnowledgeBase: React.FC = () => {
                 {isSearching ? '检索中...' : (
                   <>
                     <span className="material-symbols-outlined text-sm">send</span>
-                    提交查询
+                    开始检索
                   </>
                 )}
               </button>
@@ -176,37 +351,63 @@ const KnowledgeBase: React.FC = () => {
           </div>
 
           <div className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-4 shadow-sm">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 px-2">知识分类</h3>
+            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 px-2">
+              {activeTab === 'knowledge' ? '知识分类' : '记忆主题'}
+            </h3>
             <div className="space-y-1">
-              {categories.map(cat => (
-                <button
+              {(activeTab === 'knowledge' ? categories : memoryCategories).map(cat => (
+                <div
                   key={cat.id}
-                  onClick={() => setSelectedCategoryId(cat.id)}
                   className={`w-full flex items-center justify-between p-3 rounded-2xl transition-all ${
-                    selectedCategoryId === cat.id 
+                    (activeTab === 'knowledge' ? selectedCategoryId : selectedMemoryCategoryId) === cat.id 
                       ? 'bg-primary text-white shadow-md shadow-primary/20' 
                       : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5'
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="material-symbols-outlined text-xl">folder</span>
+                  <button
+                    onClick={() => activeTab === 'knowledge' ? setSelectedCategoryId(cat.id) : setSelectedMemoryCategoryId(cat.id)}
+                    className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                  >
+                    <span className="material-symbols-outlined text-xl">
+                      {activeTab === 'knowledge' ? 'folder' : 'psychology'}
+                    </span>
                     <span className="text-sm font-bold truncate max-w-[120px]">{cat.name}</span>
+                  </button>
+                  <div className="flex items-center gap-1 shrink-0 ml-2">
+                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
+                      (activeTab === 'knowledge' ? selectedCategoryId : selectedMemoryCategoryId) === cat.id ? 'bg-white/20' : 'bg-slate-100 dark:bg-white/5'
+                    }`}>
+                      {cat.documentCount ?? (cat as any).entryCount}
+                    </span>
+                    {(activeTab === 'knowledge' || activeTab === 'memory') && (
+                      <button
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          activeTab === 'knowledge' ? handleDeleteCategory(cat) : handleDeleteMemoryCategory(cat); 
+                        }}
+                        disabled={deletingCategoryId === cat.id}
+                        className={`w-7 h-7 flex items-center justify-center rounded-full transition-all ${
+                          (activeTab === 'knowledge' ? selectedCategoryId : selectedMemoryCategoryId) === cat.id
+                            ? 'text-white/80 hover:text-white hover:bg-white/15'
+                            : 'text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10'
+                        } disabled:opacity-50`}
+                      >
+                        <span className="material-symbols-outlined text-base">
+                          {deletingCategoryId === cat.id ? 'hourglass_top' : 'delete'}
+                        </span>
+                      </button>
+                    )}
                   </div>
-                  <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                    selectedCategoryId === cat.id ? 'bg-white/20' : 'bg-slate-100 dark:bg-white/5'
-                  }`}>
-                    {cat.documentCount}
-                  </span>
-                </button>
+                </div>
               ))}
-              {categories.length === 0 && !isLoading && (
-                <div className="text-center py-8 text-slate-400 text-xs">暂无分类</div>
+              {(activeTab === 'knowledge' ? categories : memoryCategories).length === 0 && !isLoading && (
+                <div className="text-center py-8 text-slate-400 text-xs">暂无内容</div>
               )}
             </div>
           </div>
         </div>
 
-        {/* Documents Grid Area */}
+        {/* Content Area */}
         <div className="lg:col-span-3 space-y-6">
           <AnimatePresence mode="wait">
             {searchResult ? (
@@ -229,24 +430,34 @@ const KnowledgeBase: React.FC = () => {
                   {searchResult}
                 </div>
               </motion.div>
-            ) : (
+            ) : activeTab === 'knowledge' ? (
               <motion.div 
-                key={selectedCategoryId}
+                key={`kb-${selectedCategoryId}`}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 className="grid grid-cols-1 md:grid-cols-2 gap-4"
               >
                 {documents.map(doc => (
-                  <div key={doc.id} className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-5 shadow-sm hover:shadow-md transition-all group">
+                  <div 
+                    key={doc.id} 
+                    onClick={() => handleShowDetail(doc.id, doc.name, 'knowledge')}
+                    className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-5 shadow-sm hover:shadow-md transition-all group cursor-pointer"
+                  >
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                           doc.type === 'pdf' ? 'bg-red-50 text-red-500' : 
                           doc.type === 'docx' ? 'bg-blue-50 text-blue-500' : 
+                          doc.type === 'xlsx' || doc.type === 'xls' ? 'bg-green-50 text-green-500' :
+                          doc.type === 'csv' ? 'bg-teal-50 text-teal-500' :
                           'bg-slate-50 text-slate-500'
                         }`}>
                           <span className="material-symbols-outlined text-2xl">
-                            {doc.type === 'pdf' ? 'picture_as_pdf' : doc.type === 'docx' ? 'description' : 'article'}
+                            {doc.type === 'pdf' ? 'picture_as_pdf' : 
+                             doc.type === 'docx' ? 'description' : 
+                             doc.type === 'xlsx' || doc.type === 'xls' ? 'table_view' :
+                             doc.type === 'csv' ? 'format_list_bulleted' :
+                             'article'}
                           </span>
                         </div>
                         <div className="min-w-0 flex-1">
@@ -255,7 +466,7 @@ const KnowledgeBase: React.FC = () => {
                         </div>
                       </div>
                       <button 
-                        onClick={() => handleDeleteDocument(doc.id)}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteDocument(doc.id); }}
                         className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
                       >
                         <span className="material-symbols-outlined text-lg">delete</span>
@@ -275,6 +486,62 @@ const KnowledgeBase: React.FC = () => {
                     <span className="material-symbols-outlined text-5xl mb-4 opacity-20">inventory_2</span>
                     <p className="text-sm font-bold">该分类下暂无文档</p>
                     <p className="text-xs mt-1">点击右上角按钮开始上传</p>
+                  </div>
+                )}
+              </motion.div>
+            ) : (
+              <motion.div 
+                key={`mem-${selectedMemoryCategoryId}`}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="grid grid-cols-1 md:grid-cols-2 gap-4"
+              >
+                {memoryEntries.map(mem => (
+                  <div 
+                    key={mem.id} 
+                    onClick={() => handleShowDetail(mem.id, `记忆片段 ${mem.id.slice(-6)}`, 'memory')}
+                    className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-5 shadow-sm hover:shadow-md transition-all group cursor-pointer"
+                  >
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                          <span className="material-symbols-outlined text-2xl">sticky_note</span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <h4 className="font-bold text-slate-900 dark:text-white truncate">记忆片段 {mem.id.slice(-6)}</h4>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-bold ${
+                              mem.importance >= 4 ? 'text-orange-500' : 'text-slate-400'
+                            }`}>
+                              重要度 {mem.importance}
+                            </span>
+                            {mem.tags?.map((tag: string) => (
+                              <span key={tag} className="text-[9px] px-1.5 py-0.5 bg-slate-100 dark:bg-white/5 rounded-md text-slate-500 uppercase font-medium">{tag}</span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteMemory(mem.id); }}
+                        className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                      >
+                        <span className="material-symbols-outlined text-lg">delete</span>
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed bg-slate-50 dark:bg-white/[0.02] p-2 rounded-xl italic">
+                      “{mem.summary}”
+                    </p>
+                    <div className="mt-3 flex justify-between items-center text-[10px] text-slate-400">
+                      <span>{new Date(mem.createdAt).toLocaleDateString()}</span>
+                      <span className="px-2 py-0.5 bg-purple-50 dark:bg-purple-500/5 text-purple-600 dark:text-purple-400 rounded-full">长期记忆</span>
+                    </div>
+                  </div>
+                ))}
+                {memoryEntries.length === 0 && !isLoading && (
+                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
+                    <span className="material-symbols-outlined text-5xl mb-4 opacity-20">cloud_off</span>
+                    <p className="text-sm font-bold">该主题下暂无记忆</p>
+                    <p className="text-xs mt-1">记忆会在您与智能体的对话中自动生成</p>
                   </div>
                 )}
               </motion.div>
@@ -329,6 +596,64 @@ const KnowledgeBase: React.FC = () => {
                     取消
                   </button>
                 </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Detail Modal */}
+      <AnimatePresence>
+        {selectedItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
+            >
+              <div className="p-8 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/5">
+                <div>
+                  <div className="flex items-center gap-2 text-primary mb-1">
+                    <span className="material-symbols-outlined text-sm">
+                      {selectedItem.type === 'knowledge' ? 'description' : 'psychology'}
+                    </span>
+                    <span className="text-[10px] font-bold uppercase tracking-widest">
+                      {selectedItem.type === 'knowledge' ? '知识库文档' : '长期记忆'}
+                    </span>
+                  </div>
+                  <h3 className="text-xl font-bold dark:text-white truncate max-w-2xl">{selectedItem.name}</h3>
+                </div>
+                <button 
+                  onClick={() => setSelectedItem(null)}
+                  className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-white/10 transition-all text-slate-500"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+                {isLoadingContent ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                    <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4"></div>
+                    <p className="text-sm">正在加载全文内容...</p>
+                  </div>
+                ) : (
+                  <div className="prose dark:prose-invert max-w-none">
+                    <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-mono bg-slate-50 dark:bg-white/5 p-6 rounded-2xl border border-slate-100 dark:border-white/5">
+                      {itemContent}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className="p-6 bg-slate-50/50 dark:bg-white/5 border-t border-slate-100 dark:border-white/5 flex justify-end">
+                <button 
+                  onClick={() => setSelectedItem(null)}
+                  className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-all shadow-lg shadow-slate-900/20"
+                >
+                  关闭
+                </button>
               </div>
             </motion.div>
           </div>

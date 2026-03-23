@@ -38,7 +38,12 @@ export interface IMemoryService {
   }): Promise<string>;
 
   deleteMemory(id: string): Promise<void>;
+  getMemoryFullText(id: string): Promise<string>;
   
+  getCategories(): Promise<MemoryCategorySummary[]>;
+  getCategoryDetails(id: string): Promise<MemoryCategoryIndex | null>;
+  deleteCategory(id: string): Promise<void>;
+
   // 用于迁移
   migrateFromSqlite?(): Promise<void>;
 }

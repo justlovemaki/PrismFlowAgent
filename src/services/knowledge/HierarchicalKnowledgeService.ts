@@ -107,6 +107,32 @@ export class HierarchicalKnowledgeService implements IKnowledgeBaseService {
     return id;
   }
 
+  async deleteCategory(id: string): Promise<void> {
+    const category = this.loadCategory(id);
+    if (!category) {
+      return;
+    }
+
+    for (const document of category.documents) {
+      await this.deleteDocument(document.id);
+    }
+
+    const categoryPath = path.join(this.categoryDir, `${id}.json`);
+    if (fs.existsSync(categoryPath)) {
+      fs.unlinkSync(categoryPath);
+    }
+
+    const root = this.loadRoot();
+    const nextCategories = root.categories.filter(categoryItem => categoryItem.id !== id);
+    if (nextCategories.length !== root.categories.length) {
+      this.saveRoot({
+        ...root,
+        categories: nextCategories,
+        updatedAt: Date.now()
+      });
+    }
+  }
+
   async getDocuments(categoryId: string): Promise<KBDocument[]> {
     const category = this.loadCategory(categoryId);
     if (!category) return [];
@@ -228,11 +254,24 @@ export class HierarchicalKnowledgeService implements IKnowledgeBaseService {
     }
   }
 
+  async getDocumentFullText(id: string): Promise<string> {
+    const docChunkDir = path.join(this.chunkDir, id);
+    if (!fs.existsSync(docChunkDir)) return '文档内容未找到';
+
+    const chunkFiles = fs.readdirSync(docChunkDir).sort((a, b) => {
+      return parseInt(a.split('.')[0]) - parseInt(b.split('.')[0]);
+    });
+
+    return chunkFiles.map(f => {
+      return fs.readFileSync(path.join(docChunkDir, f), 'utf8');
+    }).join('\n');
+  }
+
   async queryKnowledge(query: string, options: { categoryIds?: string[]; limit?: number } = {}): Promise<string> {
     if (!this.agentService) return "AgentService 不可用，无法进行语义检索。";
 
     const root = this.loadRoot();
-    if (root.categories.length === 0) return "知识库为空，请先上传文档。";
+    if (root.categories.length === 0) return "[]";
 
     const today = new Date().toISOString().split('T')[0];
 
@@ -255,7 +294,7 @@ ${availableCategories.map(c => `- [ID: ${c.id}] ${c.name}: ${c.description}`).jo
 
 规则：
 1. **精准匹配**：仅选出可能包含答案的分类。
-2. **宁缺毋滥**：如果没有相关的分类，请直接输出 []。
+2. **宁缺毋滥**：如果没有相关的分类，请直接输出 [].
 只需输出 JSON 数组，例如：["category_id_1"]。`;
 
       const navResult = await this.agentService.runAgent('knowledge_assistant', rootNavPrompt, undefined, { silent: true, noTools: true });

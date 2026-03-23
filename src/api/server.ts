@@ -1246,6 +1246,21 @@ export async function createServer(existingStore?: LocalStore) {
     }
   });
 
+  // 解析技能目录的辅助函数：优先使用数据库路径，路径不存在时回退到 SkillService 的路径
+  const resolveSkillDir = (skill: any): string => {
+    // 1. 数据库中的路径存在，直接使用
+    if (skill.dirPath && fs.existsSync(skill.dirPath)) {
+      return skill.dirPath;
+    }
+    // 2. 回退到 SkillService 中扫描到的路径（解决 Docker ↔ 本地环境切换问题）
+    const fsSkill = context.skillService.getSkill(skill.id);
+    if (fsSkill?.dirPath && fs.existsSync(fsSkill.dirPath)) {
+      return fsSkill.dirPath;
+    }
+    // 3. 最后回退到 data/skills 下的默认路径
+    return skill.dirPath || path.join(store.getSkillsDir(), skill.id);
+  };
+
   fastify.get('/api/skills/:id/files', async (request, reply) => {
     try {
       const { id } = request.params as any;
@@ -1253,8 +1268,7 @@ export async function createServer(existingStore?: LocalStore) {
       if (!skill) {
         return reply.status(404).send({ error: '技能不存在' });
       }
-      // 优先使用数据库中存储的路径，否则使用默认路径
-      const skillDir = skill.dirPath || path.join(store.getSkillsDir(), id);
+      const skillDir = resolveSkillDir(skill);
       
       if (!fs.existsSync(skillDir)) {
         return { files: [] };
@@ -1285,8 +1299,7 @@ export async function createServer(existingStore?: LocalStore) {
       if (!skill) {
         return reply.status(404).send({ error: '技能不存在' });
       }
-      // 优先使用数据库中存储的路径，否则使用默认路径
-      const skillDir = skill.dirPath || path.join(store.getSkillsDir(), id);
+      const skillDir = resolveSkillDir(skill);
       const fullPath = path.join(skillDir, filePath);
       
       // 防止路径穿越
@@ -1311,8 +1324,7 @@ export async function createServer(existingStore?: LocalStore) {
       if (!skill) {
         return reply.status(404).send({ error: '技能不存在' });
       }
-      // 优先使用数据库中存储的路径，否则使用默认路径
-      const skillDir = skill.dirPath || path.join(store.getSkillsDir(), id);
+      const skillDir = resolveSkillDir(skill);
       const fullPath = path.join(skillDir, filePath);
       
       // 防止路径穿越
@@ -1567,7 +1579,13 @@ export async function createServer(existingStore?: LocalStore) {
   fastify.post('/api/kb/categories', async (request) => {
     const { name, description } = request.body as any;
     const id = await context.knowledgeBaseService.addCategory(name, description);
-    return { status: 'success', id };
+    return { id };
+  });
+
+  fastify.delete('/api/kb/categories/:id', async (request) => {
+    const { id } = request.params as any;
+    await context.knowledgeBaseService.deleteCategory(id);
+    return { status: 'success' };
   });
 
   fastify.get('/api/kb/documents', async (request) => {
@@ -1602,10 +1620,51 @@ export async function createServer(existingStore?: LocalStore) {
     return { status: 'success' };
   });
 
+  fastify.get('/api/kb/documents/:id/content', async (request) => {
+    const { id } = request.params as any;
+    const content = await context.knowledgeBaseService.getDocumentFullText(id);
+    return { content };
+  });
+
   fastify.post('/api/kb/query', async (request) => {
     const { query, categoryIds, limit } = request.body as any;
     const answer = await context.knowledgeBaseService.queryKnowledge(query, { categoryIds, limit });
     return { answer };
+  });
+
+  // --- Memory API ---
+
+  fastify.get('/api/memory/categories', async () => {
+    return await context.memoryService.getCategories();
+  });
+
+  fastify.get('/api/memory/categories/:id', async (request) => {
+    const { id } = request.params as any;
+    return await context.memoryService.getCategoryDetails(id);
+  });
+
+  fastify.delete('/api/memory/categories/:id', async (request) => {
+    const { id } = request.params as any;
+    await context.memoryService.deleteCategory(id);
+    return { status: 'success' };
+  });
+
+  fastify.post('/api/memory/query', async (request) => {
+    const { query, categoryIds, limit } = request.body as any;
+    const answer = await context.memoryService.queryMemory(query, { categoryIds, limit });
+    return { answer };
+  });
+
+  fastify.delete('/api/memory/:id', async (request) => {
+    const { id } = request.params as any;
+    await context.memoryService.deleteMemory(id);
+    return { status: 'success' };
+  });
+
+  fastify.get('/api/memory/:id/content', async (request) => {
+    const { id } = request.params as any;
+    const content = await context.memoryService.getMemoryFullText(id);
+    return { content };
   });
 
   fastify.setNotFoundHandler((request, reply) => {

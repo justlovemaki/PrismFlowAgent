@@ -176,6 +176,8 @@ export const defaultSettings: SystemSettings = {
   ],
   SELECTION_FETCH_DAYS: 2,
   SELECTION_QUERY_FIELD: 'published_date',
+  KNOWLEDGE_SYSTEM_TYPE: 'hierarchical',
+  MEMORY_SYSTEM_TYPE: 'hierarchical',
   SKILL_STORE_API_KEY: '',
   GLOBAL_GITHUB_TOKEN: ''
 };

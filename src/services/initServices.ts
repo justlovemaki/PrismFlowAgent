@@ -11,7 +11,7 @@ import { MCPService } from './agents/MCPService.js';
 import { SkillStoreService } from './agents/SkillStoreService.js';
 
 import { SkillService } from './agents/SkillService.js';
-import { MemoryService } from './agents/MemoryService.js';
+import { MemoryService } from './memory/MemoryService.js';
 import { KnowledgeBaseService } from './knowledge/KnowledgeBaseService.js';
 import { ToolRegistry } from '../registries/ToolRegistry.js';
 import { WorkflowEngine } from './agents/WorkflowEngine.js';
@@ -126,8 +126,8 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   if (agentService) {
     await seedDefaultAgents(store, agentService, settings);
     
-    // 如果启用层级方案，执行记忆系统迁移 (如果需要)
-    if (settings.MEMORY_SYSTEM_TYPE === 'hierarchical') {
+    // 只有显式开启时才执行记忆系统迁移，避免启动时后台调用 memory_assistant 干扰正常工作流
+    if (settings.MEMORY_SYSTEM_TYPE === 'hierarchical' && settings.MEMORY_AUTO_MIGRATE === true) {
       memoryService.migrateFromSqlite().catch(err => LogService.error(`Memory migration failed: ${err.message}`));
     }
   }
@@ -383,7 +383,7 @@ async function seedDefaultAgents(store: LocalStore, agentService: AgentService, 
     await store.saveAgent({
       id: 'knowledge_assistant',
       name: '知识库助手',
-      description: '负责分析、分类和检索知识库中的专业文档（PDF, Word, Markdown）。',
+      description: '负责分析、分类和检索知识库中的专业文档（PDF, Word, Excel, CSV, Markdown）。',
       systemPrompt: `你是一个极度严谨的知识库管理助手。
 
 你的核心原则：
@@ -431,7 +431,8 @@ async function seedDefaultSkills(store: LocalStore, skillService: SkillService) 
   const fsSkills = skillService.listSkills();
 
   for (const skill of fsSkills) {
-    if (!existingSkills.find(s => s.id === skill.id)) {
+    const existing = existingSkills.find(s => s.id === skill.id);
+    if (!existing) {
       console.log(`Seeding skill from filesystem: ${skill.name} (${skill.id})`);
       await store.saveSkill({
         id: skill.id,
@@ -442,6 +443,12 @@ async function seedDefaultSkills(store: LocalStore, skillService: SkillService) 
         dirPath: skill.dirPath,
         isBuiltin: true
       });
+    } else if (existing.isBuiltin && existing.dirPath !== skill.dirPath) {
+      // 内置技能的路径可能因环境切换（Docker ↔ 本地）而变化，需要同步更新
+      console.log(`Updating built-in skill path: ${skill.name} (${existing.dirPath} -> ${skill.dirPath})`);
+      existing.dirPath = skill.dirPath;
+      existing.instructions = skill.instructions;
+      await store.saveSkill(existing);
     }
   }
 }

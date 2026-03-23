@@ -103,6 +103,7 @@ export class AISearchAdapter extends BaseAdapter {
       category: this.category,
       author: item.author,
       metadata: {
+        ...(item.metadata || {}),
         content_html: item.content || '',
         is_ai_generated: true,
         keyword: config?.keyword || this.keyword,

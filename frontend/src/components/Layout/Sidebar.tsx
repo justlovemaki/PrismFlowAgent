@@ -28,7 +28,7 @@ const Sidebar: React.FC<SidebarProps> = ({ onMobileClose, version }) => {
     { name: '内容筛选', icon: 'filter_list', path: '/selection' },
     { name: '生成预览', icon: 'auto_awesome', path: '/generation' },
     { name: '多智能体', icon: 'smart_toy', path: '/agents' },
-    { name: '知识库', icon: 'library_books', path: '/knowledge' },
+    { name: '知识与记忆', icon: 'library_books', path: '/knowledge' },
     { name: '历史存档', icon: 'history', path: '/history' },
     { name: '插件管理', icon: 'extension', path: '/plugins' },
     { name: '任务管理', icon: 'schedule', path: '/tasks' },

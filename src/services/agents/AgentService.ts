@@ -24,7 +24,7 @@ export class AgentService {
     this.proxyAgent = proxyAgent;
   }
 
-  async runAgent(agentId: string, input: string, date?: string, options: { silent?: boolean; noTools?: boolean } = {}): Promise<AgentExecutionResult> {
+  async runAgent(agentId: string, input: string, date?: string, options: { silent?: boolean; noTools?: boolean; noSkills?: boolean } = {}): Promise<AgentExecutionResult> {
     const agentDef = await this.store.getAgent(agentId);
     if (!agentDef) throw new Error(`Agent ${agentId} not found`);
 
@@ -51,7 +51,9 @@ export class AgentService {
     }
 
     // 1. Prepare Skills
-    const combinedSkillInstructions = await this.skillService.buildSkillsPrompt(agentDef.skillIds || []);
+    const combinedSkillInstructions = options.noSkills
+      ? ''
+      : await this.skillService.buildSkillsPrompt(agentDef.skillIds || []);
 
     // 2. Prepare Tools
     const toolIds = new Set<string>();

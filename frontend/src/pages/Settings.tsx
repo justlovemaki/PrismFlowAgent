@@ -316,36 +316,28 @@ const Settings: React.FC = () => {
       ]
     },
     {
-      id: 'memory',
+      id: 'memory-knowledge',
       tab: 'system',
-      title: '记忆系统设置',
-      description: '选择 AI 长期记忆的存储与检索方案',
-      fields: [
-        {
-          label: '记忆系统类型',
-          key: 'MEMORY_SYSTEM_TYPE',
-          type: 'select',
-          options: [
-            { label: 'SQLite (传统关键词匹配)', value: 'sqlite' },
-            { label: 'Hierarchical (层级推理/PageIndex)', value: 'hierarchical' }
-          ],
-          defaultValue: 'hierarchical'
-        },
-      ]
-    },
-    {
-      id: 'knowledge',
-      tab: 'system',
-      title: '知识库系统设置',
-      description: '选择知识库文档的存储与检索方案',
+      title: '知识库与记忆系统设置',
+      description: '配置知识库文档与 AI 长期记忆的存储与检索方案',
       fields: [
         {
           label: '知识库系统类型',
           key: 'KNOWLEDGE_SYSTEM_TYPE',
           type: 'select',
           options: [
-            { label: 'SQLite (FTS5 全文检索)', value: 'sqlite' },
-            { label: 'Hierarchical (层级导航/文件索引)', value: 'hierarchical' }
+            { label: 'SQLite (高性能全文检索)', value: 'sqlite' },
+            { label: 'Hierarchical (层级推理/文件索引)', value: 'hierarchical' }
+          ],
+          defaultValue: 'hierarchical'
+        },
+        {
+          label: '记忆系统类型',
+          key: 'MEMORY_SYSTEM_TYPE',
+          type: 'select',
+          options: [
+            { label: 'SQLite (基础关键词匹配)', value: 'sqlite' },
+            { label: 'Hierarchical (语义推理/文件索引)', value: 'hierarchical' }
           ],
           defaultValue: 'hierarchical'
         },
@@ -1478,7 +1470,13 @@ const Settings: React.FC = () => {
 
   };
 
-  const activeSections = sections.filter(s => (s as any).tab === activeTab || s.id === activeTab);
+  const activeSections = sections.filter((section) => {
+    if (!section) {
+      return false;
+    }
+
+    return section.tab === activeTab || section.id === activeTab;
+  });
 
   if (isLoading) {
     return (
@@ -1524,7 +1522,12 @@ const Settings: React.FC = () => {
             transition={{ duration: 0.2 }}
             className="space-y-8"
           >
-            {activeSections.map((section) => (
+            {activeSections.map((section) => {
+              if (!section) {
+                return null;
+              }
+
+              return (
               <div
                 key={section.id}
                 className="bg-white dark:bg-surface-dark rounded-2xl border border-slate-200 dark:border-white/5 overflow-hidden shadow-sm"
@@ -1544,7 +1547,8 @@ const Settings: React.FC = () => {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </motion.div>
         </AnimatePresence>
       </div>

@@ -1,5 +1,5 @@
 import { LocalStore } from '../LocalStore.js';
-import { AgentService } from './AgentService.js';
+import { AgentService } from '../agents/AgentService.js';
 import { MemoryEntry, MemorySearchResult, IMemoryService } from '../../types/memory.js';
 import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
@@ -107,5 +107,45 @@ export class SqliteMemoryService implements IMemoryService {
 
   async deleteMemory(id: string): Promise<void> {
     await this.store.deleteMemory(id);
+  }
+
+  async getMemoryFullText(id: string): Promise<string> {
+    const memories = await this.store.searchMemories('', { limit: 1000 });
+    const memory = memories.find(m => m.id === id);
+    return memory?.content || '内容未找到';
+  }
+
+  async getCategories(): Promise<any[]> {
+    return [{
+      id: 'default',
+      name: '全部记忆',
+      description: 'SQLite 模式下的全量记忆记录',
+      entryCount: 0,
+      lastUpdatedAt: Date.now()
+    }];
+  }
+
+  async getCategoryDetails(id: string): Promise<any> {
+    const memories = await this.store.searchMemories('', { limit: 100 });
+    return {
+      id: 'default',
+      name: '全部记忆',
+      description: 'SQLite 模式下的全量记忆记录',
+      entries: memories.map(m => ({
+        id: m.id,
+        summary: m.content.slice(0, 100),
+        importance: m.importance,
+        tags: m.tags,
+        createdAt: m.createdAt
+      })),
+      updatedAt: Date.now()
+    };
+  }
+
+  async deleteCategory(id: string): Promise<void> {
+    const memories = await this.store.searchMemories('', { limit: 1000 });
+    for (const mem of memories) {
+      await this.store.deleteMemory(mem.id);
+    }
   }
 }

@@ -39,6 +39,10 @@ export class KnowledgeBaseService implements IKnowledgeBaseService {
     return this.activeService.addCategory(name, description);
   }
 
+  async deleteCategory(id: string): Promise<void> {
+    return this.activeService.deleteCategory(id);
+  }
+
   async getDocuments(categoryId: string): Promise<KBDocument[]> {
     return this.activeService.getDocuments(categoryId);
   }
@@ -49,6 +53,10 @@ export class KnowledgeBaseService implements IKnowledgeBaseService {
 
   async deleteDocument(id: string): Promise<void> {
     return this.activeService.deleteDocument(id);
+  }
+
+  async getDocumentFullText(id: string): Promise<string> {
+    return this.activeService.getDocumentFullText(id);
   }
 
   async queryKnowledge(query: string, options?: { categoryIds?: string[]; limit?: number }): Promise<string> {

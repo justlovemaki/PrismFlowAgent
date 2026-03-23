@@ -58,8 +58,10 @@ export interface KBDocumentSummary {
 export interface IKnowledgeBaseService {
   getCategories(): Promise<KBCategory[]>;
   addCategory(name: string, description?: string): Promise<string>;
+  deleteCategory(id: string): Promise<void>;
   getDocuments(categoryId: string): Promise<KBDocument[]>;
   addDocument(categoryId: string, file: { name: string; path: string; buffer: Buffer }): Promise<string>;
   deleteDocument(id: string): Promise<void>;
+  getDocumentFullText(id: string): Promise<string>;
   queryKnowledge(query: string, options?: { categoryIds?: string[]; limit?: number }): Promise<string>;
 }

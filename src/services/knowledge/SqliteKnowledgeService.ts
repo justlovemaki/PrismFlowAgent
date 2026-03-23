@@ -41,6 +41,14 @@ export class SqliteKnowledgeService implements IKnowledgeBaseService {
     return id;
   }
 
+  async deleteCategory(id: string): Promise<void> {
+    const documents = await this.store.listKBDocuments(id);
+    for (const document of documents) {
+      await this.deleteDocument(document.id);
+    }
+    await this.store.deleteKBCategory(id);
+  }
+
   async getDocuments(categoryId: string): Promise<KBDocument[]> {
     return await this.store.listKBDocuments(categoryId);
   }
@@ -123,6 +131,12 @@ export class SqliteKnowledgeService implements IKnowledgeBaseService {
       category.updatedAt = Date.now();
       await this.store.saveKBCategory(category);
     }
+  }
+
+  async getDocumentFullText(id: string): Promise<string> {
+    const chunks = await this.store.listKBChunks(id);
+    if (chunks.length === 0) return '文档内容未找到';
+    return chunks.map(c => c.content).join('\n');
   }
 
   async queryKnowledge(query: string, options: { categoryIds?: string[]; limit?: number } = {}): Promise<string> {

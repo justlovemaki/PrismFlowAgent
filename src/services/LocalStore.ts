@@ -687,6 +687,18 @@ export class LocalStore {
     );
   }
 
+  async listKBChunks(documentId: string): Promise<any[]> {
+    const rows = await this.db?.all(
+      'SELECT id, content, chunk_index FROM kb_chunks WHERE document_id = ? ORDER BY chunk_index ASC',
+      documentId
+    );
+    return (rows || []).map(row => ({
+      id: row.id,
+      content: row.content,
+      index: row.chunk_index
+    }));
+  }
+
   async searchKBChunks(query: string, options: { categoryIds?: string[]; limit?: number } = {}): Promise<any[]> {
     const ftsQuery = query.split(/\s+/).filter(Boolean).map(t => `${t}*`).join(' AND ');
     

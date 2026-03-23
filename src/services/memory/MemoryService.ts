@@ -1,5 +1,5 @@
 import { LocalStore } from '../LocalStore.js';
-import { AgentService } from './AgentService.js';
+import { AgentService } from '../agents/AgentService.js';
 import { IMemoryService } from '../../types/memory.js';
 import { SqliteMemoryService } from './SqliteMemoryService.js';
 import { HierarchicalMemoryService } from './HierarchicalMemoryService.js';
@@ -43,6 +43,22 @@ export class MemoryService implements IMemoryService {
 
   async deleteMemory(id: string): Promise<void> {
     return this.activeService.deleteMemory(id);
+  }
+
+  async getMemoryFullText(id: string): Promise<string> {
+    return this.activeService.getMemoryFullText(id);
+  }
+
+  async getCategories() {
+    return this.activeService.getCategories();
+  }
+
+  async getCategoryDetails(id: string) {
+    return this.activeService.getCategoryDetails(id);
+  }
+
+  async deleteCategory(id: string) {
+    return this.activeService.deleteCategory(id);
   }
 
   async migrateFromSqlite(): Promise<void> {

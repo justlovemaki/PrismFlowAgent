@@ -212,6 +212,16 @@ export class WechatService {
           data.url = data.url.replace(/^http:\/\//i, 'https://');
         }
 
+        // 成功时清理临时文件
+        if (tempFilePath && fs.existsSync(tempFilePath)) {
+          try {
+            fs.unlinkSync(tempFilePath);
+            LogService.info(`Deleted temp file after success: ${tempFilePath}`);
+          } catch (e: any) {
+            LogService.warn(`Failed to delete temp file ${tempFilePath}: ${e.message}`);
+          }
+        }
+
         return data;
       } catch (error: any) {
         lastError = error;
@@ -220,16 +230,6 @@ export class WechatService {
         // 关键错误（如文件未找到）不重试
         if (error.message.includes('Image not found')) {
           throw error;
-        }
-      } finally {
-        // 如果创建了临时文件，则删除它
-        if (tempFilePath && fs.existsSync(tempFilePath)) {
-          try {
-            fs.unlinkSync(tempFilePath);
-            LogService.info(`Deleted temp file: ${tempFilePath}`);
-          } catch (e: any) {
-            LogService.warn(`Failed to delete temp file ${tempFilePath}: ${e.message}`);
-          }
         }
       }
     }
@@ -335,18 +335,19 @@ export class WechatService {
         updatedHtml = updatedHtml.replace(fullBlock, newTag);
         
         allMediaIds.push(resp.media_id);
+
+        // 成功时清理临时目录
+        if (tempDir && fs.existsSync(tempDir)) {
+          try {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+          } catch (e) {}
+        }
       } catch (err: any) {
         LogService.error(`Failed to process video ${src} to GIF: ${err.message}`);
         // 失败时移除标签及相邻的 br 换行符，以避免发布错误和多余空行
         const escapedBlock = fullBlock.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         const removalRegex = new RegExp(`(?:\\s*<br\\s*/?>)*\\s*${escapedBlock}(?:\\s*<br\\s*/?>)*`, 'gi');
         updatedHtml = updatedHtml.replace(removalRegex, '');
-      } finally {
-        if (tempDir && fs.existsSync(tempDir)) {
-          try {
-            fs.rmSync(tempDir, { recursive: true, force: true });
-          } catch (e) {}
-        }
       }
     }
 

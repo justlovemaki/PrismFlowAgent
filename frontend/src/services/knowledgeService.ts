@@ -29,6 +29,11 @@ export const knowledgeService = {
       body: JSON.stringify({ name, description })
     }),
 
+  deleteCategory: (id: string): Promise<{ status: string }> =>
+    request(`/api/kb/categories/${id}`, {
+      method: 'DELETE'
+    }),
+
   getDocuments: (categoryId: string): Promise<KBDocument[]> => 
     request(`/api/kb/documents?categoryId=${categoryId}`),
 
@@ -66,9 +71,34 @@ export const knowledgeService = {
       method: 'DELETE'
     }),
 
+  getDocumentContent: (id: string): Promise<{ content: string }> => request(`/api/kb/documents/${id}/content`),
+
   queryKnowledge: (query: string, categoryIds?: string[], limit: number = 3): Promise<{ answer: string }> => 
     request('/api/kb/query', {
       method: 'POST',
       body: JSON.stringify({ query, categoryIds, limit })
+    }),
+
+  // Memory API
+  getMemoryCategories: (): Promise<KBCategory[]> => request('/api/memory/categories'),
+  
+  getMemoryCategoryDetails: (id: string): Promise<any> => request(`/api/memory/categories/${id}`),
+
+  deleteMemoryCategory: (id: string): Promise<{ status: string }> => request(`/api/memory/categories/${id}`, {
+    method: 'DELETE'
+  }),
+
+  getMemoryContent: (id: string): Promise<{ content: string }> => request(`/api/memory/${id}/content`),
+
+  queryMemory: (query: string, categoryIds?: string[], limit: number = 3): Promise<{ answer: string }> => 
+    request('/api/memory/query', {
+      method: 'POST',
+      body: JSON.stringify({ query, categoryIds, limit })
+    }),
+
+  deleteMemory: (id: string): Promise<{ status: string }> => 
+    request(`/api/memory/${id}`, {
+      method: 'DELETE'
     })
 };
+
