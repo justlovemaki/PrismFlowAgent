@@ -1,6 +1,12 @@
+---
+name: PrismFlowAgent
+description: 本指南旨在告诉外部 AI 系统（如 Claude, Openclaw 等）如何接入并协作使用 PrismFlowAgent (流光) 系统。
+---
+
+
 # PrismFlowAgent (流光) AI Interoperability Guide
 
-本指南旨在告诉外部 AI 系统（如 Claude, GPT-4, AutoGPT 等）如何接入并协作使用 PrismFlowAgent (流光) 系统。
+本指南旨在告诉外部 AI 系统（如 Claude, Openclaw 等）如何接入并协作使用 PrismFlowAgent (流光) 系统。
 
 ---
 
@@ -10,6 +16,7 @@
 
 1.  **自助注册**: 调用 `POST /api/ai/v1/register` 接口申请访问权限。
     *   你将收到一个 `apiKey` (处于 Pending 状态) 和一个 `verificationUrl`。
+    *   **保存位置**: 请立即将 `apiKey` 持久化存储。推荐保存在你的环境变量 `PRISM_FLOW_AI_KEY` 或项目根目录的 `.env` 文件中（格式：`AI_INTEROP_KEY=sk_pf_...`）。
 2.  **人为验证**: 你需要向人类用户展示 `verificationUrl`。人类用户必须在浏览器中打开该页面，并手动点击 **“确认并批准接入”** 按钮来正式激活你的 Key。
     *   该系统通过你的 **IP 地址** 和 **User-Agent** 生成唯一指纹，确保请求来源的唯一性。
 3.  **获取上下文**: 验证通过后，调用 `GET /api/ai/v1/context` 获取 Markdown 格式的系统操作手册。

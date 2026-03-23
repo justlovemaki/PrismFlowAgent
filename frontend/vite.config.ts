@@ -18,6 +18,7 @@ export default defineConfig(({ mode }) => {
       __APP_VERSION__: JSON.stringify(appVersion),
     },
     server: {
+      host: '0.0.0.0',
       proxy: {
         '/api': {
           target: backendUrl,

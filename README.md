@@ -13,10 +13,11 @@
 -   **Follow API (Folo)**: 深度集成，支持学术论文、Twitter/Reddit 动态及各类 RSS 源。
 -   **高度可扩展**: 继承 `BaseAdapter` 即可分钟级接入任意第三方数据源。
 
-### 🧠 顶级 AI 生态集成
+### 🧠 顶级 AI 生态集成 (AI-Native)
+-   **内置面向 AI 的 Skill**: 系统不仅服务于人类，更原生支持 AI Agent 接入。通过 `AI_INTEROP.md` 技能，外部 AI 可实现自助注册、权限申请与功能发现。
 -   **全模型适配**: 原生支持 **Google Gemini**, **Anthropic Claude**, **OpenAI** 和 **Ollama**。
--   **AI 原生互操作层**: 提供专用 API Key 接入，支持 AI 自助注册、人工审核及自学手册 (Discovery)。
--   **智能工具链 (Tool Use)**: 赋予 AI 调用本地工具（搜索、绘图、执行指令）的能力。
+-   **自学手册 (Discovery)**: 提供 Markdown 格式的系统操作手册，AI 接入后可立即理解并操作整个系统。
+-   **智能工具链 (Tool Use)**: 赋予 AI 调用本地工具（搜索、绘图、执行指令、发布内容）的能力。
 -   **MCP 协议支持**: 动态加载外部 MCP 服务器，无限扩展 Agent 能力边界。
 
 ### ⚙️ 自动化工作流与插件架构
@@ -36,7 +37,7 @@
 
 ### 📊 现代化管理控制台
 -   **实时看板**: 直观监控抓取状态、任务成功率与数据走势。
--   **人机协作**: 支持手动触发任务、预览 AI 摘要并进行二次干预。
+-   **人机协作**: 坚持“人工设置，AI 执行”原则。系统核心配置由人工完成，AI 作为增强手段负责触发任务与自动化操作。
 
 ---
 
@@ -70,6 +71,18 @@
 ├── frontend/           # React 前端单页应用 (SPA)
 └── data/               # SQLite 数据库与本地缓存
 ```
+
+---
+
+## 🤖 AI 互操作性 (AI Interoperability)
+
+流光提供了一套专为外部 AI Agent（如 Claude, Openclaw 等）设计的 **AI 原生 Skill**。
+
+> **💡 协作原则**：AI 交互被视为系统的补充增强手段。系统的核心设置与敏感配置（如 API 密钥、权限策略）仍由人工主导完成，AI 则在授权范围内负责触发工作流、执行具体任务并辅助决策，确保系统的安全可控与高效运转。
+
+### 接入示例 (Quick Access)
+
+发给AGENT：请阅读 [AI_INTEROP.md](https://github.com/justlovemaki/PrismFlowAgent/blob/main/AI_INTEROP.md) 指引，按照流程完成自助注册并接入本系统。
 
 ---
 

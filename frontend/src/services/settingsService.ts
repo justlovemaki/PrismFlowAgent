@@ -6,3 +6,5 @@ export const getModels = (config: any) => request('/api/ai/models', { method: 'P
 export const testProvider = (config: any) => request('/api/ai/test', { method: 'POST', body: JSON.stringify(config) });
 export const getPluginMetadata = () => request('/api/plugins/metadata');
 export const importOPML = (opmlContent: string, adapterId?: string) => request('/api/adapters/import-opml', { method: 'POST', body: JSON.stringify({ opmlContent, adapterId }) });
+export const getApiKeys = () => request('/api/settings/api-keys');
+export const deleteApiKey = (id: string) => request(`/api/settings/api-keys/${id}`, { method: 'DELETE' });

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSettings, saveSettings, getModels, getPluginMetadata, testProvider, importOPML } from '../services/settingsService';
+import { getSettings, saveSettings, getModels, getPluginMetadata, testProvider, importOPML, getApiKeys, deleteApiKey } from '../services/settingsService';
 import { agentService } from '../services/agentService';
 import IconPicker from '../components/UI/IconPicker';
 import { useToast } from '../context/ToastContext.js';
@@ -10,6 +10,7 @@ const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState('ai');
   const [settings, setSettings] = useState<Record<string, any>>({});
   const [pluginMetadata, setPluginMetadata] = useState<{ adapters: any[], publishers: any[], storages: any[], aiProviders: any[] }>({ adapters: [], publishers: [], storages: [], aiProviders: [] });
+  const [apiKeys, setApiKeys] = useState<any[]>([]);
   const [agents, setAgents] = useState<any[]>([]);
   const [workflows, setWorkflows] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,11 +38,12 @@ const Settings: React.FC = () => {
   const loadSettings = async () => {
     try {
       setIsLoading(true);
-      const [data, metadata, agentsData, workflowsData] = await Promise.all([
+      const [data, metadata, agentsData, workflowsData, apiKeysData] = await Promise.all([
         getSettings(),
         getPluginMetadata(),
         agentService.getAgents(),
-        agentService.getWorkflows()
+        agentService.getWorkflows(),
+        getApiKeys()
       ]);
       
       const closedPlugins = data?.CLOSED_PLUGINS || [];
@@ -57,6 +59,7 @@ const Settings: React.FC = () => {
       setSettings(data || {});
       setAgents(agentsData || []);
       setWorkflows(workflowsData || []);
+      setApiKeys(apiKeysData || []);
 
 
     } catch (error) {
@@ -226,15 +229,37 @@ const Settings: React.FC = () => {
   };
 
 
+  const handleDeleteApiKey = async (id: string) => {
+    if (!window.confirm('确定要删除此 API Key 吗？相关的 AI 系统将无法再访问您的系统。')) return;
+    try {
+      await deleteApiKey(id);
+      toastSuccess('API Key 已成功删除');
+      loadSettings();
+    } catch (error: any) {
+      toastError('删除失败: ' + error.message);
+    }
+  };
+
+
   const tabs = [
     ...(pluginMetadata.aiProviders.length > 0 ? [{ id: 'ai', label: 'AI 模型', icon: 'psychology' }] : []),
     ...(pluginMetadata.adapters.length > 0 ? [{ id: 'sources', label: '数据源管理', icon: 'database' }] : []),
     { id: 'categories', label: '分类管理', icon: 'label' },
     ...(pluginMetadata.publishers.length > 0 || pluginMetadata.storages.length > 0 ? [{ id: 'publishers', label: '发布与存储', icon: 'send' }] : []),
+    { id: 'interop', label: 'AI 互联', icon: 'hub' },
     { id: 'system', label: '系统', icon: 'settings' },
   ];
 
   const sections = [
+    {
+      id: 'interop',
+      tab: 'interop',
+      title: 'AI 互联管理',
+      description: '管理已授权的其他 AI 系统接入。在此可以撤销已生成的 API Key。',
+      fields: [
+        { label: '互联 API Key 列表', key: 'INTEROP_KEYS', type: 'custom' },
+      ]
+    },
     {
       id: 'ai',
       tab: 'ai',
@@ -1106,6 +1131,71 @@ const Settings: React.FC = () => {
               </div>
               新增 AI 提供商配置
             </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (field.key === 'INTEROP_KEYS') {
+      return (
+        <div className="col-span-full space-y-6">
+          {apiKeys.length === 0 ? (
+            <div className="text-center py-12 bg-slate-50 dark:bg-white/[0.02] rounded-3xl border-2 border-dashed border-slate-200 dark:border-white/10">
+              <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">key_off</span>
+              <p className="text-slate-400 text-sm">暂无已授权的互联 API Key</p>
+            </div>
+          ) : (
+            <div className="grid gap-4">
+              {apiKeys.map((keyRecord: any) => (
+                <div key={keyRecord.id} className="p-5 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-2xl shadow-sm flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${keyRecord.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                      <span className="material-symbols-outlined">
+                        {keyRecord.status === 'active' ? 'vpn_key' : 'pending_actions'}
+                      </span>
+                    </div>
+                    <div>
+                      <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                        {keyRecord.name}
+                        {keyRecord.status === 'active' && (
+                          <span className="px-1.5 py-0.5 bg-green-500/10 text-green-500 text-[10px] font-bold rounded uppercase">已激活</span>
+                        )}
+                        {keyRecord.status === 'pending' && (
+                          <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-500 text-[10px] font-bold rounded uppercase">待验证</span>
+                        )}
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1">
+                        Prefix: <span className="bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">{keyRecord.prefix}</span>
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-4 text-right">
+                    <div className="hidden sm:block">
+                      <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">最后使用</div>
+                      <div className="text-xs text-slate-600 dark:text-slate-300">
+                        {keyRecord.lastUsedAt ? new Date(keyRecord.lastUsedAt).toLocaleString() : '从未使用'}
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => handleDeleteApiKey(keyRecord.id)}
+                      className="w-9 h-9 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all"
+                      title="撤销此 Key"
+                    >
+                      <span className="material-symbols-outlined">delete_forever</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          
+          <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
+            <div className="flex gap-3">
+              <span className="material-symbols-outlined text-primary">info</span>
+              <p className="text-xs text-primary/80 leading-relaxed">
+                这里的 API Key 是由外部 AI 系统（如其他部署的流光实例）通过接入流程自动生成的。它们允许受信任的系统访问您的数据抓取、任务执行及技能系统。撤销后，对方将立即失去所有访问权限。
+              </p>
+            </div>
           </div>
         </div>
       );

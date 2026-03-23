@@ -715,10 +715,11 @@ export async function createServer(existingStore?: LocalStore) {
     const { token } = request.params as any;
     const record = await store.getApiKeyByVerificationToken(token);
     
-    reply.type('text/html');
+    reply.type('text/html; charset=utf-8');
     if (!record) {
       return `
         <html>
+          <head><meta charset="UTF-8"></head>
           <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #fef2f2; margin: 0;">
             <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
               <div style="font-size: 3rem; margin-bottom: 1rem;">❌</div>
@@ -733,6 +734,7 @@ export async function createServer(existingStore?: LocalStore) {
     if (record.status === 'active') {
       return `
         <html>
+          <head><meta charset="UTF-8"></head>
           <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f0fdf4; margin: 0;">
             <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
               <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
@@ -746,6 +748,7 @@ export async function createServer(existingStore?: LocalStore) {
 
     return `
       <html>
+        <head><meta charset="UTF-8"></head>
         <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f8fafc; margin: 0;">
           <div style="padding: 2.5rem; background: white; border-radius: 16px; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); text-align: center; max-width: 450px; width: 90%;">
             <h1 style="color: #1e293b; margin-top: 0; font-size: 1.5rem;">确认 AI 接入申请</h1>
@@ -773,10 +776,11 @@ export async function createServer(existingStore?: LocalStore) {
     const { token } = request.params as any;
     const success = await context.interopService.approveKey(token);
     
-    reply.type('text/html');
+    reply.type('text/html; charset=utf-8');
     if (success) {
       return `
         <html>
+          <head><meta charset="UTF-8"></head>
           <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f0fdf4; margin: 0;">
             <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
               <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
@@ -790,6 +794,7 @@ export async function createServer(existingStore?: LocalStore) {
     } else {
       return `
         <html>
+          <head><meta charset="UTF-8"></head>
           <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #fef2f2; margin: 0;">
             <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
               <div style="font-size: 3rem; margin-bottom: 1rem;">❌</div>
