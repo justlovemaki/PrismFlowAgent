@@ -42,6 +42,8 @@
 
 ## 📖 分步使用指南
 
+![Home Screenshot](./static/home.png)
+
 ### 1. 登录系统
 访问 `http://localhost:5173/login`，输入默认密码 `admin123`。
 
