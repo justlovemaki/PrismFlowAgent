@@ -456,7 +456,12 @@ ${extractedSnippets.join('\n\n---\n\n')}
 请基于这些**纯净的片段**，为用户提供一个准确、简洁的回答。不要包含任何未提及的信息。`;
 
       const finalResult = await this.agentService.runAgent('memory_assistant', finalSummaryPrompt, undefined, { silent: false, noTools: true, noSkills: true });
-      return finalResult.content;
+      const content = finalResult.content;
+      // 避免返回 AgentService 的默认错误内容
+      if (content === 'No response generated (AI returned empty content)') {
+        return "";
+      }
+      return content;
 
 
     } catch (error: any) {

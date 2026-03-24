@@ -303,18 +303,22 @@ const Agents: React.FC = () => {
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-bold text-slate-800 dark:text-white">Agent 列表</h3>
         <button 
-          onClick={() => setEditingAgent({
-            id: `agent_${Math.random().toString(36).substr(2, 5)}`,
-            name: '新 Agent',
-            description: '',
-            systemPrompt: '',
-            providerId: settings.ACTIVE_AI_PROVIDER_ID || '',
-            model: '',
-            temperature: 1.0,
-            toolIds: [],
-            skillIds: [],
-            mcpServerIds: []
-          })}
+          onClick={() => {
+            const defaultProviderId = settings.ACTIVE_AI_PROVIDER_ID || (settings.AI_PROVIDERS?.[0]?.id || '');
+            const defaultProvider = (settings.AI_PROVIDERS || []).find((p: any) => p.id === defaultProviderId);
+            setEditingAgent({
+              id: `agent_${Math.random().toString(36).substr(2, 5)}`,
+              name: '新 Agent',
+              description: '',
+              systemPrompt: '',
+              providerId: defaultProviderId,
+              model: defaultProvider?.models?.[0] || '',
+              temperature: 1.0,
+              toolIds: [],
+              skillIds: [],
+              mcpServerIds: []
+            });
+          }}
           className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all text-sm font-bold shadow-lg shadow-primary/20"
         >
           <span className="material-symbols-outlined">add</span>
@@ -374,10 +378,10 @@ const Agents: React.FC = () => {
                     {settings.AI_PROVIDERS?.find((p: any) => p.id === agent.providerId)?.name || agent.providerId}
                   </span>
                 )}
-                {agent.providerId && agent.model && <span className="shrink-0 opacity-50">/</span>}
-                {agent.model && (
-                  <span className="font-mono truncate" title={agent.model}>{agent.model}</span>
-                )}
+                {agent.providerId && <span className="shrink-0 opacity-50">/</span>}
+                <span className={`font-mono truncate ${!agent.model ? 'opacity-50 italic' : ''}`} title={agent.model || (settings.AI_PROVIDERS?.find((p: any) => p.id === agent.providerId)?.models?.[0] || '未选择模型')}>
+                  {agent.model || (settings.AI_PROVIDERS?.find((p: any) => p.id === agent.providerId)?.models?.[0] || '未选择模型')}
+                </span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {agent.skillIds.map(sid => (
@@ -637,7 +641,16 @@ const Agents: React.FC = () => {
 
                 <div className="flex gap-4 pt-4">
                   <button 
-                    onClick={() => handleSaveAgent(editingAgent)}
+                    onClick={() => {
+                      let agentToSave = { ...editingAgent };
+                      if (!agentToSave.model && agentToSave.providerId) {
+                        const provider = (settings.AI_PROVIDERS || []).find((p: any) => p.id === agentToSave.providerId);
+                        if (provider?.models?.length > 0) {
+                          agentToSave.model = provider.models[0];
+                        }
+                      }
+                      handleSaveAgent(agentToSave);
+                    }}
                     disabled={isSaving}
                     className="flex-1 py-3 bg-primary text-white rounded-2xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 disabled:opacity-50"
                   >

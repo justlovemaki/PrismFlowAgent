@@ -97,7 +97,12 @@ export class SqliteMemoryService implements IMemoryService {
       }
 
       const result = await this.agentService.runAgent(tempAgentId, `原始记录如下：\n\n${contextStr}\n\n请总结与"${query}"相关的记忆内容。`, undefined, { silent: true });
-      return result.content;
+      const content = result.content;
+      // 避免返回 AgentService 的默认错误内容
+      if (content === 'No response generated (AI returned empty content)') {
+        return "";
+      }
+      return content;
     } catch (error: any) {
       LogService.error(`Memory Sub-Agent failed: ${error.message}`);
       // 报错时降级回原始数据拼接
