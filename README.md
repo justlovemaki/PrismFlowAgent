@@ -36,7 +36,7 @@
 如果你有外部 AI Agent（如 Claude Desktop 或其他自主 Agent），可以直接让它接管本系统。
 
 **发送给 Agent 的指令示例：**
-> “请阅读 `https://github.com/justlovemaki/PrismFlowAgent/blob/main/AI_INTEROP.md` 接入指引，按照流程完成自助注册并接入我的系统（地址：http://localhost:3000），帮我自动化运行今天的抓取任务。”
+> “请阅读 `https://github.com/justlovemaki/PrismFlowAgent/blob/main/AI_INTEROP.md` 接入指引，按照流程完成自助注册并接入我的系统, 地址：http://localhost:3000 ，帮我自动化运行今天的抓取任务。”
 
 ---
 
