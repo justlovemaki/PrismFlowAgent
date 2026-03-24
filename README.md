@@ -1,60 +1,79 @@
 # 流光 PrismFlowAgent 🌈
 
-流光 (PrismFlowAgent) 是一款基于 Node.js (ESM) 和 TypeScript 构建的现代化、全栈资讯处理与 AI Agent 系统。它能够自动化地从全球多源渠道抓取高质量资讯，利用顶级大语言模型进行深度总结，并将其精准分发至 GitHub、微信公众号、RSS 等多种终端。
+> **自动化信息聚合 + AI 智能体：让高质量信息自动流向你**
 
-流光采用高度模块化、插件化的架构设计，特别加强了对 AI Agent 工作流、多媒体资产处理以及 MCP 协议的支持，旨在打造一个可高度扩展的智能化信息流枢纽。
-
----
-
-## ✨ 核心能力
-
-### 🔍 智能数据抓取 (Adapters)
--   **GitHub Trending**: 实时监控全球热门开源项目趋势。
--   **Follow API (Folo)**: 深度集成，支持学术论文、Twitter/Reddit 动态及各类 RSS 源。
--   **高度可扩展**: 继承 `BaseAdapter` 即可分钟级接入任意第三方数据源。
-
-### 🧠 顶级 AI 生态集成 (AI-Native)
--   **内置面向 AI 的 Skill**: 系统不仅服务于人类，更原生支持 AI Agent 接入。通过 `AI_INTEROP.md` 技能，外部 AI 可实现自助注册、权限申请与功能发现。
--   **全模型适配**: 原生支持 **Google Gemini**, **Anthropic Claude**, **OpenAI** 和 **Ollama**。
--   **自学手册 (Discovery)**: 提供 Markdown 格式的系统操作手册，AI 接入后可立即理解并操作整个系统。
--   **智能工具链 (Tool Use)**: 赋予 AI 调用本地工具（搜索、绘图、执行指令、发布内容）的能力。
--   **MCP 协议支持**: 动态加载外部 MCP 服务器，无限扩展 Agent 能力边界。
-
-### ⚙️ 自动化工作流与插件架构
--   **可视化工作流 (Workflow Engine)**: 支持定义复杂的 DAG 自动化流程，具备并行执行与数据依赖注入能力。
--   **可插拔技能 (Skill System)**: 灵活配置特定领域的 AI 技能包。
--   **统一注册表**: 动态管理 Adapter、Publisher、Storage 和 Tool，支持热启停。
-
-### 🖼️ 工业级多媒体管道 (Media Pipeline)
--   **极致压缩**: 自动将图像转换为高压缩比、高质量的 **AVIF** 格式。
--   **视频优化**: 集成 `ffmpeg` 进行全自动转码与体积优化。
--   **云端托管**: 支持 **Cloudflare R2** (S3 兼容) 与 **GitHub** 资源存储。
-
-### 🚀 多端分发矩阵
--   **GitHub Archive**: 自动生成结构化的 Markdown 每日/每周资讯存档。
--   **微信公众号**: 自动完成图文排版、图片上传及草稿发布。
--   **RSS XML**: 生成标准化的订阅源，满足极客阅读需求。
-
-### 📊 现代化管理控制台
--   **实时看板**: 直观监控抓取状态、任务成功率与数据走势。
--   **人机协作**: 坚持“人工设置，AI 执行”原则。系统核心配置由人工完成，AI 作为增强手段负责触发任务与自动化操作。
+流光 (PrismFlowAgent) 是一个全栈自动化资讯处理系统。它能帮你从 GitHub、RSS、社交媒体抓取海量信息，利用最强的 AI (Gemini/Claude/GPT) 进行深度总结，并自动分发到你的微信公众号、GitHub 仓库或 RSS 订阅源。
 
 ---
 
-## 🌟 核心优势
+## 🚀 它能为你做什么？
 
--   **🎯 指定来源**：通过高度可配置的适配器，精准锁定高质量资讯源，从源头确保信息的深度与价值。
--   **📊 固定结构化输出**：强规范的 Prompt 模板与输出校验，确保生成的内容具备统一的结构化数据格式，极大降低下游集成的复杂度。
--   **🛡️ 流程化减少幻觉**：建立“数据抓取-清洗-多维总结-合规校验”的闭环流程，通过工作流编排有效抑制大模型的生成幻觉，提升资讯的可靠性。
+### 1. 自动抓取 (Smart Ingest)
+- **多源监控**: 实时监控 GitHub Trending、学术论文、Twitter/Reddit 动态。
+- **极速扩展**: 只要你会写一点代码，几分钟就能通过插件接入任何新的网页数据源。
+
+### 2. AI 智能处理 (AI Processing)
+- **全模型支持**: 原生支持 Gemini, Claude, GPT 和本地部署的 Ollama。
+- **深度总结**: 不只是简单的摘要，它能理解语义、过滤垃圾信息，并按你要求的结构化格式输出。
+- **AI 互操作**: 专为 AI Agent 设计，让 AI 能像操作四肢一样调用本地工具。
+
+### 3. 一键分发 (Distribution)
+- **多端触达**: 自动把内容推送到**微信公众号**、存入 **GitHub** 归档，或生成标准 **RSS**。
+- **媒体优化**: 自动压缩图片 (AVIF) 和处理视频 (FFmpeg)，在保证画质的同时节省空间。
 
 ---
 
-## � 技术架构
+## 🤝 人机协作：你定规则，它干活
 
--   **后端**: Node.js 20+ (ESM), Fastify, TypeScript 5, SQLite (KV & Relational).
--   **前端**: React 19, Vite, Tailwind CSS, Framer Motion.
--   **包管理**: 后端使用 `npm`，前端强制使用 `pnpm`。
--   **核心模式**: Service-Adapter 架构、单例模式、依赖注入。
+我们坚持 **“人脑决策，AI 执行”** 的原则：
+- **你负责**：挑选数据源、设定 Prompt 模板、审核发布内容。
+- **AI 负责**：24小时不间断盯盘、海量内容阅读总结、自动排版、资源上传。
+
+---
+
+## 🤖 AI 接入示例 (Agent Interop)
+
+如果你有外部 AI Agent（如 Claude Desktop 或其他自主 Agent），可以直接让它接管本系统。
+
+**发送给 Agent 的指令示例：**
+> “请阅读 `https://github.com/justlovemaki/PrismFlowAgent/blob/main/AI_INTEROP.md` 接入指引，按照流程完成自助注册并接入我的系统（地址：http://localhost:3000），帮我自动化运行今天的抓取任务。”
+
+---
+
+## 📖 分步使用指南
+
+### 1. 登录系统
+访问 `http://localhost:5173/login`，输入默认密码 `admin123`。
+
+### 2. 配置 AI 与插件
+前往 **设置 (Settings)** 页面：
+- **AI 配置**：填写你的 Gemini 或 OpenAI API Key。
+- **插件配置**：配置 GitHub Token 或微信公众号凭据。
+
+### 3. 运行抓取
+在 **任务管理 (Task Management)** 页面，点击任务旁的 **立即运行**（如 GitHub Trending），系统将自动拉取最新资讯。
+
+### 4. 筛选与排序
+前往 **内容筛选 (Selection)** 页面，勾选你感兴趣的条目，支持拖拽调整顺序。
+
+### 5. AI 生成
+点击下方的 **生成 AI 内容**：
+- 确认素材，选择合适的 **智能体 (Agent)** 或 **工作流 (Workflow)**。
+- 点击生成，AI 将输出深度精简后的结构化内容。
+
+### 6. 发布
+生成完成后，一键点击 **发布到 GitHub** 或 **发布到微信** 即可完成全自动分发。
+
+---
+
+## 🛠️ 技术底座
+
+| 模块 | 关键技术 |
+| :--- | :--- |
+| **后端** | Node.js 20+ (ESM), Fastify, TypeScript 5 |
+| **前端** | React 19, Vite, Tailwind CSS, Framer Motion |
+| **数据库** | SQLite (轻量可靠，无需复杂配置) |
+| **存储** | Cloudflare R2 / GitHub / 本地存储 |
 
 ---
 
@@ -62,132 +81,48 @@
 
 ```text
 ├── src/
-│   ├── api/            # Fastify 路由与服务器
-│   ├── plugins/        # 插件系统（适配器、工具、发布、存储）
-│   ├── registries/     # 插件注册中心
-│   ├── services/       # 核心业务逻辑 (Agent, Workflow, Task)
-│   ├── types/          # 全局强类型定义
-│   └── utils/          # 渲染引擎与工具类
-├── frontend/           # React 前端单页应用 (SPA)
-└── data/               # SQLite 数据库与本地缓存
+│   ├── api/            # Fastify 路由与接口
+│   ├── plugins/        # 核心插件 (适配器、工具、分发器)
+│   ├── registries/     # 插件注册中心 (支持热启停)
+│   ├── services/       # 业务逻辑 (AI、任务调度、工作流)
+│   └── types/          # 全局 TypeScript 定义
+├── frontend/           # 管理后台 (React SPA)
+└── data/               # 本地数据库与缓存
 ```
 
 ---
 
-## 🤖 AI 互操作性 (AI Interoperability)
+## ⚡ 快速开始
 
-流光提供了一套专为外部 AI Agent（如 Claude, Openclaw 等）设计的 **AI 原生 Skill**。
-
-> **💡 协作原则**：AI 交互被视为系统的补充增强手段。系统的核心设置与敏感配置（如 API 密钥、权限策略）仍由人工主导完成，AI 则在授权范围内负责触发工作流、执行具体任务并辅助决策，确保系统的安全可控与高效运转。
-
-### 接入示例 (Quick Access)
-
-发给AGENT：请阅读  https://github.com/justlovemaki/PrismFlowAgent/blob/main/AI_INTEROP.md 指引，按照流程完成自助注册并接入本系统，系统访问地址为： http://xxx.xxx.xxx:3000/。
-
----
-
-## 🚀 快速开始
-
-### 1. 环境准备
-
-确保您的环境中已安装 **Node.js 20+** 和 **pnpm**。
+### 1. 安装环境
+确保你本地有 **Node.js 20+** 和 **pnpm**。
 
 ```bash
-# 克隆项目
 git clone https://github.com/justlovemaki/PrismFlowAgent.git
 cd PrismFlowAgent
 
-# 安装后端依赖
+# 安装依赖
 npm install
-
-# 安装前端依赖
-cd frontend
-pnpm install
-cd ..
+cd frontend && pnpm install && cd ..
 ```
 
-### 2. 配置环境
-
-复制 `.env.example` 为 `.env`，并配置
-
-### 3. 本地运行
-
+### 2. 本地启动
 ```bash
-# 启动全栈开发模式 (后端 + 前端)
+# 全栈开发模式 (后端 + 前端一起启动)
 npm run dev:all
 
-# 仅启动后端
-npm run dev
-
-# 仅启动前端 (Vite)
-npm run dev:frontend
+# 访问: http://localhost:5173
+# 默认密码: admin123
 ```
 
-### 4. 默认登录信息
-
-- **登录地址**: `http://localhost:5173/login`
-- **默认密码**: `admin123` (无需用户名)
-- **修改密码**: 登录后可在 **系统设置 (Settings)** 页面，点击 **安全与 API 密钥** 分类进行修改。
-
-### 5. Docker 部署 (推荐)
-
-如果您希望使用 Docker 进行快速部署，请参考 [Docker 部署指南](./DOCKER.md)。
-
 ---
 
-## 📖 使用示例
-
-### 1. 登录系统
-访问 `http://localhost:5173/login`，输入默认密码 `admin123` 进入管理后台。
-
-### 2. 配置插件与 AI
-进入 **设置 (Settings)** 页面：
-- **AI 配置**：填写您的 Google Gemini 或 OpenAI API Key。
-- **数据源配置**：若需使用 Follow (Folo) 数据源，请在设置中填写其 Cookie。
-- **插件配置**：配置 GitHub Token、微信公众号凭据等分发渠道。
-
-### 3. 运行抓取任务
-在 **任务管理 (Task Management)** 页面，点击任务旁的 **立即运行** 按钮（如 GitHub Trending），或者在 **仪表盘 (Dashboard)** 页面点击 **立即抓取** 按钮，系统将自动抓取最新的高质量资讯。
-
-### 4. 内容筛选
-前往 **内容筛选 (Selection)** 页面：
-- 查看抓取到的原始素材。
-- 勾选您感兴趣的内容条目（支持多选和按顺序排列）。
-
-### 5. 智能生成摘要
-点击筛选页面下方的 **生成 AI 内容** 按钮进入生成界面：
-- 确认所选素材。
-- 点击 **生成 AI 内容**，选择合适的 **智能体 (Agent)**、**工作流 (Workflow)** 或 **工具 (Tool)**，系统将自动调用 AI 进行深度处理并生成结构化内容。
-
-### 6. 内容分发
-生成完成后，您可以：
-- 点击 **发布到 GitHub**：自动提交 Markdown 文件至指定的归档仓库。
-- 点击 **发布到微信**：自动完成图文排版并同步至公众号草稿箱。
-
----
-
-## � 开发路线图
-
-| 阶段 | 状态 | 核心产物 |
-| :--- | :--- | :--- |
-| **1. 基础构建** | ✅ | 模块化重构、Docker 容器化、统一配置中心 |
-| **2. 插件架构** | ✅ | 适配器/发布器注册表、多模型适配层、Tool Use 框架 |
-| **3. 智能生产** | ✅ | 自动摘要 Agent、任务调度系统 |
-| **4. 数据增强** | ✅ | 多数据源接入、记忆系统、知识库 RAG |
-| **5. 交互编排** | ✅ | **AI 原生互操作层**、自学手册、自助注册流 |
-| **6. 渠道扩展** | 🏗️ | 接入更多发布渠道 |
-
----
-
-## 🤖 开发者与 Agent 指南
-
-如果您是参与此项目的开发者或需要对接此系统的 AI Agent，请**务必**阅读：
--   [AGENTS.md](./AGENTS.md) - 规范、开发准则与最佳实践。
--   [PLUGINS.md](./PLUGINS.md) - 如何扩展自定义适配器、发布器与工具。
--   [AI_INTEROP.md](./AI_INTEROP.md) - **AI 接入指南**: 告诉外部 AI 如何自助注册、认证并操作本系统。
+## 📖 相关文档
+- 🛠️ [AGENTS.md](./AGENTS.md) - 规范、开发准则与最佳实践。
+- 🔌 [PLUGINS.md](./PLUGINS.md) - 如何编写自己的适配器与分发器。
+- 🛰️ [AI_INTEROP.md](./AI_INTEROP.md) - **AI 接入必读**: 让你的 Agent 开启上帝视角。
 
 ---
 
 ## 📜 许可证
-
-本项目基于 [ISC License](./LICENSE) 授权。
+基于 [GPL-3.0 License](./LICENSE) 授权。
