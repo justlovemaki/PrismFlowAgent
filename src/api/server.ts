@@ -711,6 +711,31 @@ export async function createServer(existingStore?: LocalStore) {
     }
   });
 
+  const VERIFY_PAGE_CSS = `
+    <style>
+      body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; background: #f8fafc; color: #1e293b; margin: 0; display: flex; align-items: center; justify-content: center; min-height: 100vh; -webkit-font-smoothing: antialiased; }
+      .card { background: white; padding: 2.5rem; border-radius: 24px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1); text-align: center; max-width: 440px; width: 90%; border: 1px solid rgba(226, 232, 240, 0.8); }
+      .icon-circle { width: 72px; height: 72px; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.5rem; font-size: 2rem; }
+      .icon-success { background: #ecfdf5; color: #10b981; }
+      .icon-error { background: #fef2f2; color: #ef4444; }
+      .icon-info { background: #eff6ff; color: #3b82f6; }
+      h1 { font-size: 1.5rem; font-weight: 800; margin: 0 0 0.75rem; color: #0f172a; letter-spacing: -0.025em; }
+      p { color: #64748b; line-height: 1.6; font-size: 0.95rem; margin: 0 0 1.5rem; }
+      .btn { display: inline-flex; align-items: center; justify-content: center; width: 100%; padding: 0.875rem 1.5rem; font-size: 1rem; font-weight: 600; border-radius: 12px; border: none; cursor: pointer; transition: all 0.2s; text-decoration: none; box-sizing: border-box; }
+      .btn-primary { background: #0cafcf; color: white; box-shadow: 0 4px 6px -1px rgba(12, 175, 207, 0.3); }
+      .btn-primary:hover { background: #099bb8; transform: translateY(-1px); box-shadow: 0 10px 15px -3px rgba(12, 175, 207, 0.4); }
+      .btn-secondary { background: #f1f5f9; color: #475569; }
+      .btn-secondary:hover { background: #e2e8f0; }
+      .meta-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 16px; padding: 1.25rem; text-align: left; margin-bottom: 2rem; font-size: 0.875rem; }
+      .meta-item { display: flex; justify-content: space-between; margin-bottom: 0.75rem; }
+      .meta-item:last-child { margin-bottom: 0; }
+      .meta-label { color: #94a3b8; font-weight: 500; }
+      .meta-value { color: #334155; font-weight: 600; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
+      .animate-success { animation: scaleIn 0.5s cubic-bezier(0.16, 1, 0.3, 1); }
+      @keyframes scaleIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    </style>
+  `;
+
   fastify.get('/api/ai/v1/verify/:token', async (request, reply) => {
     const { token } = request.params as any;
     const record = await store.getApiKeyByVerificationToken(token);
@@ -719,12 +744,13 @@ export async function createServer(existingStore?: LocalStore) {
     if (!record) {
       return `
         <html>
-          <head><meta charset="UTF-8"></head>
-          <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #fef2f2; margin: 0;">
-            <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
-              <div style="font-size: 3rem; margin-bottom: 1rem;">❌</div>
-              <h1 style="color: #991b1b; margin-top: 0;">验证链接无效</h1>
-              <p style="color: #4b5563;">该验证令牌不存在或已过期。</p>
+          <head><meta charset="UTF-8"><title>验证失败</title>${VERIFY_PAGE_CSS}</head>
+          <body>
+            <div class="card">
+              <div class="icon-circle icon-error">❌</div>
+              <h1>验证链接无效</h1>
+              <p>该验证令牌不存在或已过期，请检查链接是否完整。</p>
+              <a href="/" class="btn btn-secondary">返回首页</a>
             </div>
           </body>
         </html>
@@ -734,12 +760,12 @@ export async function createServer(existingStore?: LocalStore) {
     if (record.status === 'active') {
       return `
         <html>
-          <head><meta charset="UTF-8"></head>
-          <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f0fdf4; margin: 0;">
-            <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
-              <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
-              <h1 style="color: #166534; margin-top: 0;">权限已激活</h1>
-              <p style="color: #4b5563;">该 API Key 已经是激活状态，无需重复验证。</p>
+          <head><meta charset="UTF-8"><title>权限已激活</title>${VERIFY_PAGE_CSS}</head>
+          <body>
+            <div class="card">
+              <div class="icon-circle icon-success animate-success">✅</div>
+              <h1>权限已激活</h1>
+              <p>该 API Key 已经是激活状态，无需重复验证。您可以直接开始使用，现在可以安全地关闭此页面。</p>
             </div>
           </body>
         </html>
@@ -748,24 +774,32 @@ export async function createServer(existingStore?: LocalStore) {
 
     return `
       <html>
-        <head><meta charset="UTF-8"></head>
-        <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f8fafc; margin: 0;">
-          <div style="padding: 2.5rem; background: white; border-radius: 16px; box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1); text-align: center; max-width: 450px; width: 90%;">
-            <h1 style="color: #1e293b; margin-top: 0; font-size: 1.5rem;">确认 AI 接入申请</h1>
-            <p style="color: #64748b; margin-bottom: 2rem;">系统收到了一个新的 AI 接入申请，请核对来源信息后手动批准。</p>
+        <head><meta charset="UTF-8"><title>确认接入申请</title>${VERIFY_PAGE_CSS}</head>
+        <body>
+          <div class="card">
+            <div class="icon-circle icon-info">🔑</div>
+            <h1>确认 AI 接入申请</h1>
+            <p>系统收到一个新的接入申请，请核对来源信息后手动批准。</p>
             
-            <div style="text-align: left; background: #f1f5f9; padding: 1.25rem; border-radius: 8px; margin-bottom: 2rem; font-size: 0.9rem;">
-              <div style="margin-bottom: 0.5rem;"><span style="color: #64748b;">申请名称:</span> <span style="color: #334155; font-weight: 600;">${record.name}</span></div>
-              <div style="margin-bottom: 0.5rem;"><span style="color: #64748b;">来源指纹:</span> <code style="background: #e2e8f0; padding: 2px 4px; border-radius: 4px; color: #475569;">${record.prefix}...</code></div>
-              <div><span style="color: #64748b;">申请时间:</span> <span style="color: #334155;">${new Date(record.created_at).toLocaleString()}</span></div>
+            <div class="meta-box">
+              <div class="meta-item">
+                <span class="meta-label">申请名称</span>
+                <span class="meta-value">${record.name}</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">来源指纹</span>
+                <span class="meta-value">${record.prefix}...</span>
+              </div>
+              <div class="meta-item">
+                <span class="meta-label">申请时间</span>
+                <span class="meta-value">${new Date(record.created_at).toLocaleString()}</span>
+              </div>
             </div>
 
             <form method="POST">
-              <button type="submit" style="width: 100%; padding: 0.75rem; background: #2563eb; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
-                确认并批准接入
-              </button>
+              <button type="submit" class="btn btn-primary">确认并批准接入</button>
             </form>
-            <p style="margin-top: 1rem; font-size: 0.8rem; color: #94a3b8;">批准后，该 AI 系统将获得访问 /api/ai/v1 接口的权限。</p>
+            <p style="margin-top: 1.5rem; font-size: 0.8rem; color: #94a3b8; margin-bottom: 0;">批准后，该 AI 系统将获得访问 API 接口的权限。</p>
           </div>
         </body>
       </html>
@@ -780,13 +814,12 @@ export async function createServer(existingStore?: LocalStore) {
     if (success) {
       return `
         <html>
-          <head><meta charset="UTF-8"></head>
-          <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #f0fdf4; margin: 0;">
-            <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
-              <div style="font-size: 3rem; margin-bottom: 1rem;">✅</div>
-              <h1 style="color: #166534; margin-top: 0;">验证成功</h1>
-              <p style="color: #4b5563; line-height: 1.5;">该 AI 系统的访问权限已成功激活。它现在可以开始交互了。</p>
-              <button onclick="window.close()" style="margin-top: 1.5rem; padding: 0.5rem 1rem; background: #22c55e; color: white; border: none; border-radius: 6px; cursor: pointer;">关闭页面</button>
+          <head><meta charset="UTF-8"><title>验证成功</title>${VERIFY_PAGE_CSS}</head>
+          <body>
+            <div class="card">
+              <div class="icon-circle icon-success animate-success">✅</div>
+              <h1>验证成功</h1>
+              <p>该 AI 系统的访问权限已成功激活。</p>
             </div>
           </body>
         </html>
@@ -794,17 +827,19 @@ export async function createServer(existingStore?: LocalStore) {
     } else {
       return `
         <html>
-          <head><meta charset="UTF-8"></head>
-          <body style="font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; background: #fef2f2; margin: 0;">
-            <div style="padding: 2rem; background: white; border-radius: 12px; box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1); text-align: center; max-width: 400px;">
-              <div style="font-size: 3rem; margin-bottom: 1rem;">❌</div>
-              <h1 style="color: #991b1b; margin-top: 0;">批准失败</h1>
-              <p style="color: #4b5563;">无法完成批准操作。请刷新页面重试。</p>
+          <head><meta charset="UTF-8"><title>批准失败</title>${VERIFY_PAGE_CSS}</head>
+          <body>
+            <div class="card">
+              <div class="icon-circle icon-error">❌</div>
+              <h1>批准失败</h1>
+              <p>无法完成批准操作。这可能是由于网络原因或令牌已失效。</p>
+              <button onclick="location.reload()" class="btn btn-primary">刷新重试</button>
             </div>
           </body>
         </html>
       `;
     }
+
   });
 
   fastify.get('/api/ai/v1/discovery', async () => {
@@ -823,6 +858,116 @@ export async function createServer(existingStore?: LocalStore) {
 
   fastify.get('/api/ai/v1/skills', async () => {
     return await context.skillService.listSkills();
+  });
+
+  fastify.get('/api/ai/v1/settings', async (request, reply) => {
+    try {
+      return await context.interopService.getSettings();
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/ai/v1/settings', async (request, reply) => {
+    try {
+      const newSettings = request.body as any;
+      await context.interopService.updateSettings(newSettings);
+      
+      // CRITICAL: Reload context after saving
+      await context.reload();
+      
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.get('/api/ai/v1/schedules', async (request, reply) => {
+    try {
+      return await context.interopService.getSchedules();
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/ai/v1/schedules', async (request, reply) => {
+    try {
+      const schedule = request.body as any;
+      await context.interopService.saveSchedule(schedule);
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.delete('/api/ai/v1/schedules/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      await context.interopService.deleteSchedule(id);
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.get('/api/ai/v1/agents', async (request, reply) => {
+    try {
+      return await context.interopService.getAgents();
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/ai/v1/agents', async (request, reply) => {
+    try {
+      const agent = request.body as any;
+      await context.interopService.saveAgent(agent);
+      await context.reload();
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.delete('/api/ai/v1/agents/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      await context.interopService.deleteAgent(id);
+      await context.reload();
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.get('/api/ai/v1/workflows', async (request, reply) => {
+    try {
+      return await context.interopService.getWorkflows();
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/ai/v1/workflows', async (request, reply) => {
+    try {
+      const workflow = request.body as any;
+      await context.interopService.saveWorkflow(workflow);
+      await context.reload();
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.delete('/api/ai/v1/workflows/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      await context.interopService.deleteWorkflow(id);
+      await context.reload();
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
   });
 
   fastify.post('/api/ai/v1/execute', async (request, reply) => {

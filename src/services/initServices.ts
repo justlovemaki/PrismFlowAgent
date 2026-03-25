@@ -108,8 +108,6 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
 
   const workflowEngine = (agentService && aiProvider) ? new WorkflowEngine(store, agentService, aiProvider) : null;
 
-  const interopService = new InteropService(store, agentService, skillService, workflowEngine, settings);
-
   // 5. Initialize Adapters & Publishers & Storages
   const adapterInstances = initAdapters(settings, proxyAgent, translationService, agentService, workflowEngine);
   const publisherInstances = initPublishers(settings);
@@ -120,6 +118,9 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   
   // 6.1. Initialize Scheduler Service (Now that WorkflowEngine exists)
   const schedulerService = new SchedulerService(store, taskService, agentService, workflowEngine, aiService);
+
+  // 6.2. Initialize Interop Service (Needs AgentService, SkillService, WorkflowEngine and SchedulerService)
+  const interopService = new InteropService(store, agentService, skillService, workflowEngine, schedulerService, settings);
 
 
   // 7. Seed Data
