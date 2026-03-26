@@ -4,7 +4,7 @@ import { ServiceContext } from '../../../services/ServiceContext.js';
 export class QueryDataTool extends BaseTool {
   readonly id = 'query_data';
   readonly name = 'query_data';
-  readonly description = '从数据库中查询资讯数据，支持日期、最低分数和关键词搜索';
+  readonly description = '从数据库中查询资讯数据，支持日期、分类、最低分数和关键词搜索';
   readonly parameters = {
     type: 'object',
     properties: {
@@ -15,6 +15,10 @@ export class QueryDataTool extends BaseTool {
       endDate: { 
         type: 'string', 
         description: '结束日期 (YYYY-MM-DD)' 
+      },
+      category: {
+        type: 'string',
+        description: '分类名称 (如 AI, GitHub, News 等)'
       },
       minScore: { 
         type: 'number', 
@@ -32,7 +36,7 @@ export class QueryDataTool extends BaseTool {
     required: ['startDate', 'endDate']
   };
 
-  async handler(args: { startDate: string; endDate: string; minScore?: number; search?: string; limit?: number }) {
+  async handler(args: { startDate: string; endDate: string; category?: string; minScore?: number; search?: string; limit?: number }) {
     const context = await ServiceContext.getInstance();
     
     // 生成日期范围内的所有日期字符串
@@ -47,6 +51,7 @@ export class QueryDataTool extends BaseTool {
 
     const result = await context.taskService.queryData({
       publishedDates: dates,
+      category: args.category,
       minScore: args.minScore,
       search: args.search,
       limit: args.limit

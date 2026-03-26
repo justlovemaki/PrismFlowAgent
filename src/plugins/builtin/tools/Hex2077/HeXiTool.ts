@@ -40,6 +40,11 @@ export class HeXiTool extends BaseTool {
     }
 
     try {
+      // --- Step 0: Context Retrieval (Knowledge Base) ---
+      LogService.info('[HeXiTool] Retrieving context from Knowledge Base...');
+      const kbRes = await context.knowledgeBaseService.queryKnowledge(input, { limit: 3 });
+      steps.push({ agent: 'Knowledge Base', output: kbRes });
+
       // --- Agent 1: Response Strategist (策略分类) ---
       LogService.info('[HeXiTool] Agent 1 (Strategist) working...');
       const strategyPrompt = `${strategy}\n请判断问题类型（A-F），并以 "[Strategy: 类型X]" 格式输出。`;
@@ -50,8 +55,9 @@ export class HeXiTool extends BaseTool {
 
       // --- Agent 2 & 3: Knowledge Expert & Project Archivist (干货提取 - 并行) ---
       LogService.info('[HeXiTool] Agent 2 & 3 (Knowledge & Project) working in parallel...');
+      const knowledgePrompt = `${knowledge}\n\n参考知识库背景：\n${kbRes}`;
       const knowledgeTask = (['A', 'B', 'C', 'D'].includes(typeCode))
-        ? aiProvider.generateContent(input, [], knowledge)
+        ? aiProvider.generateContent(input, [], knowledgePrompt)
         : Promise.resolve({ content: 'Skip (Non-technical query)' });
 
       const projectTask = (['A', 'F'].includes(typeCode))
