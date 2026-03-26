@@ -83,7 +83,8 @@ export class QueryDataTool extends BaseTool {
         score: item.metadata?.ai_score,
         date: item.published_date,
         source: item.source,
-        category: item.category
+        category: item.category,
+        metadata: item.metadata
       };
     });
 
