@@ -50,6 +50,7 @@ export interface WorkflowStep {
   nextStepId?: string;
   nextStepIds?: string[];
   condition?: string;
+  enabled?: boolean;
 }
 
 export interface Workflow {

@@ -236,6 +236,11 @@ export class WorkflowEngine {
     const inputText = typeof stepInput === 'string' ? stepInput : (JSON.stringify(stepInput) ?? '');
     LogService.info(`[Workflow ${step.id}] Input: ${inputText.slice(0, 1000)}${inputText.length > 1000 ? '...(truncated)' : ''}`);
 
+    if (step.enabled === false) {
+      LogService.info(`[Workflow ${step.id}] Step is disabled, skipping (pass-through).`);
+      return stepInput;
+    }
+
     // Execute based on step type or configured ID
     let output: any = null;
     if (step.agentId) {

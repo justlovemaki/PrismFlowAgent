@@ -158,7 +158,7 @@ const TaskManagement: React.FC = () => {
     }
   };
 
-  const getTargetDisplayName = (type: string, targetId: string) => {
+  const getTargetDisplayName = (type: string, targetId: string, config?: any) => {
     if (!targetId) return '-';
     if (type === 'FULL_INGESTION') return '数据源全量同步';
     
@@ -166,14 +166,14 @@ const TaskManagement: React.FC = () => {
       return targetId;
     }
     
-    if ((type === 'AGENT_SUMMARY' || type === 'AGENT_DEAL') && currentSchedule?.config?.executorType !== 'workflow') {
-      const agent = availableAgents.find(a => a.id === targetId);
-      return agent ? agent.name : targetId;
-    }
-    
-    if ((type === 'AGENT_SUMMARY' || type === 'AGENT_DEAL') && currentSchedule?.config?.executorType === 'workflow') {
-      const workflow = availableWorkflows.find(w => w.id === targetId);
-      return workflow ? workflow.name : targetId;
+    if (type === 'AGENT_SUMMARY' || type === 'AGENT_DEAL') {
+      if (config?.executorType === 'workflow') {
+        const workflow = availableWorkflows.find(w => w.id === targetId);
+        return workflow ? workflow.name : targetId;
+      } else {
+        const agent = availableAgents.find(a => a.id === targetId);
+        return agent ? agent.name : targetId;
+      }
     }
     
     return targetId;
@@ -243,7 +243,7 @@ const TaskManagement: React.FC = () => {
                       <td className="px-6 py-4">
                         <div className="flex flex-col">
                           <span className="font-medium text-slate-900 dark:text-white">{schedule.name}</span>
-                          <span className="text-xs text-slate-400">{getTargetDisplayName(schedule.type, schedule.targetId)}</span>
+                          <span className="text-xs text-slate-400">{getTargetDisplayName(schedule.type, schedule.targetId, schedule.config)}</span>
                           <span className="text-[10px] text-primary md:hidden mt-1">{schedule.cron}</span>
                         </div>
                       </td>

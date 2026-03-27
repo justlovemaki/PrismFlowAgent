@@ -1787,7 +1787,9 @@ const Agents: React.FC = () => {
                       ? 'px-2 py-0.5 text-[9px] rounded-lg'
                       : 'px-3 py-1.5 text-[10px] rounded-xl'
                   } ${
-                    step.agentId
+                    step.enabled === false
+                      ? 'bg-slate-100/50 dark:bg-white/[0.02] text-slate-300 dark:text-slate-600 border-slate-200/30 dark:border-white/5 opacity-60 grayscale'
+                      : step.agentId
                       ? 'bg-blue-50/90 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200/50 dark:border-blue-500/20'
                       : step.workflowId
                       ? 'bg-emerald-50/90 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200/50 dark:border-emerald-500/20'
@@ -1798,15 +1800,16 @@ const Agents: React.FC = () => {
                       : ''
                   }`}
                   style={{ left: `${pos.x}px`, top: `${pos.y}px`, width: `${nodeWidth}px`, minHeight: `${nodeHeight}px` }}
-                  title={step.id}
+                  title={step.id + (step.enabled === false ? ' (已禁用)' : '')}
                 >
                   <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                    step.enabled === false ? 'bg-slate-200/50 dark:bg-white/5 text-slate-400' :
                     step.agentId ? 'bg-blue-500/20 text-blue-500' : 
                     step.workflowId ? 'bg-emerald-500/20 text-emerald-500' : 
                     'bg-slate-500/20 text-slate-500'
                   }`}>
                     <span className="material-symbols-outlined text-[12px]">
-                      {step.agentId ? 'smart_toy' : step.workflowId ? 'account_tree' : 'help'}
+                      {step.enabled === false ? 'visibility_off' : (step.agentId ? 'smart_toy' : step.workflowId ? 'account_tree' : 'help')}
                     </span>
                   </div>
                   <span className="truncate">{getStepLabel(step)}</span>
@@ -2000,8 +2003,10 @@ const Agents: React.FC = () => {
                       const currentNextIds = getNextStepIds(step);
                       const isParallel = currentNextIds.length > 1;
                       return (
-                        <div key={step.id} className={`p-4 rounded-2xl border space-y-3 ${
-                          step.id === editingWorkflow.initialStepId
+                        <div key={step.id} className={`p-4 rounded-2xl border space-y-3 transition-all ${
+                          step.enabled === false
+                            ? 'bg-slate-50/50 dark:bg-white/[0.01] border-slate-100 dark:border-white/5 opacity-70 grayscale-[0.5]'
+                            : step.id === editingWorkflow.initialStepId
                             ? 'bg-emerald-50/50 dark:bg-emerald-500/5 border-emerald-200 dark:border-emerald-500/20'
                             : 'bg-slate-50 dark:bg-white/[0.02] border-slate-200 dark:border-white/5'
                         }`}>
@@ -2009,6 +2014,22 @@ const Agents: React.FC = () => {
                             <div className="flex items-center gap-2">
                               <span className="w-6 h-6 rounded-full bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400 flex items-center justify-center text-[10px] font-bold">{idx + 1}</span>
                               <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{step.id}</span>
+                              
+                              <button
+                                type="button"
+                                onClick={() => updateWorkflowStep(idx, { enabled: step.enabled === false })}
+                                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold transition-all border ${
+                                  step.enabled !== false
+                                    ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20'
+                                    : 'bg-slate-200/50 dark:bg-white/10 text-slate-400 dark:text-slate-500 border-slate-300 dark:border-white/10'
+                                }`}
+                              >
+                                <span className="material-symbols-outlined text-[14px]">
+                                  {step.enabled !== false ? 'visibility' : 'visibility_off'}
+                                </span>
+                                {step.enabled !== false ? '已启用' : '已禁用'}
+                              </button>
+
                               {step.id === editingWorkflow.initialStepId && (
                                 <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded text-[8px] font-bold">入口</span>
                               )}

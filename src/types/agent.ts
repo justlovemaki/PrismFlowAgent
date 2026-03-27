@@ -50,6 +50,7 @@ export interface WorkflowStep {
   nextStepId?: string;             // Single next step (backward-compatible)
   nextStepIds?: string[];          // Multiple next steps (parallel branching)
   condition?: string; // Optional simple logic
+  enabled?: boolean;
 }
 
 export interface WorkflowDefinition {
