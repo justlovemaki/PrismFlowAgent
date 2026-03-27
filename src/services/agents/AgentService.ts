@@ -317,28 +317,39 @@ export class AgentService {
       let roundContent = '';
       let tool_calls: any[] = [];
 
-      for await (const chunk of stream) {
-        if (chunk.content) {
-          roundContent += chunk.content;
-          yield { type: 'content', content: chunk.content };
-        }
-        if (chunk.tool_calls) {
-          // Merge tool call chunks
-          chunk.tool_calls.forEach(tc => {
-            const existing = tool_calls.find(etc => etc.id === tc.id || (etc.name === tc.name && !etc.id));
-            if (existing) {
-              if (tc.arguments) {
-                if (typeof existing.arguments === 'string' && typeof tc.arguments === 'string') {
-                    existing.arguments += tc.arguments;
-                } else if (typeof existing.arguments === 'object' && typeof tc.arguments === 'object') {
-                    existing.arguments = { ...existing.arguments, ...tc.arguments };
+      try {
+        for await (const chunk of stream) {
+          if (chunk.content) {
+            roundContent += chunk.content;
+            yield { type: 'content', content: chunk.content };
+          }
+          if (chunk.tool_calls) {
+            // Merge tool call chunks
+            chunk.tool_calls.forEach(tc => {
+              const existing = tool_calls.find(etc => etc.id === tc.id || (etc.name === tc.name && !etc.id));
+              if (existing) {
+                if (tc.arguments) {
+                  if (typeof existing.arguments === 'string' && typeof tc.arguments === 'string') {
+                      existing.arguments += tc.arguments;
+                  } else if (typeof existing.arguments === 'object' && typeof tc.arguments === 'object') {
+                      existing.arguments = { ...existing.arguments, ...tc.arguments };
+                  }
                 }
+              } else {
+                tool_calls.push({ ...tc });
               }
-            } else {
-              tool_calls.push({ ...tc });
-            }
-          });
-          yield { type: 'tool_calls_delta', tool_calls: chunk.tool_calls };
+            });
+            yield { type: 'tool_calls_delta', tool_calls: chunk.tool_calls };
+          }
+        }
+      } catch (error: any) {
+        const errorMessage = error?.message || String(error);
+        const canGracefullyFinish = !!roundContent.trim() && tool_calls.length === 0;
+
+        if (canGracefullyFinish) {
+          LogService.warn(`[Agent ${agentDef.name}] Streaming interrupted after partial content, treating as final response: ${errorMessage}`);
+        } else {
+          throw error;
         }
       }
 

@@ -328,37 +328,43 @@ async function seedDefaultAgents(store: LocalStore, agentService: AgentService, 
   const activeProviderConfig = settings.AI_PROVIDERS.find(p => p.id === settings.ACTIVE_AI_PROVIDER_ID);
   const defaultModel = activeProviderConfig?.models?.[0] || '';
 
-  if (!agents.find(a => a.id === 'default_summarizer')) {
-    await store.saveAgent({
-      id: 'default_summarizer',
-      name: '基础摘要员',
-      description: '负责生成每日资讯摘要',
-      systemPrompt: '你是一个专业的科技博主，请根据提供的资讯内容生成简洁、有深度的每日摘要。',
-      providerId: settings.ACTIVE_AI_PROVIDER_ID,
-      model: defaultModel,
-      temperature: 1.0,
-      toolIds: [],
-      skillIds: [],
-      mcpServerIds: []
-    });
+  // 1. 种子化可删除的默认 Agent (仅执行一次)
+  const isInitialized = await store.get('default_agents_initialized');
+  if (!isInitialized) {
+    if (!agents.find(a => a.id === 'default_summarizer')) {
+      await store.saveAgent({
+        id: 'default_summarizer',
+        name: '基础摘要员',
+        description: '负责生成每日资讯摘要',
+        systemPrompt: '你是一个专业的科技博主，请根据提供的资讯内容生成简洁、有深度的每日摘要。',
+        providerId: settings.ACTIVE_AI_PROVIDER_ID,
+        model: defaultModel,
+        temperature: 1.0,
+        toolIds: [],
+        skillIds: [],
+        mcpServerIds: []
+      });
+    }
+
+    if (!agents.find(a => a.id === 'ai_summary_agent')) {
+      const aiSummaryPrompt = PromptService.getInstance().getPrompt('ai_summary_agent');
+      await store.saveAgent({
+        id: 'ai_summary_agent',
+        name: 'AI内容主编',
+        description: '负责将Markdown文本重塑为结构化的中文AI资讯摘要，并进行多维度打分。',
+        systemPrompt: aiSummaryPrompt,
+        providerId: settings.ACTIVE_AI_PROVIDER_ID,
+        model: defaultModel,
+        temperature: 0.7,
+        toolIds: [],
+        skillIds: [],
+        mcpServerIds: []
+      });
+    }
+    await store.put('default_agents_initialized', true);
   }
 
-  if (!agents.find(a => a.id === 'ai_summary_agent')) {
-    const aiSummaryPrompt = PromptService.getInstance().getPrompt('ai_summary_agent');
-    await store.saveAgent({
-      id: 'ai_summary_agent',
-      name: 'AI内容主编',
-      description: '负责将Markdown文本重塑为结构化的中文AI资讯摘要，并进行多维度打分。',
-      systemPrompt: aiSummaryPrompt,
-      providerId: settings.ACTIVE_AI_PROVIDER_ID,
-      model: defaultModel,
-      temperature: 0.7,
-      toolIds: [],
-      skillIds: [],
-      mcpServerIds: []
-    });
-  }
-
+  // 2. 种子化系统内置 Agent (这些 Agent 对系统功能至关重要，且默认隐藏)
   const memoryAssistant = agents.find(a => a.id === 'memory_assistant');
   if (!memoryAssistant) {
     await store.saveAgent({
@@ -406,6 +412,9 @@ async function seedDefaultAgents(store: LocalStore, agentService: AgentService, 
     knowledgeAssistant.isHidden = true;
     await store.saveAgent(knowledgeAssistant);
   }
+
+  // 标记默认 Agent 已初始化
+  await store.put('default_agents_initialized', true);
 }
 
 async function seedDefaultSchedules(store: LocalStore, adapters: any[]) {

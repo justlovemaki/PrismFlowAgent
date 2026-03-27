@@ -596,6 +596,90 @@ const Settings: React.FC = () => {
     }));
   };
 
+  const handleMoveAIProvider = (id: string, direction: 'up' | 'down') => {
+    setSettings(prev => {
+      const originalProviders = [...(prev.AI_PROVIDERS || [])];
+      const closedPlugins = prev.CLOSED_PLUGINS || [];
+      const visibleIdxs = originalProviders
+        .map((p, i) => !closedPlugins.includes(p.id) ? i : -1)
+        .filter(i => i !== -1);
+      
+      const currentIdxInOriginal = originalProviders.findIndex(p => p.id === id);
+      if (currentIdxInOriginal === -1) return prev;
+      
+      const currentIdxInVisible = visibleIdxs.indexOf(currentIdxInOriginal);
+      if (currentIdxInVisible === -1) return prev;
+      
+      const targetIdxInVisible = direction === 'up' ? currentIdxInVisible - 1 : currentIdxInVisible + 1;
+      if (targetIdxInVisible < 0 || targetIdxInVisible >= visibleIdxs.length) return prev;
+      
+      const targetIdxInOriginal = visibleIdxs[targetIdxInVisible];
+      
+      [originalProviders[currentIdxInOriginal], originalProviders[targetIdxInOriginal]] = [originalProviders[targetIdxInOriginal], originalProviders[currentIdxInOriginal]];
+      
+      return { ...prev, AI_PROVIDERS: originalProviders };
+    });
+  };
+
+  const handleMoveCategory = (id: string, direction: 'up' | 'down') => {
+    setSettings(prev => {
+      const categories = [...(prev.CATEGORIES || [])];
+      const idx = categories.findIndex(c => c.id === id);
+      if (idx === -1) return prev;
+      
+      const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= categories.length) return prev;
+      
+      [categories[idx], categories[targetIdx]] = [categories[targetIdx], categories[idx]];
+      return { ...prev, CATEGORIES: categories };
+    });
+  };
+
+  const handleMoveAdapter = (id: string, direction: 'up' | 'down') => {
+    setSettings(prev => {
+      const originalAdapters = [...(prev.ADAPTERS || [])];
+      const closedPlugins = prev.CLOSED_PLUGINS || [];
+      const visibleIdxs = originalAdapters
+        .map((a, i) => !closedPlugins.includes(a.adapterType) ? i : -1)
+        .filter(i => i !== -1);
+      
+      const currentIdxInOriginal = originalAdapters.findIndex(a => a.id === id);
+      if (currentIdxInOriginal === -1) return prev;
+      
+      const currentIdxInVisible = visibleIdxs.indexOf(currentIdxInOriginal);
+      if (currentIdxInVisible === -1) return prev;
+      
+      const targetIdxInVisible = direction === 'up' ? currentIdxInVisible - 1 : currentIdxInVisible + 1;
+      if (targetIdxInVisible < 0 || targetIdxInVisible >= visibleIdxs.length) return prev;
+      
+      const targetIdxInOriginal = visibleIdxs[targetIdxInVisible];
+      
+      [originalAdapters[currentIdxInOriginal], originalAdapters[targetIdxInOriginal]] = [originalAdapters[targetIdxInOriginal], originalAdapters[currentIdxInOriginal]];
+      
+      return { ...prev, ADAPTERS: originalAdapters };
+    });
+  };
+
+  const handleMoveAdapterItem = (adapterId: string, itemId: string, direction: 'up' | 'down') => {
+    setSettings(prev => {
+      const adapters = [...(prev.ADAPTERS || [])];
+      const adapterIdx = adapters.findIndex(a => a.id === adapterId);
+      if (adapterIdx === -1) return prev;
+      
+      const items = [...(adapters[adapterIdx].items || [])];
+      const itemIdx = items.findIndex(i => i.id === itemId);
+      if (itemIdx === -1) return prev;
+      
+      const targetIdx = direction === 'up' ? itemIdx - 1 : itemIdx + 1;
+      if (targetIdx < 0 || targetIdx >= items.length) return prev;
+      
+      [items[itemIdx], items[targetIdx]] = [items[targetIdx], items[itemIdx]];
+      
+      adapters[adapterIdx] = { ...adapters[adapterIdx], items };
+      return { ...prev, ADAPTERS: adapters };
+    });
+  };
+
 
   const handleAddCategory = () => {
     setSettings(prev => {
@@ -939,6 +1023,31 @@ const Settings: React.FC = () => {
                         </button>
                       )}
                       <div className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-0.5"></div>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveAIProvider(provider.id, 'up');
+                          }}
+                          disabled={idx === 0}
+                          title="上移"
+                          className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-primary hover:bg-primary/10 rounded-full transition-all disabled:opacity-10 disabled:cursor-not-allowed"
+                        >
+                          <span className="material-symbols-outlined text-xl">arrow_upward</span>
+                        </button>
+                        <button 
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleMoveAIProvider(provider.id, 'down');
+                          }}
+                          disabled={idx === providers.length - 1}
+                          title="下移"
+                          className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-primary hover:bg-primary/10 rounded-full transition-all disabled:opacity-10 disabled:cursor-not-allowed"
+                        >
+                          <span className="material-symbols-outlined text-xl">arrow_downward</span>
+                        </button>
+                      </div>
+                      <div className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-0.5"></div>
                       <button 
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1244,6 +1353,25 @@ const Settings: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={() => handleMoveAdapter(adapter.id, 'up')}
+                          disabled={idx === 0}
+                          title="上移适配器组"
+                          className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-primary hover:bg-primary/10 rounded-full transition-all disabled:opacity-10 disabled:cursor-not-allowed"
+                        >
+                          <span className="material-symbols-outlined text-xl">arrow_upward</span>
+                        </button>
+                        <button 
+                          onClick={() => handleMoveAdapter(adapter.id, 'down')}
+                          disabled={idx === adapters.length - 1}
+                          title="下移适配器组"
+                          className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-primary hover:bg-primary/10 rounded-full transition-all disabled:opacity-10 disabled:cursor-not-allowed"
+                        >
+                          <span className="material-symbols-outlined text-xl">arrow_downward</span>
+                        </button>
+                      </div>
+                      <div className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-0.5"></div>
                       {adapter.adapterType === 'RSSAdapter' && (
                         <label className={`
                           flex items-center gap-2 px-3 py-1 bg-primary/10 text-primary hover:bg-primary hover:text-white rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all cursor-pointer
@@ -1370,6 +1498,25 @@ const Settings: React.FC = () => {
                         <div className="flex items-center justify-between md:justify-end gap-6 pt-4 md:pt-0 border-t md:border-none border-slate-100 dark:border-white/5">
                           <div className="md:hidden text-[10px] font-bold text-slate-400 uppercase tracking-widest">状态与操作</div>
                           <div className="flex items-center gap-4">
+                            <div className="flex flex-col gap-0">
+                              <button 
+                                onClick={() => handleMoveAdapterItem(adapter.id, item.id, 'up')}
+                                disabled={idx === 0}
+                                title="上移此项"
+                                className="w-6 h-4 flex items-center justify-center text-slate-300 hover:text-primary transition-all disabled:opacity-10 disabled:cursor-not-allowed"
+                              >
+                                <span className="material-symbols-outlined text-base">expand_less</span>
+                              </button>
+                              <button 
+                                onClick={() => handleMoveAdapterItem(adapter.id, item.id, 'down')}
+                                disabled={idx === adapter.items.length - 1}
+                                title="下移此项"
+                                className="w-6 h-4 flex items-center justify-center text-slate-300 hover:text-primary transition-all disabled:opacity-10 disabled:cursor-not-allowed"
+                              >
+                                <span className="material-symbols-outlined text-base">expand_more</span>
+                              </button>
+                            </div>
+                            <div className="w-px h-4 bg-slate-200 dark:bg-white/10 mx-0.5"></div>
                             <label className="relative inline-flex items-center cursor-pointer">
                               <input 
                                 type="checkbox" 
@@ -1438,7 +1585,24 @@ const Settings: React.FC = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {categories.map((cat: any, index: number) => (
               <div key={cat._tempId || index} className="flex items-center gap-4 p-4 bg-slate-50 dark:bg-white/[0.02] rounded-xl border border-slate-200 dark:border-white/5">
-
+                <div className="flex flex-col gap-1">
+                  <button 
+                    onClick={() => handleMoveCategory(cat.id, 'up')}
+                    disabled={index === 0}
+                    title="上移"
+                    className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-primary transition-all disabled:opacity-10 disabled:cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-base">expand_less</span>
+                  </button>
+                  <button 
+                    onClick={() => handleMoveCategory(cat.id, 'down')}
+                    disabled={index === categories.length - 1}
+                    title="下移"
+                    className="w-6 h-6 flex items-center justify-center text-slate-300 hover:text-primary transition-all disabled:opacity-10 disabled:cursor-not-allowed"
+                  >
+                    <span className="material-symbols-outlined text-base">expand_more</span>
+                  </button>
+                </div>
                 <div className="flex-1 space-y-4">
                   <div className="flex gap-2">
                     <div className="flex-1 space-y-1">

@@ -261,10 +261,10 @@ const KnowledgeBase: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-end">
-        <div>
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">知识与记忆 (Knowledge & Memory)</h2>
-          <p className="text-sm text-slate-500">
+      <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
+        <div className="flex-1 min-w-0">
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white truncate">知识与记忆 (Knowledge & Memory)</h2>
+          <p className="text-sm text-slate-500 truncate">
             {activeTab === 'knowledge' 
               ? '管理您的专业文档，为 AI 提供行业背景知识。' 
               : '查看 AI 在对话中沉淀的长期记忆与经验。'}
@@ -426,7 +426,7 @@ const KnowledgeBase: React.FC = () => {
                     <span className="material-symbols-outlined text-sm">close</span>
                   </button>
                 </div>
-                <div className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap">
+                <div className="text-sm text-slate-700 dark:text-slate-200 leading-relaxed whitespace-pre-wrap break-words">
                   {searchResult}
                 </div>
               </motion.div>
@@ -467,12 +467,12 @@ const KnowledgeBase: React.FC = () => {
                       </div>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleDeleteDocument(doc.id); }}
-                        className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                        className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all md:opacity-0 md:group-hover:opacity-100"
                       >
                         <span className="material-symbols-outlined text-lg">delete</span>
                       </button>
                     </div>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed bg-slate-50 dark:bg-white/[0.02] p-2 rounded-xl">
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed bg-slate-50 dark:bg-white/[0.02] p-2 rounded-xl break-words">
                       {doc.summary}
                     </p>
                     <div className="mt-3 flex justify-between items-center text-[10px] text-slate-400">
@@ -509,7 +509,7 @@ const KnowledgeBase: React.FC = () => {
                         </div>
                         <div className="min-w-0 flex-1">
                           <h4 className="font-bold text-slate-900 dark:text-white truncate">记忆片段 {mem.id.slice(-6)}</h4>
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
                             <span className={`text-[10px] font-bold ${
                               mem.importance >= 4 ? 'text-orange-500' : 'text-slate-400'
                             }`}>
@@ -523,7 +523,7 @@ const KnowledgeBase: React.FC = () => {
                       </div>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleDeleteMemory(mem.id); }}
-                        className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all opacity-0 group-hover:opacity-100"
+                        className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all md:opacity-0 md:group-hover:opacity-100"
                       >
                         <span className="material-symbols-outlined text-lg">delete</span>
                       </button>

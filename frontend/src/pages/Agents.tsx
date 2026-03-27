@@ -92,6 +92,7 @@ const Agents: React.FC = () => {
   const [storeResults, setStoreResults] = useState<any[]>([]);
   const [isStoreLoading, setIsStoreLoading] = useState(false);
   const [installingSkillId, setInstallingSkillId] = useState<string | null>(null);
+  const [foldedGroups, setFoldedGroups] = useState<Record<string, boolean>>({});
 
   const handleCopy = async (text: string) => {
     if (!text) return;
@@ -326,82 +327,119 @@ const Agents: React.FC = () => {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {agents.map(agent => (
-          <div key={agent.id} className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-6 shadow-sm hover:shadow-md transition-all group">
-            <div className="flex justify-between items-start mb-4">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
-                  <span className="material-symbols-outlined text-3xl">smart_toy</span>
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h4 className="font-bold text-slate-900 dark:text-white break-words max-w-[160px]">{agent.name}</h4>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1 break-words">{agent.description}</p>
-                </div>
-              </div>
-              <div className="flex gap-2">
-                <button 
-                  onClick={() => { 
-                    setTestingAgentId(agent.id); 
-                    setTestInput(''); 
-                    setTestResults(prev => {
-                      const next = { ...prev };
-                      delete next[agent.id];
-                      return next;
-                    });
-                  }}
-                  className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10 rounded-full transition-all"
-                  title="测试"
-                >
-                  <span className="material-symbols-outlined text-xl">play_arrow</span>
-                </button>
-                <button 
-                  onClick={() => setEditingAgent(agent)}
-                  className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 rounded-full transition-all"
-                >
-                  <span className="material-symbols-outlined text-xl">edit</span>
-                </button>
-                <button 
-                  onClick={() => handleDeleteAgent(agent.id)}
-                  className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all"
-                >
-                  <span className="material-symbols-outlined text-xl">delete</span>
-                </button>
-              </div>
-            </div>
+      <div className="space-y-8">
+        {Object.entries(
+          agents.reduce((acc, agent) => {
+            const group = agent.category || '未分类';
+            if (!acc[group]) acc[group] = [];
+            acc[group].push(agent);
+            return acc;
+          }, {} as Record<string, Agent[]>)
+        ).sort(([a], [b]) => {
+          if (a === '未分类') return 1;
+          if (b === '未分类') return -1;
+          return a.localeCompare(b);
+        }).map(([group, groupAgents]) => (
+          <div key={group} className="space-y-4">
+            <button 
+              onClick={() => setFoldedGroups(prev => ({ ...prev, [group]: !prev[group] }))}
+              className="flex items-center gap-2 group/title w-full text-left"
+            >
+              <h4 className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">{group}</h4>
+              <span className="text-[10px] text-slate-300 dark:text-slate-600 font-bold">({groupAgents.length})</span>
+              <span className={`material-symbols-outlined text-sm text-slate-300 dark:text-slate-600 transition-transform ${foldedGroups[group] ? '-rotate-90' : ''}`}>
+                expand_more
+              </span>
+              <div className="flex-1 h-px bg-slate-100 dark:bg-white/5 ml-2"></div>
+            </button>
 
-            <div className="space-y-3 mb-6">
-              <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 overflow-hidden">
-                {agent.providerId && (
-                  <span className="flex items-center gap-1 shrink-0">
-                    <span className="material-symbols-outlined text-[12px]">memory</span>
-                    {settings.AI_PROVIDERS?.find((p: any) => p.id === agent.providerId)?.name || agent.providerId}
-                  </span>
-                )}
-                {agent.providerId && <span className="shrink-0 opacity-50">/</span>}
-                <span className={`font-mono truncate ${!agent.model ? 'opacity-50 italic' : ''}`} title={agent.model || (settings.AI_PROVIDERS?.find((p: any) => p.id === agent.providerId)?.models?.[0] || '未选择模型')}>
-                  {agent.model || (settings.AI_PROVIDERS?.find((p: any) => p.id === agent.providerId)?.models?.[0] || '未选择模型')}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {agent.skillIds.map(sid => (
-                  <span key={sid} className="px-2 py-1 bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg text-[10px] font-bold">
-                    {skills.find(s => s.id === sid)?.name || sid}
-                  </span>
-                ))}
-                {agent.toolIds.map(tid => (
-                  <span key={tid} className="px-2 py-1 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-lg text-[10px] font-bold">
-                    {tools.find(t => t.id === tid)?.name || tid}
-                  </span>
-                ))}
-                {(agent.mcpServerIds || []).map(mid => (
-                  <span key={mid} className="px-2 py-1 bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 rounded-lg text-[10px] font-bold">
-                    {mcpConfigs.find(m => m.id === mid)?.name || mid}
-                  </span>
-                ))}
-              </div>
-            </div>
+            {!foldedGroups[group] && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {groupAgents.map(agent => (
+                  <div key={agent.id} className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-6 shadow-sm hover:shadow-md transition-all group">
+                    <div className="flex justify-between items-start mb-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-12 h-12 rounded-2xl bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                          <span className="material-symbols-outlined text-3xl">smart_toy</span>
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-slate-900 dark:text-white break-words max-w-[160px]">{agent.name}</h4>
+                            {agent.streaming && (
+                              <span className="px-1.5 py-0.5 bg-blue-50 dark:bg-blue-500/10 text-blue-500 rounded text-[9px] font-bold shrink-0" title="流式输出">
+                                流式
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-1 break-words">{agent.description}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => { 
+                            setTestingAgentId(agent.id); 
+                            setTestInput(''); 
+                            setTestResults(prev => {
+                              const next = { ...prev };
+                              delete next[agent.id];
+                              return next;
+                            });
+                          }}
+                          className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10 rounded-full transition-all"
+                          title="测试"
+                        >
+                          <span className="material-symbols-outlined text-xl">play_arrow</span>
+                        </button>
+                        <button 
+                          onClick={() => setEditingAgent(agent)}
+                          className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:text-primary hover:bg-primary/10 rounded-full transition-all"
+                        >
+                          <span className="material-symbols-outlined text-xl">edit</span>
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteAgent(agent.id)}
+                          className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all"
+                        >
+                          <span className="material-symbols-outlined text-xl">delete</span>
+                        </button>
+                      </div>
+                    </div>
 
+                    <div className="space-y-3 mb-6">
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-400 dark:text-slate-500 overflow-hidden">
+                        {agent.providerId && (
+                          <span className="flex items-center gap-1 shrink-0">
+                            <span className="material-symbols-outlined text-[12px]">memory</span>
+                            {settings.AI_PROVIDERS?.find((p: any) => p.id === agent.providerId)?.name || agent.providerId}
+                          </span>
+                        )}
+                        {agent.providerId && <span className="shrink-0 opacity-50">/</span>}
+                        <span className={`font-mono truncate ${!agent.model ? 'opacity-50 italic' : ''}`} title={agent.model || (settings.AI_PROVIDERS?.find((p: any) => p.id === agent.providerId)?.models?.[0] || '未选择模型')}>
+                          {agent.model || (settings.AI_PROVIDERS?.find((p: any) => p.id === agent.providerId)?.models?.[0] || '未选择模型')}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {agent.skillIds.map(sid => (
+                          <span key={sid} className="px-2 py-1 bg-blue-100 dark:bg-blue-500/20 text-blue-600 dark:text-blue-400 rounded-lg text-[10px] font-bold">
+                            {skills.find(s => s.id === sid)?.name || sid}
+                          </span>
+                        ))}
+                        {agent.toolIds.map(tid => (
+                          <span key={tid} className="px-2 py-1 bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 rounded-lg text-[10px] font-bold">
+                            {tools.find(t => t.id === tid)?.name || tid}
+                          </span>
+                        ))}
+                        {(agent.mcpServerIds || []).map(mid => (
+                          <span key={mid} className="px-2 py-1 bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 rounded-lg text-[10px] font-bold">
+                            {mcpConfigs.find(m => m.id === mid)?.name || mid}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ))}
       </div>
@@ -453,6 +491,23 @@ const Agents: React.FC = () => {
                     onChange={e => setEditingAgent({...editingAgent, description: e.target.value})}
                     className="w-full px-4 py-2.5 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white"
                   />
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">分类 (Category)</label>
+                  <input 
+                    type="text"
+                    list="agent-categories"
+                    value={editingAgent.category || ''}
+                    placeholder="例如: 翻译, 代码, 创意..."
+                    onChange={e => setEditingAgent({...editingAgent, category: e.target.value})}
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white"
+                  />
+                  <datalist id="agent-categories">
+                    {Array.from(new Set(agents.map(a => a.category).filter(Boolean))).map(cat => (
+                      <option key={cat} value={cat} />
+                    ))}
+                  </datalist>
                 </div>
 
                 <div className="space-y-1.5">
