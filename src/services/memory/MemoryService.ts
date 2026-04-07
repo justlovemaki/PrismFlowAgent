@@ -73,6 +73,14 @@ export class MemoryService implements IMemoryService {
     return this.activeService.updateCategory(id, name, description);
   }
 
+  async addCategory(name: string, description?: string): Promise<string> {
+    return this.activeService.addCategory(name, description);
+  }
+
+  async moveMemoryToCategory(memoryId: string, targetCategoryId: string): Promise<void> {
+    return this.activeService.moveMemoryToCategory(memoryId, targetCategoryId);
+  }
+
   async mergeCategories(ids: string[], targetName: string, targetDescription?: string) {
     return this.activeService.mergeCategories(ids, targetName, targetDescription);
   }

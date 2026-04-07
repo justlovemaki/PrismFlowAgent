@@ -1859,6 +1859,17 @@ export async function createServer(existingStore?: LocalStore) {
     return await context.memoryService.getCategories();
   });
 
+  fastify.post('/api/memory/categories', async (request, reply) => {
+    try {
+      const { name, description } = request.body as any;
+      if (!name) return reply.status(400).send({ error: '分类名称不能为空' });
+      const id = await context.memoryService.addCategory(name, description);
+      return { id };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.get('/api/memory/categories/:id', async (request) => {
     const { id } = request.params as any;
     return await context.memoryService.getCategoryDetails(id);
@@ -1914,6 +1925,18 @@ export async function createServer(existingStore?: LocalStore) {
       }
       const newId = await context.memoryService.mergeMemories(ids, { targetCategoryId });
       return { status: 'success', id: newId };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/memory/:id/move', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      const { targetCategoryId } = request.body as any;
+      if (!targetCategoryId) return reply.status(400).send({ error: '目标分类 ID 不能为空' });
+      await context.memoryService.moveMemoryToCategory(id, targetCategoryId);
+      return { status: 'success' };
     } catch (error: any) {
       reply.status(500).send({ error: error.message });
     }

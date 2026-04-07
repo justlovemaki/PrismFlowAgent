@@ -80,10 +80,11 @@ export class HierarchicalKnowledgeService implements IKnowledgeBaseService {
   }
 
   async addCategory(name: string, description: string = ''): Promise<string> {
-    const id = name.toLowerCase().replace(/\s+/g, '_');
     const root = this.loadRoot();
-    
-    if (root.categories.find(c => c.id === id)) return id;
+    const existing = root.categories.find(c => c.name === name);
+    if (existing) return existing.id;
+
+    const id = typeid('kbcat').toString();
 
     const newCat: KBCategory = {
       id,
@@ -159,31 +160,32 @@ export class HierarchicalKnowledgeService implements IKnowledgeBaseService {
 
     LogService.info(`Merging ${ids.length} knowledge categories into ${targetName}...`);
     
-    // 1. Create/Find target category
-    const targetId = targetName.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'merged_kb';
-    let targetCategory = this.loadCategory(targetId);
+    // 1. Always generate a new unique ID for the merge result
+    const targetId = typeid('kbcat').toString();
     const root = this.loadRoot();
-
-    if (!targetCategory) {
-      targetCategory = {
-        id: targetId,
-        name: targetName,
-        description: targetDescription || `${ids.length} 个知识库分类合并后的记录`,
-        documents: [],
-        updatedAt: Date.now()
-      };
-      
-      root.categories.push({
-        id: targetId,
-        name: targetCategory.name,
-        description: targetCategory.description,
-        documentCount: 0,
-        lastUpdatedAt: Date.now()
-      });
-    }
+    
+    // Find if a category with the same name already exists
+    const existing = root.categories.find(c => c.name === targetName);
+    const allSourceIds = [...new Set([...ids, ...(existing ? [existing.id] : [])])];
+    
+    let targetCategory: KBCategoryIndex = {
+      id: targetId,
+      name: targetName,
+      description: targetDescription || `${ids.length} 个知识库分类合并后的记录`,
+      documents: [],
+      updatedAt: Date.now()
+    };
+    
+    root.categories.push({
+      id: targetId,
+      name: targetCategory.name,
+      description: targetCategory.description,
+      documentCount: 0,
+      lastUpdatedAt: Date.now()
+    });
 
     // 2. Move documents from source categories to target
-    for (const id of ids) {
+    for (const id of allSourceIds) {
       if (id === targetId) continue;
       const sourceCategory = this.loadCategory(id);
       if (!sourceCategory) continue;

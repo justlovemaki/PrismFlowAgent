@@ -105,6 +105,12 @@ export const knowledgeService = {
   // Memory API
   getMemoryCategories: (): Promise<KBCategory[]> => request('/api/memory/categories'),
   
+  addMemoryCategory: (name: string, description: string = ''): Promise<{ id: string }> =>
+    request('/api/memory/categories', {
+      method: 'POST',
+      body: JSON.stringify({ name, description })
+    }),
+
   getMemoryCategoryDetails: (id: string): Promise<any> => request(`/api/memory/categories/${id}`),
 
   deleteMemoryCategory: (id: string): Promise<{ status: string }> => request(`/api/memory/categories/${id}`, {
@@ -121,6 +127,12 @@ export const knowledgeService = {
     request('/api/memory/categories/merge', {
       method: 'POST',
       body: JSON.stringify({ ids, targetName, targetDescription })
+    }),
+
+  moveMemoryToCategory: (id: string, targetCategoryId: string): Promise<{ status: string }> =>
+    request(`/api/memory/${id}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ targetCategoryId })
     }),
 
   getMemoryContent: (id: string): Promise<{ content: string }> => request(`/api/memory/${id}/content`),

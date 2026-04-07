@@ -28,10 +28,11 @@ export class SqliteKnowledgeService implements IKnowledgeBaseService {
   }
 
   async addCategory(name: string, description: string = ''): Promise<string> {
-    const id = name.toLowerCase().replace(/\s+/g, '_');
-    const existing = await this.store.getKBCategory(id);
-    if (existing) return id;
+    const categories = await this.store.listKBCategories();
+    const existing = categories.find(c => c.name === name);
+    if (existing) return existing.id;
 
+    const id = typeid('kbcat').toString();
     await this.store.saveKBCategory({
       id,
       name,
@@ -64,17 +65,21 @@ export class SqliteKnowledgeService implements IKnowledgeBaseService {
   async mergeCategories(ids: string[], targetName: string, targetDescription?: string): Promise<string> {
     if (ids.length < 2) throw new Error("At least two categories are required for merge");
 
-    const targetId = targetName.toLowerCase().replace(/\s+/g, '_');
-    let targetCategory = await this.store.getKBCategory(targetId);
+    const categories = await this.store.listKBCategories();
+    const existing = categories.find(c => c.name === targetName);
+    const targetId = typeid('kbcat').toString();
+    const allSourceIds = [...new Set([...ids, ...(existing ? [existing.id] : [])])];
 
-    if (!targetCategory) {
-      await this.addCategory(targetName, targetDescription);
-      targetCategory = await this.store.getKBCategory(targetId);
-    }
+    const targetCategory = {
+      id: targetId,
+      name: targetName,
+      description: targetDescription || `${ids.length} 个知识库分类合并后的记录`,
+      documentCount: 0,
+      updatedAt: Date.now()
+    };
+    await this.store.saveKBCategory(targetCategory);
 
-    if (!targetCategory) throw new Error("Failed to create target category");
-
-    for (const id of ids) {
+    for (const id of allSourceIds) {
       if (id === targetId) continue;
       const documents = await this.store.listKBDocuments(id);
       for (const doc of documents) {

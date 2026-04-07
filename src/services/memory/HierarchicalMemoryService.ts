@@ -301,36 +301,116 @@ export class HierarchicalMemoryService implements IMemoryService {
     this.saveRoot(root);
   }
 
+  async addCategory(name: string, description: string = ''): Promise<string> {
+    const root = this.loadRoot();
+    const existing = root.categories.find(c => c.name === name);
+    if (existing) return existing.id;
+
+    const id = typeid('mcat').toString();
+    const newCat: MemoryCategorySummary = {
+      id,
+      name,
+      description,
+      entryCount: 0,
+      lastUpdatedAt: Date.now()
+    };
+    
+    root.categories.push(newCat);
+    this.saveRoot(root);
+
+    const catIndex: MemoryCategoryIndex = {
+      id,
+      name,
+      description,
+      entries: [],
+      updatedAt: Date.now()
+    };
+    this.saveCategory(catIndex);
+    
+    return id;
+  }
+
+  async moveMemoryToCategory(memoryId: string, targetCategoryId: string): Promise<void> {
+    const root = this.loadRoot();
+    const targetCategory = this.loadCategory(targetCategoryId);
+    if (!targetCategory) throw new Error(`Target category ${targetCategoryId} not found`);
+
+    // Find source category
+    let sourceCategory: MemoryCategoryIndex | null = null;
+    let entrySumToMove: MemoryEntrySummary | null = null;
+
+    for (const catSum of root.categories) {
+      const category = this.loadCategory(catSum.id);
+      if (category) {
+        const entryIndex = category.entries.findIndex(e => e.id === memoryId);
+        if (entryIndex !== -1) {
+          sourceCategory = category;
+          entrySumToMove = category.entries[entryIndex];
+          
+          // Remove from source
+          category.entries.splice(entryIndex, 1);
+          category.updatedAt = Date.now();
+          this.saveCategory(category);
+          
+          catSum.entryCount = category.entries.length;
+          catSum.lastUpdatedAt = category.updatedAt;
+          break;
+        }
+      }
+    }
+
+    if (!sourceCategory || !entrySumToMove) {
+      throw new Error(`Memory entry ${memoryId} not found in any category`);
+    }
+
+    // Add to target
+    if (!targetCategory.entries.find(e => e.id === memoryId)) {
+      targetCategory.entries.push(entrySumToMove);
+      targetCategory.updatedAt = Date.now();
+      this.saveCategory(targetCategory);
+
+      const targetCatSum = root.categories.find(c => c.id === targetCategoryId);
+      if (targetCatSum) {
+        targetCatSum.entryCount = targetCategory.entries.length;
+        targetCatSum.lastUpdatedAt = targetCategory.updatedAt;
+      }
+    }
+
+    this.saveRoot(root);
+  }
+
   async mergeCategories(ids: string[], targetName: string, targetDescription?: string): Promise<string> {
     if (ids.length < 2) throw new Error("At least two categories are required for merge");
 
     LogService.info(`Merging ${ids.length} memory categories into ${targetName}...`);
     
-    // 1. Create/Find target category
-    const targetId = targetName.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'merged_category';
-    let targetCategory = this.loadCategory(targetId);
+    // 1. Always generate a new unique ID for the merge result
+    const targetId = typeid('mcat').toString();
     const root = this.loadRoot();
+    
+    // Find if a category with the same name already exists
+    const existing = root.categories.find(c => c.name === targetName);
+    const allSourceIds = [...new Set([...ids, ...(existing ? [existing.id] : [])])];
+    
+    let targetCategory: MemoryCategoryIndex = {
+      id: targetId,
+      name: targetName,
+      description: targetDescription || `${ids.length} 个主题合并后的记录`,
+      entries: [],
+      updatedAt: Date.now()
+    };
+    
+    // Add to root immediately so we can start merging into it
+    root.categories.push({
+      id: targetId,
+      name: targetCategory.name,
+      description: targetCategory.description,
+      entryCount: 0,
+      lastUpdatedAt: Date.now()
+    });
 
-    if (!targetCategory) {
-      targetCategory = {
-        id: targetId,
-        name: targetName,
-        description: targetDescription || `${ids.length} 个主题合并后的记录`,
-        entries: [],
-        updatedAt: Date.now()
-      };
-      
-      root.categories.push({
-        id: targetId,
-        name: targetCategory.name,
-        description: targetCategory.description,
-        entryCount: 0,
-        lastUpdatedAt: Date.now()
-      });
-    }
-
-    // 2. Move entries from source categories to target
-    for (const id of ids) {
+    // 2. Move entries from all source categories (including any existing one with the same name)
+    for (const id of allSourceIds) {
       if (id === targetId) continue;
       const sourceCategory = this.loadCategory(id);
       if (!sourceCategory) continue;

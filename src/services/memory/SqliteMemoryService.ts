@@ -1,6 +1,12 @@
 import { LocalStore } from '../LocalStore.js';
 import { AgentService } from '../agents/AgentService.js';
-import { MemoryEntry, MemorySearchResult, IMemoryService } from '../../types/memory.js';
+import { 
+  MemoryEntry, 
+  MemorySearchResult, 
+  IMemoryService,
+  MemoryCategorySummary,
+  MemoryCategoryIndex
+} from '../../types/memory.js';
 import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
 import { PromptService } from '../PromptService.js';
@@ -34,9 +40,81 @@ export class SqliteMemoryService implements IMemoryService {
       createdAt: Date.now()
     };
 
-    await this.store.saveMemory(entry);
-    LogService.info(`Memory saved: ${id} (${options.tags?.join(', ') || 'no tags'})`);
+    if (!this.agentService) {
+      await this.addToCategory('uncategorized', '未分类', '包含未经过推理分类的原始记忆片段', entry);
+      return id;
+    }
+
+    try {
+      const categories = await this.getCategories();
+      const categoriesStr = categories.map(c => `[ID: ${c.id}] ${c.name}: ${c.description}`).join('\n');
+      
+      const classifierPrompt = PromptService.getInstance().getPrompt('memory_classifier', {
+        categoriesStr: categoriesStr || '目前暂无分类。',
+        recentEntriesStr: '暂无已存在记忆上下文。', // SQLite 模式下暂不查询上下文
+        content
+      });
+
+      const result = await this.agentService.runAgent('memory_assistant', classifierPrompt, undefined, { silent: true, noTools: true, noSkills: true });
+      
+      let decision;
+      try {
+        const jsonMatch = result.content.match(/\{[\s\S]*\}/);
+        decision = JSON.parse(jsonMatch ? jsonMatch[0] : result.content);
+      } catch (err) {
+        LogService.warn(`Memory classifier output not a valid JSON, falling back to uncategorized. Output: ${result.content}`);
+        decision = { categoryId: 'uncategorized', entrySummary: content.slice(0, 50) + '...' };
+      }
+
+      await this.addToCategory(
+        decision.categoryId || 'uncategorized',
+        decision.categoryName || decision.categoryId,
+        decision.categoryDescription,
+        entry,
+        decision.entrySummary
+      );
+
+      LogService.info(`Memory saved and indexed in SQLite: ${id} -> [${decision.categoryId}]`);
+    } catch (error: any) {
+      LogService.error(`Memory classification failed in SQLite: ${error.message}`);
+      await this.addToCategory('uncategorized', '未分类', '包含分类失败的记录', entry);
+    }
+
     return id;
+  }
+
+  private async addToCategory(
+    catId: string, 
+    catName: string, 
+    catDesc: string | undefined, 
+    entry: any, 
+    entrySummary?: string
+  ) {
+    let category = await this.store.getMemoryCategory(catId);
+    if (!category) {
+      category = {
+        id: catId,
+        name: catName,
+        description: catDesc || `${catName} 相关记录`,
+        entryCount: 0,
+        updatedAt: Date.now()
+      };
+      await this.store.saveMemoryCategory(category);
+    }
+
+    // 更新 entry 中的 categoryId 并保存
+    entry.categoryId = catId;
+    if (entrySummary) {
+      if (!entry.metadata) entry.metadata = {};
+      entry.metadata.summary = entrySummary;
+    }
+    await this.store.saveMemory(entry);
+
+    // 更新分类计数
+    const memories = await this.store.listMemoriesByCategory(catId);
+    category.entryCount = memories.length;
+    category.updatedAt = Date.now();
+    await this.store.saveMemoryCategory(category);
   }
 
   /**
@@ -68,11 +146,7 @@ export class SqliteMemoryService implements IMemoryService {
     // 4. 定义子 Agent 的 Prompt
     const subAgentSystemPrompt = PromptService.getInstance().getPrompt('memory_query_subagent', { query });
 
-    // 5. 启动影子 Agent（临时创建）
-    // 注意：这里我们使用 AgentService 现有的 runAgent 能力，但我们需要一个临时的定义
-    // 为了简单起见，我们可以直接调用底层的 provider 逻辑，或者创建一个临时的 Agent 定义
     try {
-      // 临时保存一个用于记忆总结的 Agent 定义（如果不存在）
       const tempAgentId = 'memory_gatekeeper';
       const existing = await this.store.getAgent(tempAgentId);
       if (!existing) {
@@ -95,14 +169,12 @@ export class SqliteMemoryService implements IMemoryService {
 
       const result = await this.agentService.runAgent(tempAgentId, summaryPrompt, undefined, { silent: true });
       const content = result.content;
-      // 避免返回 AgentService 的默认错误内容
       if (content === 'No response generated (AI returned empty content)') {
         return "";
       }
       return content;
     } catch (error: any) {
       LogService.error(`Memory Sub-Agent failed: ${error.message}`);
-      // 报错时降级回原始数据拼接
       return "记忆检索子 Agent 运行失败，以下为原始数据片段：\n" + rawResults.slice(0, 3).map(r => r.content).join('\n---\n');
     }
   }
@@ -125,7 +197,7 @@ export class SqliteMemoryService implements IMemoryService {
     const contents: string[] = [];
     for (const id of ids) {
       const content = await this.getMemoryFullText(id);
-      if (content !== '内容未找到') {
+      if (content !== '内容未找到' && content !== '记忆内容未找到') {
         contents.push(`[记忆 ID: ${id}]\n${content}`);
       }
     }
@@ -168,7 +240,8 @@ export class SqliteMemoryService implements IMemoryService {
   }
 
   async updateMemoryContent(id: string, content: string): Promise<void> {
-    const memories = await this.store.searchMemories('', { limit: 1000 });
+    // 获取记忆详情
+    const memories = await this.store.listAllMemories();
     const memory = memories.find(m => m.id === id);
     if (!memory) throw new Error("Memory entry not found");
 
@@ -177,51 +250,132 @@ export class SqliteMemoryService implements IMemoryService {
   }
 
   async getMemoryFullText(id: string): Promise<string> {
-    const memories = await this.store.searchMemories('', { limit: 1000 });
+    const memories = await this.store.listAllMemories();
     const memory = memories.find(m => m.id === id);
-    return memory?.content || '内容未找到';
+    return memory?.content || '记忆内容未找到';
   }
 
-  async getCategories(): Promise<any[]> {
-    return [{
-      id: 'default',
-      name: '全部记忆',
-      description: 'SQLite 模式下的全量记忆记录',
-      entryCount: 0,
-      lastUpdatedAt: Date.now()
-    }];
+  async getCategories(): Promise<MemoryCategorySummary[]> {
+    return await this.store.listMemoryCategories();
   }
 
-  async getCategoryDetails(id: string): Promise<any> {
-    const memories = await this.store.searchMemories('', { limit: 100 });
+  async getCategoryDetails(id: string): Promise<MemoryCategoryIndex | null> {
+    const category = await this.store.getMemoryCategory(id);
+    if (!category) return null;
+
+    const memories = await this.store.listMemoriesByCategory(id);
     return {
-      id: 'default',
-      name: '全部记忆',
-      description: 'SQLite 模式下的全量记忆记录',
-      entries: memories.map(m => ({
+      id: category.id,
+      name: category.name,
+      description: category.description,
+      entries: memories.map((m: any) => ({
         id: m.id,
-        summary: m.content.slice(0, 100),
+        summary: m.metadata?.summary || m.content.slice(0, 100),
         importance: m.importance,
         tags: m.tags,
         createdAt: m.createdAt
       })),
-      updatedAt: Date.now()
+      updatedAt: category.updatedAt
     };
   }
 
   async deleteCategory(id: string): Promise<void> {
-    const memories = await this.store.searchMemories('', { limit: 1000 });
+    const memories = await this.store.listMemoriesByCategory(id);
     for (const mem of memories) {
       await this.store.deleteMemory(mem.id);
     }
+    await this.store.deleteMemoryCategory(id);
   }
 
   async updateCategory(id: string, name: string, description?: string): Promise<void> {
-    LogService.warn("Update category not supported in SQLite mode.");
+    const category = await this.store.getMemoryCategory(id);
+    if (!category) throw new Error(`Category ${id} not found`);
+
+    category.name = name;
+    if (description !== undefined) category.description = description;
+    category.updatedAt = Date.now();
+
+    await this.store.saveMemoryCategory(category);
+  }
+
+  async addCategory(name: string, description: string = ''): Promise<string> {
+    const categories = await this.store.listMemoryCategories();
+    const existing = categories.find(c => c.name === name);
+    if (existing) return existing.id;
+
+    const id = typeid('mcat').toString();
+    await this.store.saveMemoryCategory({
+      id,
+      name,
+      description,
+      entryCount: 0,
+      updatedAt: Date.now()
+    });
+    return id;
+  }
+
+  async moveMemoryToCategory(memoryId: string, targetCategoryId: string): Promise<void> {
+    const targetCategory = await this.store.getMemoryCategory(targetCategoryId);
+    if (!targetCategory) throw new Error(`Target category ${targetCategoryId} not found`);
+
+    const memory = await this.store.getMemory(memoryId);
+    if (!memory) throw new Error(`Memory ${memoryId} not found`);
+
+    const oldCategoryId = memory.categoryId;
+    memory.categoryId = targetCategoryId;
+    await this.store.saveMemory(memory);
+
+    // 更新新旧分类计数
+    if (oldCategoryId) {
+      const oldCat = await this.store.getMemoryCategory(oldCategoryId);
+      if (oldCat) {
+        const memories = await this.store.listMemoriesByCategory(oldCategoryId);
+        oldCat.entryCount = memories.length;
+        oldCat.updatedAt = Date.now();
+        await this.store.saveMemoryCategory(oldCat);
+      }
+    }
+
+    const newMemories = await this.store.listMemoriesByCategory(targetCategoryId);
+    targetCategory.entryCount = newMemories.length;
+    targetCategory.updatedAt = Date.now();
+    await this.store.saveMemoryCategory(targetCategory);
   }
 
   async mergeCategories(ids: string[], targetName: string, targetDescription?: string): Promise<string> {
-    LogService.warn("Merge categories not supported in SQLite mode.");
-    return "default";
+    if (ids.length < 2) throw new Error("At least two categories are required for merge");
+
+    const categories = await this.store.listMemoryCategories();
+    const existing = categories.find(c => c.name === targetName);
+    const targetId = typeid('mcat').toString();
+    const allSourceIds = [...new Set([...ids, ...(existing ? [existing.id] : [])])];
+    
+    const targetCategory = {
+      id: targetId,
+      name: targetName,
+      description: targetDescription || `${ids.length} 个主题合并后的记录`,
+      entryCount: 0,
+      updatedAt: Date.now()
+    };
+    await this.store.saveMemoryCategory(targetCategory);
+
+    for (const id of allSourceIds) {
+      if (id === targetId) continue;
+      
+      const memories = await this.store.listMemoriesByCategory(id);
+      for (const mem of memories) {
+        mem.categoryId = targetId;
+        await this.store.saveMemory(mem);
+      }
+      await this.store.deleteMemoryCategory(id);
+    }
+
+    // 更新目标计数
+    const targetMemories = await this.store.listMemoriesByCategory(targetId);
+    targetCategory.entryCount = targetMemories.length;
+    targetCategory.updatedAt = Date.now();
+    await this.store.saveMemoryCategory(targetCategory);
+
+    return targetId;
   }
 }

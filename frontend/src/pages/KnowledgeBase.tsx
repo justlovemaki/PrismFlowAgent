@@ -20,6 +20,8 @@ const KnowledgeBase: React.FC = () => {
   const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
   const [isMerging, setIsMerging] = useState(false);
   const [movingDocId, setMovingDocId] = useState<string | null>(null);
+  const [movingMemoryId, setMovingMemoryId] = useState<string | null>(null);
+  const [isSelectingTarget, setIsSelectingTarget] = useState(false);
   const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
   const [editingCategory, setEditingCategory] = useState<KBCategory | null>(null);
 
@@ -128,13 +130,42 @@ const KnowledgeBase: React.FC = () => {
   const handleAddCategory = async () => {
     if (!newCategory.name.trim()) return;
     try {
-      await knowledgeService.addCategory(newCategory.name, newCategory.description);
-      success('分类创建成功');
+      if (activeTab === 'knowledge') {
+        await knowledgeService.addCategory(newCategory.name, newCategory.description);
+        success('知识分类创建成功');
+        await loadCategories();
+      } else {
+        await knowledgeService.addMemoryCategory(newCategory.name, newCategory.description);
+        success('记忆主题创建成功');
+        await loadMemoryCategories();
+      }
       setIsAddingCategory(false);
       setNewCategory({ name: '', description: '' });
-      await loadCategories();
     } catch (err: any) {
-      toastError('创建分类失败: ' + err.message);
+      toastError('创建失败: ' + err.message);
+    }
+  };
+
+  const handleMoveMemory = async (memoryId: string) => {
+    setMovingMemoryId(memoryId);
+    setIsSelectingTarget(true);
+  };
+
+  const confirmMoveMemory = async (targetCatId: string) => {
+    if (!movingMemoryId) return;
+
+    try {
+      await knowledgeService.moveMemoryToCategory(movingMemoryId, targetCatId);
+      const targetCat = memoryCategories.find(c => c.id === targetCatId);
+      success(`已成功移动到主题: ${targetCat?.name || '新主题'}`);
+      if (selectedMemoryCategoryId) {
+        await loadMemoryDetails(selectedMemoryCategoryId);
+        await loadMemoryCategories();
+      }
+      setIsSelectingTarget(false);
+      setMovingMemoryId(null);
+    } catch (err: any) {
+      toastError('移动失败: ' + err.message);
     }
   };
 
@@ -404,7 +435,7 @@ const KnowledgeBase: React.FC = () => {
           </div>
         </div>
         
-        {activeTab === 'knowledge' && (
+        {activeTab === 'knowledge' ? (
           <div className="flex gap-2 w-full md:w-auto">
             <button 
               onClick={() => setIsAddingCategory(true)}
@@ -423,29 +454,39 @@ const KnowledgeBase: React.FC = () => {
               {isUploading ? '处理中...' : '上传文档'}
             </label>
           </div>
-        )}
-
-        {activeTab === 'memory' && selectedMemoryIds.length > 0 && (
-          <div className="flex items-center justify-between md:justify-start gap-4 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 px-4 md:px-6 py-3 rounded-2xl animate-in slide-in-from-top-4 w-full md:w-auto">
-            <span className="text-xs md:text-sm font-bold text-purple-700 dark:text-purple-300 whitespace-nowrap">
-              已选中 {selectedMemoryIds.length} 条
-            </span>
-            <div className="flex items-center gap-3">
+        ) : (
+          <div className="flex gap-2 w-full md:w-auto">
+            {selectedMemoryIds.length === 0 && (
               <button 
-                onClick={handleMergeMemories}
-                disabled={selectedMemoryIds.length < 2 || isMerging}
-                className="flex items-center gap-2 px-3 md:px-4 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-[10px] md:text-xs font-bold transition-all shadow-md shadow-purple-600/20"
+                onClick={() => setIsAddingCategory(true)}
+                className="flex-1 md:flex-none px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-xl hover:bg-slate-50 transition-all text-xs md:text-sm font-bold"
               >
-                <span className="material-symbols-outlined text-sm hidden md:inline">auto_fix_high</span>
-                {isMerging ? '处理中' : '合并整理'}
+                新建主题
               </button>
-              <button 
-                onClick={() => setSelectedMemoryIds([])}
-                className="text-[10px] md:text-xs text-purple-500 hover:text-purple-700 dark:text-purple-400 font-bold"
-              >
-                取消
-              </button>
-            </div>
+            )}
+            {selectedMemoryIds.length > 0 && (
+              <div className="flex items-center justify-between md:justify-start gap-4 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 px-4 md:px-6 py-3 rounded-2xl animate-in slide-in-from-top-4 w-full md:w-auto">
+                <span className="text-xs md:text-sm font-bold text-purple-700 dark:text-purple-300 whitespace-nowrap">
+                  已选中 {selectedMemoryIds.length} 条
+                </span>
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={handleMergeMemories}
+                    disabled={selectedMemoryIds.length < 2 || isMerging}
+                    className="flex items-center gap-2 px-3 md:px-4 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-[10px] md:text-xs font-bold transition-all shadow-md shadow-purple-600/20"
+                  >
+                    <span className="material-symbols-outlined text-sm hidden md:inline">auto_fix_high</span>
+                    {isMerging ? '处理中' : '合并整理'}
+                  </button>
+                  <button 
+                    onClick={() => setSelectedMemoryIds([])}
+                    className="text-[10px] md:text-xs text-purple-500 hover:text-purple-700 dark:text-purple-400 font-bold"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -715,12 +756,24 @@ const KnowledgeBase: React.FC = () => {
                           </div>
                         </div>
                       </div>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeleteMemory(mem.id); }}
-                        className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all md:opacity-0 md:group-hover:opacity-100"
-                      >
-                        <span className="material-symbols-outlined text-lg">delete</span>
-                      </button>
+                      <div className="flex items-center gap-1 transition-all md:opacity-0 md:group-hover:opacity-100">
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleMoveMemory(mem.id); }}
+                          disabled={movingMemoryId === mem.id}
+                          title="移动到其他主题"
+                          className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-full disabled:opacity-50"
+                        >
+                          <span className={`material-symbols-outlined text-lg ${movingMemoryId === mem.id ? 'animate-spin' : ''}`}>
+                            {movingMemoryId === mem.id ? 'hourglass_top' : 'move_item'}
+                          </span>
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeleteMemory(mem.id); }}
+                          className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all"
+                        >
+                          <span className="material-symbols-outlined text-lg">delete</span>
+                        </button>
+                      </div>
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed bg-slate-50 dark:bg-white/[0.02] p-2 rounded-xl italic">
                       “{mem.summary}”
@@ -754,7 +807,7 @@ const KnowledgeBase: React.FC = () => {
               exit={{ scale: 0.9, opacity: 0 }}
               className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-md p-6 md:p-8"
             >
-              <h3 className="text-xl font-bold mb-6 dark:text-white">创建新知识分类</h3>
+              <h3 className="text-xl font-bold mb-6 dark:text-white">创建新{activeTab === 'knowledge' ? '知识分类' : '记忆主题'}</h3>
               <div className="space-y-4">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">名称</label>
@@ -937,6 +990,55 @@ const KnowledgeBase: React.FC = () => {
                     关闭
                   </button>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Select Target Category Modal */}
+      <AnimatePresence>
+        {isSelectingTarget && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-md p-6 md:p-8"
+            >
+              <h3 className="text-xl font-bold mb-6 dark:text-white">移动记忆片段</h3>
+              <p className="text-xs text-slate-500 mb-4 px-1">请选择目标主题：</p>
+              <div className="space-y-2 max-h-[40vh] overflow-y-auto custom-scrollbar pr-1">
+                {memoryCategories
+                  .filter(c => c.id !== selectedMemoryCategoryId)
+                  .map(cat => (
+                    <button
+                      key={cat.id}
+                      onClick={() => confirmMoveMemory(cat.id)}
+                      className="w-full text-left p-4 rounded-2xl border border-slate-100 dark:border-white/5 hover:bg-slate-50 dark:hover:bg-white/5 transition-all group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <span className="material-symbols-outlined text-purple-500">psychology</span>
+                        <div className="min-w-0 flex-1">
+                          <div className="text-sm font-bold dark:text-white truncate">{cat.name}</div>
+                          <div className="text-[10px] text-slate-400 truncate">{cat.description}</div>
+                        </div>
+                        <span className="material-symbols-outlined text-slate-300 group-hover:text-primary transition-colors">chevron_right</span>
+                      </div>
+                    </button>
+                  ))}
+                {memoryCategories.filter(c => c.id !== selectedMemoryCategoryId).length === 0 && (
+                  <div className="text-center py-6 text-slate-400 text-xs italic">
+                    没有其他可选主题
+                  </div>
+                )}
+              </div>
+              <div className="mt-6">
+                <button 
+                  onClick={() => { setIsSelectingTarget(false); setMovingMemoryId(null); }}
+                  className="w-full py-3 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white rounded-2xl font-bold hover:bg-slate-200 dark:hover:bg-white/10 transition-all"
+                >
+                  取消移动
+                </button>
               </div>
             </motion.div>
           </div>

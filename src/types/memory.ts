@@ -45,6 +45,8 @@ export interface IMemoryService {
   getCategoryDetails(id: string): Promise<MemoryCategoryIndex | null>;
   deleteCategory(id: string): Promise<void>;
   updateCategory(id: string, name: string, description?: string): Promise<void>;
+  addCategory(name: string, description?: string): Promise<string>;
+  moveMemoryToCategory(memoryId: string, targetCategoryId: string): Promise<void>;
 
   /**
    * 合并多条记忆

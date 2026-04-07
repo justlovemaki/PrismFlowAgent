@@ -105,14 +105,24 @@ export class LocalStore {
 
       // 创建记忆相关表
       await this.db.exec(`
+        CREATE TABLE IF NOT EXISTS memory_categories (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT,
+          entry_count INTEGER DEFAULT 0,
+          updated_at INTEGER NOT NULL
+        );
+
         CREATE TABLE IF NOT EXISTS agent_memories (
           id TEXT PRIMARY KEY,
           agent_id TEXT,
+          category_id TEXT,
           content TEXT NOT NULL,
           importance INTEGER DEFAULT 1,
           tags TEXT,
           metadata TEXT,
-          created_at INTEGER NOT NULL
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (category_id) REFERENCES memory_categories(id) ON DELETE SET NULL
         )
       `);
 
@@ -500,10 +510,74 @@ export class LocalStore {
 
   // --- Memory System CRUD ---
 
+  async listMemoryCategories(): Promise<any[]> {
+    const rows = await this.db?.all('SELECT * FROM memory_categories ORDER BY updated_at DESC');
+    return (rows || []).map(row => ({
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      entryCount: row.entry_count,
+      updatedAt: row.updated_at
+    }));
+  }
+
+  async getMemoryCategory(id: string): Promise<any | null> {
+    const row = await this.db?.get('SELECT * FROM memory_categories WHERE id = ?', id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      entryCount: row.entry_count,
+      updatedAt: row.updated_at
+    };
+  }
+
+  async saveMemoryCategory(category: any): Promise<void> {
+    await this.db?.run(
+      'INSERT OR REPLACE INTO memory_categories (id, name, description, entry_count, updated_at) VALUES (?, ?, ?, ?, ?)',
+      category.id, category.name, category.description || '', category.entryCount || 0, category.updatedAt || Date.now()
+    );
+  }
+
+  async deleteMemoryCategory(id: string): Promise<void> {
+    await this.db?.run('DELETE FROM memory_categories WHERE id = ?', id);
+  }
+
+  async listMemoriesByCategory(categoryId: string): Promise<any[]> {
+    const rows = await this.db?.all('SELECT * FROM agent_memories WHERE category_id = ? ORDER BY created_at DESC', categoryId);
+    return (rows || []).map(row => ({
+      id: row.id,
+      agentId: row.agent_id,
+      categoryId: row.category_id,
+      content: row.content,
+      importance: row.importance,
+      tags: row.tags ? JSON.parse(row.tags) : [],
+      metadata: row.metadata ? JSON.parse(row.metadata) : {},
+      createdAt: row.created_at
+    }));
+  }
+
+  async getMemory(id: string): Promise<any | null> {
+    const row = await this.db?.get('SELECT * FROM agent_memories WHERE id = ?', id);
+    if (!row) return null;
+    return {
+      id: row.id,
+      agentId: row.agent_id,
+      categoryId: row.category_id,
+      content: row.content,
+      importance: row.importance,
+      tags: row.tags ? JSON.parse(row.tags) : [],
+      metadata: row.metadata ? JSON.parse(row.metadata) : {},
+      createdAt: row.created_at
+    };
+  }
+
   async saveMemory(memory: any): Promise<void> {
     const val = {
       id: memory.id,
       agent_id: memory.agentId || null,
+      category_id: memory.categoryId || null,
       content: memory.content,
       importance: memory.importance || 1,
       tags: memory.tags ? JSON.stringify(memory.tags) : null,
@@ -512,9 +586,9 @@ export class LocalStore {
     };
     
     await this.db?.run(
-      `INSERT OR REPLACE INTO agent_memories (id, agent_id, content, importance, tags, metadata, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      val.id, val.agent_id, val.content, val.importance, val.tags, val.metadata, val.created_at
+      `INSERT OR REPLACE INTO agent_memories (id, agent_id, category_id, content, importance, tags, metadata, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      val.id, val.agent_id, val.category_id, val.content, val.importance, val.tags, val.metadata, val.created_at
     );
   }
 
