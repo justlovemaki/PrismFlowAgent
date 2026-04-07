@@ -45,6 +45,14 @@ export class MemoryService implements IMemoryService {
     return this.activeService.deleteMemory(id);
   }
 
+  async updateMemoryContent(id: string, content: string): Promise<void> {
+    return this.activeService.updateMemoryContent(id, content);
+  }
+
+  async mergeMemories(ids: string[], options?: any): Promise<string> {
+    return this.activeService.mergeMemories(ids, options);
+  }
+
   async getMemoryFullText(id: string): Promise<string> {
     return this.activeService.getMemoryFullText(id);
   }
@@ -59,6 +67,14 @@ export class MemoryService implements IMemoryService {
 
   async deleteCategory(id: string) {
     return this.activeService.deleteCategory(id);
+  }
+
+  async updateCategory(id: string, name: string, description?: string) {
+    return this.activeService.updateCategory(id, name, description);
+  }
+
+  async mergeCategories(ids: string[], targetName: string, targetDescription?: string) {
+    return this.activeService.mergeCategories(ids, targetName, targetDescription);
   }
 
   async migrateFromSqlite(): Promise<void> {

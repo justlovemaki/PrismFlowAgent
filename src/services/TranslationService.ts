@@ -1,5 +1,6 @@
 import type { AIProvider } from './AIProvider.js';
 import { LogService } from './LogService.js';
+import { PromptService } from './PromptService.js';
 
 export class TranslationService {
   private ai: AIProvider | undefined;
@@ -23,7 +24,10 @@ export class TranslationService {
     }
 
     try {
-      const prompt = `Translate the following text to ${targetLang}. Only return the translated text without any explanations or extra characters.\n\nText:\n${text}`;
+      const prompt = PromptService.getInstance().getPrompt('translation', {
+        targetLang,
+        text
+      });
       const response = await this.ai.generateContent(prompt, [], 'You are a professional translator.');
       
       if (response && response.content) {

@@ -38,11 +38,26 @@ export interface IMemoryService {
   }): Promise<string>;
 
   deleteMemory(id: string): Promise<void>;
+  updateMemoryContent(id: string, content: string): Promise<void>;
   getMemoryFullText(id: string): Promise<string>;
   
   getCategories(): Promise<MemoryCategorySummary[]>;
   getCategoryDetails(id: string): Promise<MemoryCategoryIndex | null>;
   deleteCategory(id: string): Promise<void>;
+  updateCategory(id: string, name: string, description?: string): Promise<void>;
+
+  /**
+   * 合并多条记忆
+   */
+  mergeMemories(ids: string[], options?: { 
+    agentId?: string;
+    targetCategoryId?: string;
+  }): Promise<string>;
+
+  /**
+   * 合并多个记忆主题
+   */
+  mergeCategories(ids: string[], targetName: string, targetDescription?: string): Promise<string>;
 
   // 用于迁移
   migrateFromSqlite?(): Promise<void>;

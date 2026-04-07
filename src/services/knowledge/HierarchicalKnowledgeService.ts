@@ -5,6 +5,7 @@ import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
 import { LocalStore } from '../LocalStore.js';
 import { AgentService } from '../agents/AgentService.js';
+import { PromptService } from '../PromptService.js';
 import { DocumentProcessor } from './DocumentProcessor.js';
 import { 
   IKnowledgeBaseService, 
@@ -133,6 +134,98 @@ export class HierarchicalKnowledgeService implements IKnowledgeBaseService {
     }
   }
 
+  async updateCategory(id: string, name: string, description?: string): Promise<void> {
+    const root = this.loadRoot();
+    const catSum = root.categories.find(c => c.id === id);
+    if (!catSum) throw new Error(`Category ${id} not found`);
+
+    const category = this.loadCategory(id);
+    if (!category) throw new Error(`Category details for ${id} not found`);
+
+    catSum.name = name;
+    if (description !== undefined) catSum.description = description;
+    catSum.lastUpdatedAt = Date.now();
+
+    category.name = name;
+    if (description !== undefined) category.description = description;
+    category.updatedAt = Date.now();
+
+    this.saveCategory(category);
+    this.saveRoot(root);
+  }
+
+  async mergeCategories(ids: string[], targetName: string, targetDescription?: string): Promise<string> {
+    if (ids.length < 2) throw new Error("At least two categories are required for merge");
+
+    LogService.info(`Merging ${ids.length} knowledge categories into ${targetName}...`);
+    
+    // 1. Create/Find target category
+    const targetId = targetName.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'merged_kb';
+    let targetCategory = this.loadCategory(targetId);
+    const root = this.loadRoot();
+
+    if (!targetCategory) {
+      targetCategory = {
+        id: targetId,
+        name: targetName,
+        description: targetDescription || `${ids.length} 个知识库分类合并后的记录`,
+        documents: [],
+        updatedAt: Date.now()
+      };
+      
+      root.categories.push({
+        id: targetId,
+        name: targetCategory.name,
+        description: targetCategory.description,
+        documentCount: 0,
+        lastUpdatedAt: Date.now()
+      });
+    }
+
+    // 2. Move documents from source categories to target
+    for (const id of ids) {
+      if (id === targetId) continue;
+      const sourceCategory = this.loadCategory(id);
+      if (!sourceCategory) continue;
+
+      for (const docSum of sourceCategory.documents) {
+        if (!targetCategory.documents.find(d => d.id === docSum.id)) {
+          targetCategory.documents.push(docSum);
+          
+          // Update the document file itself to point to the new categoryId
+          const docPath = path.join(this.documentDir, `${docSum.id}.json`);
+          if (fs.existsSync(docPath)) {
+            const doc: KBDocument = JSON.parse(fs.readFileSync(docPath, 'utf8'));
+            doc.categoryId = targetId;
+            doc.updatedAt = Date.now();
+            fs.writeFileSync(docPath, JSON.stringify(doc, null, 2));
+          }
+        }
+      }
+
+      // Physical deletion of source category index file
+      const categoryPath = path.join(this.categoryDir, `${id}.json`);
+      if (fs.existsSync(categoryPath)) fs.unlinkSync(categoryPath);
+      
+      root.categories = root.categories.filter(c => c.id !== id);
+    }
+
+    // 3. Save final state
+    targetCategory.updatedAt = Date.now();
+    const targetRootCat = root.categories.find(c => c.id === targetId);
+    if (targetRootCat) {
+      targetRootCat.documentCount = targetCategory.documents.length;
+      targetRootCat.lastUpdatedAt = targetCategory.updatedAt;
+    }
+    
+    root.updatedAt = Date.now();
+    this.saveCategory(targetCategory);
+    this.saveRoot(root);
+
+    LogService.info(`Knowledge categories merged into: ${targetId}`);
+    return targetId;
+  }
+
   async getDocuments(categoryId: string): Promise<KBDocument[]> {
     const category = this.loadCategory(categoryId);
     if (!category) return [];
@@ -158,12 +251,10 @@ export class HierarchicalKnowledgeService implements IKnowledgeBaseService {
     let summary = processed.text.slice(0, 500) + '...';
     if (this.agentService) {
       try {
-        const summaryPrompt = `你是一个专业的文档分析助手。请对以下文档进行精炼总结，提取其核心内容、主题和关键结论。
-文档名称: "${file.name}"
-文档完整内容:
-"${processed.text}"
-
-请直接输出 2-3 句话的中文总结。`;
+        const summaryPrompt = PromptService.getInstance().getPrompt('knowledge_summary', {
+          fileName: file.name,
+          text: processed.text
+        });
         const result = await this.agentService.runAgent('knowledge_assistant', summaryPrompt, undefined, { silent: true, noTools: true });
         summary = result.content.trim();
       } catch (err) {
@@ -254,6 +345,47 @@ export class HierarchicalKnowledgeService implements IKnowledgeBaseService {
     }
   }
 
+  async updateDocumentContent(id: string, content: string): Promise<void> {
+    const docPath = path.join(this.documentDir, `${id}.json`);
+    if (!fs.existsSync(docPath)) throw new Error("Document not found");
+
+    const doc: KBDocument = JSON.parse(fs.readFileSync(docPath, 'utf8'));
+    
+    // 1. Re-chunk the new content
+    const chunks = this.processor.chunk(content);
+    
+    // 2. Clear old chunks
+    const docChunkDir = path.join(this.chunkDir, id);
+    if (fs.existsSync(docChunkDir)) {
+      const files = fs.readdirSync(docChunkDir);
+      files.forEach(f => fs.unlinkSync(path.join(docChunkDir, f)));
+    } else {
+      fs.mkdirSync(docChunkDir, { recursive: true });
+    }
+
+    // 3. Save new chunks
+    chunks.forEach((chunk, index) => {
+      fs.writeFileSync(path.join(docChunkDir, `${index}.md`), chunk);
+    });
+
+    // 4. Update doc metadata
+    doc.chunkCount = chunks.length;
+    doc.updatedAt = Date.now();
+    doc.metadata.hash = crypto.createHash('sha256').update(content).digest('hex');
+    fs.writeFileSync(docPath, JSON.stringify(doc, null, 2));
+
+    // 5. Update Category Index
+    const category = this.loadCategory(doc.categoryId);
+    if (category) {
+      const docSum = category.documents.find(d => d.id === id);
+      if (docSum) {
+        docSum.chunkCount = doc.chunkCount;
+      }
+      category.updatedAt = Date.now();
+      this.saveCategory(category);
+    }
+  }
+
   async getDocumentFullText(id: string): Promise<string> {
     const docChunkDir = path.join(this.chunkDir, id);
     if (!fs.existsSync(docChunkDir)) return '文档内容未找到';
@@ -283,19 +415,11 @@ export class HierarchicalKnowledgeService implements IKnowledgeBaseService {
 
       if (availableCategories.length === 0) return "未找到指定的知识库分类。";
 
-      const rootNavPrompt = `你是一个精准的知识库检索助手。你的任务是根据用户的查询，从知识库的分类中选出**最相关**的分类。
-当前日期：${today}
-
-现有分类及其描述如下：
-${availableCategories.map(c => `- [ID: ${c.id}] ${c.name}: ${c.description}`).join('\n')}
-
-用户查询：
-"${query}"
-
-规则：
-1. **精准匹配**：仅选出可能包含答案的分类。
-2. **宁缺毋滥**：如果没有相关的分类，请直接输出 [].
-只需输出 JSON 数组，例如：["category_id_1"]。`;
+      const rootNavPrompt = PromptService.getInstance().getPrompt('knowledge_root_nav', {
+        today,
+        categoriesStr: availableCategories.map(c => `- [ID: ${c.id}] ${c.name}: ${c.description}`).join('\n'),
+        query
+      });
 
       const navResult = await this.agentService.runAgent('knowledge_assistant', rootNavPrompt, undefined, { silent: true, noTools: true });
       let selectedCatIds: string[] = [];
@@ -314,20 +438,12 @@ ${availableCategories.map(c => `- [ID: ${c.id}] ${c.name}: ${c.description}`).jo
         const category = this.loadCategory(catId);
         if (!category || category.documents.length === 0) continue;
 
-        const docChoicePrompt = `你正在查看知识库分类 [${category.name}] 的内容索引。
-当前日期：${today}
-
-这个分类包含以下文档的摘要：
-${category.documents.map((d, i) => `${i+1}. [ID: ${d.id}] 名称: ${d.name} \n   摘要: ${d.summary}`).join('\n')}
-
-用户查询：
-"${query}"
-
-任务：
-请选出最可能包含查询答案的文档 ID。
-1. **严格相关性**：仅选择内容与查询直接相关的文档。
-2. **时间匹配**：注意用户查询中的时间词（如“上周”、“昨天”）。如果文档日期与查询时间不符，请不要选择。
-只需输出 JSON 数组，例如：["doc_id_1"]。如果没有相关文档，输出 []。`;
+        const docChoicePrompt = PromptService.getInstance().getPrompt('knowledge_doc_choice', {
+          categoryName: category.name,
+          today,
+          docsStr: category.documents.map((d, i) => `${i+1}. [ID: ${d.id}] 名称: ${d.name} \n   摘要: ${d.summary}`).join('\n'),
+          query
+        });
 
         const choiceResult = await this.agentService.runAgent('knowledge_assistant', docChoicePrompt, undefined, { silent: true, noTools: true });
         let chosenIds: string[] = [];
@@ -365,20 +481,11 @@ ${category.documents.map((d, i) => `${i+1}. [ID: ${d.id}] 名称: ${d.name} \n  
 
       if (fullContents.length === 0) return "内容读取失败，请检查文档是否存在。";
 
-      const finalPrompt = `你是一个严谨的知识库专家。请根据以下提供的文档内容，回答用户的查询。
-当前日期：${today}
-
-文档内容：
-${fullContents.join('\n\n---\n\n')}
-
-用户查询：
-"${query}"
-
-注意（必须严格遵守）：
-1. **完全基于文档**：仅根据提供的文档内容进行回答。
-2. **禁止回退到自身知识**：如果文档中没有包含查询所需的答案，你必须诚实地回答：“抱歉，提供的文档中没有关于此问题的相关信息。”，**严禁**使用你自己的预训练知识来补全。
-3. **时间校验**：如果用户询问“上周”而文档只包含“本周”内容，请明确告知用户文档中不包含上周的信息。
-4. **结构化**：使用列表或清晰的段落进行回答，并注明信息来源。`;
+      const finalPrompt = PromptService.getInstance().getPrompt('knowledge_final', {
+        today,
+        context: fullContents.join('\n\n---\n\n'),
+        query
+      });
 
       const finalResult = await this.agentService.runAgent('knowledge_assistant', finalPrompt, undefined, { silent: true, noTools: true });
       return finalResult.content;

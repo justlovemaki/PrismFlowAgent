@@ -59,9 +59,12 @@ export interface IKnowledgeBaseService {
   getCategories(): Promise<KBCategory[]>;
   addCategory(name: string, description?: string): Promise<string>;
   deleteCategory(id: string): Promise<void>;
+  updateCategory(id: string, name: string, description?: string): Promise<void>;
+  mergeCategories(ids: string[], targetName: string, targetDescription?: string): Promise<string>;
   getDocuments(categoryId: string): Promise<KBDocument[]>;
   addDocument(categoryId: string, file: { name: string; path: string; buffer: Buffer }): Promise<string>;
   deleteDocument(id: string): Promise<void>;
+  updateDocumentContent(id: string, content: string): Promise<void>;
   getDocumentFullText(id: string): Promise<string>;
   queryKnowledge(query: string, options?: { categoryIds?: string[]; limit?: number }): Promise<string>;
 }

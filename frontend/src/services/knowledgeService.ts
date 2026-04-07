@@ -34,6 +34,18 @@ export const knowledgeService = {
       method: 'DELETE'
     }),
 
+  updateCategory: (id: string, name: string, description: string): Promise<{ status: string }> =>
+    request(`/api/kb/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, description })
+    }),
+
+  mergeCategories: (ids: string[], targetName: string, targetDescription: string): Promise<{ id: string }> =>
+    request('/api/kb/categories/merge', {
+      method: 'POST',
+      body: JSON.stringify({ ids, targetName, targetDescription })
+    }),
+
   getDocuments: (categoryId: string): Promise<KBDocument[]> => 
     request(`/api/kb/documents?categoryId=${categoryId}`),
 
@@ -71,7 +83,18 @@ export const knowledgeService = {
       method: 'DELETE'
     }),
 
+  moveDocumentToMemory: (id: string): Promise<{ status: string, memoryId: string }> =>
+    request(`/api/kb/documents/${id}/move-to-memory`, {
+      method: 'POST'
+    }),
+
   getDocumentContent: (id: string): Promise<{ content: string }> => request(`/api/kb/documents/${id}/content`),
+
+  updateDocumentContent: (id: string, content: string): Promise<{ status: string }> =>
+    request(`/api/kb/documents/${id}/content`, {
+      method: 'PUT',
+      body: JSON.stringify({ content })
+    }),
 
   queryKnowledge: (query: string, categoryIds?: string[], limit: number = 3): Promise<{ answer: string }> => 
     request('/api/kb/query', {
@@ -88,7 +111,25 @@ export const knowledgeService = {
     method: 'DELETE'
   }),
 
+  updateMemoryCategory: (id: string, name: string, description: string): Promise<{ status: string }> =>
+    request(`/api/memory/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ name, description })
+    }),
+
+  mergeMemoryCategories: (ids: string[], targetName: string, targetDescription: string): Promise<{ id: string }> =>
+    request('/api/memory/categories/merge', {
+      method: 'POST',
+      body: JSON.stringify({ ids, targetName, targetDescription })
+    }),
+
   getMemoryContent: (id: string): Promise<{ content: string }> => request(`/api/memory/${id}/content`),
+
+  updateMemoryContent: (id: string, content: string): Promise<{ status: string }> =>
+    request(`/api/memory/${id}/content`, {
+      method: 'PUT',
+      body: JSON.stringify({ content })
+    }),
 
   queryMemory: (query: string, categoryIds?: string[], limit: number = 3): Promise<{ answer: string }> => 
     request('/api/memory/query', {
@@ -99,6 +140,12 @@ export const knowledgeService = {
   deleteMemory: (id: string): Promise<{ status: string }> => 
     request(`/api/memory/${id}`, {
       method: 'DELETE'
+    }),
+
+  mergeMemories: (ids: string[], targetCategoryId?: string): Promise<{ id: string }> =>
+    request('/api/memory/merge', {
+      method: 'POST',
+      body: JSON.stringify({ ids, targetCategoryId })
     })
 };
 

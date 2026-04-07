@@ -17,6 +17,11 @@ const KnowledgeBase: React.FC = () => {
   const [memoryCategories, setMemoryCategories] = useState<KBCategory[]>([]);
   const [selectedMemoryCategoryId, setSelectedMemoryCategoryId] = useState<string | null>(null);
   const [memoryEntries, setMemoryEntries] = useState<any[]>([]);
+  const [selectedMemoryIds, setSelectedMemoryIds] = useState<string[]>([]);
+  const [isMerging, setIsMerging] = useState(false);
+  const [movingDocId, setMovingDocId] = useState<string | null>(null);
+  const [selectedCategoryIds, setSelectedCategoryIds] = useState<string[]>([]);
+  const [editingCategory, setEditingCategory] = useState<KBCategory | null>(null);
 
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
@@ -32,6 +37,8 @@ const KnowledgeBase: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<{ id: string, name: string, type: 'knowledge' | 'memory' } | null>(null);
   const [itemContent, setItemContent] = useState<string | null>(null);
   const [isLoadingContent, setIsLoadingContent] = useState(false);
+  const [isEditingItem, setIsEditingItem] = useState(false);
+  const [editedContent, setEditedContent] = useState<string>('');
 
   useEffect(() => {
     if (activeTab === 'knowledge') {
@@ -39,6 +46,7 @@ const KnowledgeBase: React.FC = () => {
     } else {
       loadMemoryCategories();
     }
+    setSelectedCategoryIds([]); // Reset selection on tab change
   }, [activeTab]);
 
   useEffect(() => {
@@ -130,22 +138,71 @@ const KnowledgeBase: React.FC = () => {
     }
   };
 
+  const handleUpdateCategory = async () => {
+    if (!editingCategory || !editingCategory.name.trim()) return;
+    try {
+      if (activeTab === 'knowledge') {
+        await knowledgeService.updateCategory(editingCategory.id, editingCategory.name, editingCategory.description);
+        success('知识分类更新成功');
+        await loadCategories();
+      } else {
+        await knowledgeService.updateMemoryCategory(editingCategory.id, editingCategory.name, editingCategory.description);
+        success('记忆主题更新成功');
+        await loadMemoryCategories();
+      }
+      setEditingCategory(null);
+    } catch (err: any) {
+      toastError('更新失败: ' + err.message);
+    }
+  };
+
+  const handleMergeCategories = async () => {
+    if (selectedCategoryIds.length < 2) return;
+    const currentCategories = activeTab === 'knowledge' ? categories : memoryCategories;
+    const targetName = prompt("请输入合并后的新分类名称:", currentCategories.find(c => c.id === selectedCategoryIds[0])?.name || "");
+    if (!targetName) return;
+
+    try {
+      setIsMerging(true);
+      if (activeTab === 'knowledge') {
+        await knowledgeService.mergeCategories(selectedCategoryIds, targetName, `由 ${selectedCategoryIds.length} 个分类合并而成`);
+        success(`成功合并知识分类`);
+        await loadCategories();
+      } else {
+        await knowledgeService.mergeMemoryCategories(selectedCategoryIds, targetName, `由 ${selectedCategoryIds.length} 个主题合并而成`);
+        success(`成功合并记忆主题`);
+        await loadMemoryCategories();
+      }
+      setSelectedCategoryIds([]);
+    } catch (err: any) {
+      toastError('合并失败: ' + err.message);
+    } finally {
+      setIsMerging(false);
+    }
+  };
+
   const handleDeleteCategory = async (category: KBCategory) => {
     const confirmed = confirm(`确定删除分类“${category.name}”吗？这将同时删除该分类下的所有文档与分块。`);
     if (!confirmed) return;
 
     try {
       setDeletingCategoryId(category.id);
-      const nextCategory = categories.find(item => item.id !== category.id) ?? null;
-      await knowledgeService.deleteCategory(category.id);
+      const nextCategory = (activeTab === 'knowledge' ? categories : memoryCategories).find(item => item.id !== category.id) ?? null;
+      
+      if (activeTab === 'knowledge') {
+        await knowledgeService.deleteCategory(category.id);
+        if (selectedCategoryId === category.id) setSelectedCategoryId(nextCategory?.id ?? null);
+        await loadCategories();
+      } else {
+        await knowledgeService.deleteMemoryCategory(category.id);
+        if (selectedMemoryCategoryId === category.id) setSelectedMemoryCategoryId(nextCategory?.id ?? null);
+        await loadMemoryCategories();
+      }
+      
       success('分类已删除');
       setSearchResult(null);
-      if (selectedCategoryId === category.id) {
-        setSelectedCategoryId(nextCategory?.id ?? null);
-      }
-      await loadCategories();
     } catch (err: any) {
-      toastError('删除分类失败: ' + err.message);
+      toastError('删除失败: ' + err.message);
     } finally {
       setDeletingCategoryId(null);
     }
@@ -160,7 +217,7 @@ const KnowledgeBase: React.FC = () => {
       await knowledgeService.uploadDocument(selectedCategoryId, file);
       success('文档上传并处理完成');
       await loadDocuments(selectedCategoryId);
-      await loadCategories(); // 更新文档计数
+      await loadCategories();
     } catch (err: any) {
       toastError('上传失败: ' + err.message);
     } finally {
@@ -183,11 +240,31 @@ const KnowledgeBase: React.FC = () => {
     }
   };
 
+  const handleMoveToMemory = async (doc: KBDocument) => {
+    const confirmed = confirm(`确定将文档“${doc.name}”转换为长期记忆吗？\n\n系统将自动提取文档全文，由 AI 进行深度整理、格式化并存入记忆库。该过程可能需要几秒钟。`);
+    if (!confirmed) return;
+
+    try {
+      setMovingDocId(doc.id);
+      await knowledgeService.moveDocumentToMemory(doc.id);
+      success('文档已成功整理并转为长期记忆');
+      if (selectedCategoryId) {
+        await loadDocuments(selectedCategoryId);
+        await loadCategories();
+      }
+    } catch (err: any) {
+      toastError('转换失败: ' + err.message);
+    } finally {
+      setMovingDocId(null);
+    }
+  };
+
   const handleDeleteMemory = async (memId: string) => {
     if (!confirm('确定删除该记忆条目吗？')) return;
     try {
       await knowledgeService.deleteMemory(memId);
       success('记忆已删除');
+      setSelectedMemoryIds(prev => prev.filter(id => id !== memId));
       if (selectedMemoryCategoryId) {
         await loadMemoryDetails(selectedMemoryCategoryId);
         await loadMemoryCategories();
@@ -197,42 +274,75 @@ const KnowledgeBase: React.FC = () => {
     }
   };
 
-  const handleDeleteMemoryCategory = async (category: KBCategory) => {
-    const confirmed = confirm(`确定删除记忆主题“${category.name}”吗？这将同时删除该主题下的所有记忆片段。`);
+  const handleMergeMemories = async () => {
+    if (selectedMemoryIds.length < 2) return;
+    const confirmed = confirm(`确定将选中的 ${selectedMemoryIds.length} 条记忆合并为一条吗？这会生成一条包含所有细节的新记忆，并删除旧记忆。`);
     if (!confirmed) return;
 
     try {
-      setDeletingCategoryId(category.id);
-      const nextCategory = memoryCategories.find(item => item.id !== category.id) ?? null;
-      await knowledgeService.deleteMemoryCategory(category.id);
-      success('记忆主题已删除');
-      setSearchResult(null);
-      if (selectedMemoryCategoryId === category.id) {
-        setSelectedMemoryCategoryId(nextCategory?.id ?? null);
+      setIsMerging(true);
+      const res = await knowledgeService.mergeMemories(selectedMemoryIds, selectedMemoryCategoryId || undefined);
+      success(`成功合并 ${selectedMemoryIds.length} 条记忆，生成新记录 ${res.id.slice(-6)}`);
+      setSelectedMemoryIds([]);
+      if (selectedMemoryCategoryId) {
+        await loadMemoryDetails(selectedMemoryCategoryId);
+        await loadMemoryCategories();
       }
-      await loadMemoryCategories();
     } catch (err: any) {
-      toastError('删除记忆主题失败: ' + err.message);
+      toastError('合并失败: ' + err.message);
     } finally {
-      setDeletingCategoryId(null);
+      setIsMerging(false);
     }
+  };
+
+  const toggleSelectMemory = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedMemoryIds(prev => 
+      prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]
+    );
   };
 
   const handleShowDetail = async (id: string, name: string, type: 'knowledge' | 'memory') => {
     setSelectedItem({ id, name, type });
     setItemContent(null);
+    setEditedContent('');
+    setIsEditingItem(false);
     setIsLoadingContent(true);
     try {
       if (type === 'knowledge') {
         const res = await knowledgeService.getDocumentContent(id);
         setItemContent(res.content);
+        setEditedContent(res.content);
       } else {
         const res = await knowledgeService.getMemoryContent(id);
         setItemContent(res.content);
+        setEditedContent(res.content);
       }
     } catch (err: any) {
       toastError('获取内容失败: ' + err.message);
       setSelectedItem(null);
+    } finally {
+      setIsLoadingContent(false);
+    }
+  };
+
+  const handleSaveContent = async () => {
+    if (!selectedItem) return;
+    try {
+      setIsLoadingContent(true);
+      if (selectedItem.type === 'knowledge') {
+        await knowledgeService.updateDocumentContent(selectedItem.id, editedContent);
+        success('文档内容已更新');
+        if (selectedCategoryId) await loadDocuments(selectedCategoryId);
+      } else {
+        await knowledgeService.updateMemoryContent(selectedItem.id, editedContent);
+        success('记忆内容已更新');
+        if (selectedMemoryCategoryId) await loadMemoryDetails(selectedMemoryCategoryId);
+      }
+      setItemContent(editedContent);
+      setIsEditingItem(false);
+    } catch (err: any) {
+      toastError('保存失败: ' + err.message);
     } finally {
       setIsLoadingContent(false);
     }
@@ -260,20 +370,20 @@ const KnowledgeBase: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-20 md:pb-6">
       <div className="flex flex-col md:flex-row md:justify-between md:items-end gap-4">
         <div className="flex-1 min-w-0">
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white truncate">知识与记忆 (Knowledge & Memory)</h2>
-          <p className="text-sm text-slate-500 truncate">
+          <h2 className="text-xl md:text-2xl font-bold text-slate-800 dark:text-white truncate">知识与记忆</h2>
+          <p className="text-xs md:text-sm text-slate-500 truncate">
             {activeTab === 'knowledge' 
-              ? '管理您的专业文档，为 AI 提供行业背景知识。' 
-              : '查看 AI 在对话中沉淀的长期记忆与经验。'}
+              ? '管理专业文档，为 AI 提供行业背景。' 
+              : '查看对话中沉淀的长期记忆与经验。'}
           </p>
           
-          <div className="flex gap-1 mt-4 bg-slate-100 dark:bg-white/5 p-1 rounded-xl w-fit">
+          <div className="flex gap-1 mt-4 bg-slate-100 dark:bg-white/5 p-1 rounded-xl w-full md:w-fit overflow-x-auto no-scrollbar">
             <button 
               onClick={() => { setActiveTab('knowledge'); setSearchResult(null); }}
-              className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${
+              className={`flex-1 md:flex-none px-4 py-1.5 rounded-lg text-xs md:text-sm font-bold transition-all whitespace-nowrap ${
                 activeTab === 'knowledge' 
                   ? 'bg-white dark:bg-white/10 text-primary dark:text-white shadow-sm' 
                   : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
@@ -283,7 +393,7 @@ const KnowledgeBase: React.FC = () => {
             </button>
             <button 
               onClick={() => { setActiveTab('memory'); setSearchResult(null); }}
-              className={`px-4 py-1.5 rounded-lg text-sm font-bold transition-all ${
+              className={`flex-1 md:flex-none px-4 py-1.5 rounded-lg text-xs md:text-sm font-bold transition-all whitespace-nowrap ${
                 activeTab === 'memory' 
                   ? 'bg-white dark:bg-white/10 text-primary dark:text-white shadow-sm' 
                   : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
@@ -295,14 +405,14 @@ const KnowledgeBase: React.FC = () => {
         </div>
         
         {activeTab === 'knowledge' && (
-          <div className="flex gap-3">
+          <div className="flex gap-2 w-full md:w-auto">
             <button 
               onClick={() => setIsAddingCategory(true)}
-              className="px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-xl hover:bg-slate-50 transition-all text-sm font-bold"
+              className="flex-1 md:flex-none px-4 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-white rounded-xl hover:bg-slate-50 transition-all text-xs md:text-sm font-bold"
             >
               新建分类
             </button>
-            <label className={`px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all text-sm font-bold cursor-pointer shadow-lg shadow-primary/20 ${!selectedCategoryId ? 'opacity-50 cursor-not-allowed' : ''}`}>
+            <label className={`flex-1 md:flex-none px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all text-xs md:text-sm font-bold cursor-pointer text-center shadow-lg shadow-primary/20 ${!selectedCategoryId ? 'opacity-50 cursor-not-allowed' : ''}`}>
               <input 
                 type="file" 
                 className="hidden" 
@@ -314,13 +424,37 @@ const KnowledgeBase: React.FC = () => {
             </label>
           </div>
         )}
+
+        {activeTab === 'memory' && selectedMemoryIds.length > 0 && (
+          <div className="flex items-center justify-between md:justify-start gap-4 bg-purple-50 dark:bg-purple-500/10 border border-purple-200 dark:border-purple-500/20 px-4 md:px-6 py-3 rounded-2xl animate-in slide-in-from-top-4 w-full md:w-auto">
+            <span className="text-xs md:text-sm font-bold text-purple-700 dark:text-purple-300 whitespace-nowrap">
+              已选中 {selectedMemoryIds.length} 条
+            </span>
+            <div className="flex items-center gap-3">
+              <button 
+                onClick={handleMergeMemories}
+                disabled={selectedMemoryIds.length < 2 || isMerging}
+                className="flex items-center gap-2 px-3 md:px-4 py-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-lg text-[10px] md:text-xs font-bold transition-all shadow-md shadow-purple-600/20"
+              >
+                <span className="material-symbols-outlined text-sm hidden md:inline">auto_fix_high</span>
+                {isMerging ? '处理中' : '合并整理'}
+              </button>
+              <button 
+                onClick={() => setSelectedMemoryIds([])}
+                className="text-[10px] md:text-xs text-purple-500 hover:text-purple-700 dark:text-purple-400 font-bold"
+              >
+                取消
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* Sidebar */}
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-1 space-y-4 order-2 lg:order-1">
           <div className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-4 shadow-sm">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 px-2">语义检索测试</h3>
+            <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4 px-2">语义检索测试</h3>
             <div className="space-y-3">
               <textarea 
                 value={query}
@@ -333,12 +467,12 @@ const KnowledgeBase: React.FC = () => {
                 }}
                 placeholder={activeTab === 'knowledge' ? "查询知识库文档..." : "检索历史记忆片段..."}
                 className="w-full p-3 bg-slate-50 dark:bg-black/20 border border-slate-200 dark:border-white/5 rounded-2xl text-[11px] outline-none focus:ring-2 focus:ring-primary/20 resize-none dark:text-white"
-                rows={3}
+                rows={2}
               />
               <button 
                 onClick={handleQuery}
                 disabled={isSearching || !query.trim()}
-                className="w-full py-2 bg-slate-800 text-white rounded-xl text-[11px] font-bold hover:bg-slate-900 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full py-2.5 bg-slate-800 text-white rounded-xl text-[11px] font-bold hover:bg-slate-900 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isSearching ? '检索中...' : (
                   <>
@@ -351,64 +485,95 @@ const KnowledgeBase: React.FC = () => {
           </div>
 
           <div className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-4 shadow-sm">
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-4 px-2">
-              {activeTab === 'knowledge' ? '知识分类' : '记忆主题'}
-            </h3>
-            <div className="space-y-1">
+            <div className="flex justify-between items-center mb-4 px-2">
+              <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                {activeTab === 'knowledge' ? '知识分类' : '记忆主题'}
+              </h3>
+              {selectedCategoryIds.length >= 2 && (
+                <button 
+                  onClick={handleMergeCategories}
+                  className={`text-[9px] ${activeTab === 'knowledge' ? 'bg-primary/10 text-primary' : 'bg-purple-100 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400'} px-2 py-1 rounded-md font-bold hover:opacity-80 transition-all`}
+                >
+                  合并 ({selectedCategoryIds.length})
+                </button>
+              )}
+            </div>
+            <div className="space-y-1 max-h-[40vh] lg:max-h-none overflow-y-auto custom-scrollbar pr-1">
               {(activeTab === 'knowledge' ? categories : memoryCategories).map(cat => (
                 <div
                   key={cat.id}
-                  className={`w-full flex items-center justify-between p-3 rounded-2xl transition-all ${
+                  className={`w-full flex items-center justify-between p-2.5 md:p-3 rounded-2xl transition-all ${
                     (activeTab === 'knowledge' ? selectedCategoryId : selectedMemoryCategoryId) === cat.id 
                       ? 'bg-primary text-white shadow-md shadow-primary/20' 
-                      : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5'
+                      : (selectedCategoryIds.includes(cat.id) ? (activeTab === 'knowledge' ? 'bg-primary/5 text-primary border border-primary/20' : 'bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border border-purple-200 dark:border-purple-500/20') : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-white/5')
                   }`}
                 >
                   <button
-                    onClick={() => activeTab === 'knowledge' ? setSelectedCategoryId(cat.id) : setSelectedMemoryCategoryId(cat.id)}
-                    className="flex items-center gap-3 min-w-0 flex-1 text-left"
+                    onClick={() => {
+                      if (activeTab === 'knowledge') {
+                        setSelectedCategoryId(cat.id);
+                      } else {
+                        setSelectedMemoryCategoryId(cat.id);
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      setSelectedCategoryIds(prev => 
+                        prev.includes(cat.id) ? prev.filter(id => id !== cat.id) : [...prev, cat.id]
+                      );
+                    }}
+                    className="flex items-center gap-2 md:gap-3 min-w-0 flex-1 text-left"
                   >
-                    <span className="material-symbols-outlined text-xl">
-                      {activeTab === 'knowledge' ? 'folder' : 'psychology'}
+                    <span 
+                      className={`material-symbols-outlined text-lg md:text-xl ${selectedCategoryIds.includes(cat.id) ? 'fill-1' : ''}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedCategoryIds(prev => 
+                          prev.includes(cat.id) ? prev.filter(id => id !== cat.id) : [...prev, cat.id]
+                        );
+                      }}
+                    >
+                      {selectedCategoryIds.includes(cat.id) ? 'check_box' : (activeTab === 'knowledge' ? 'folder' : 'psychology')}
                     </span>
-                    <span className="text-sm font-bold truncate max-w-[120px]">{cat.name}</span>
+                    <span className="text-xs md:text-sm font-bold truncate max-w-[80px] md:max-w-[100px]">{cat.name}</span>
                   </button>
-                  <div className="flex items-center gap-1 shrink-0 ml-2">
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full ${
-                      (activeTab === 'knowledge' ? selectedCategoryId : selectedMemoryCategoryId) === cat.id ? 'bg-white/20' : 'bg-slate-100 dark:bg-white/5'
-                    }`}>
-                      {cat.documentCount ?? (cat as any).entryCount}
-                    </span>
-                    {(activeTab === 'knowledge' || activeTab === 'memory') && (
-                      <button
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          activeTab === 'knowledge' ? handleDeleteCategory(cat) : handleDeleteMemoryCategory(cat); 
-                        }}
-                        disabled={deletingCategoryId === cat.id}
-                        className={`w-7 h-7 flex items-center justify-center rounded-full transition-all ${
-                          (activeTab === 'knowledge' ? selectedCategoryId : selectedMemoryCategoryId) === cat.id
-                            ? 'text-white/80 hover:text-white hover:bg-white/15'
-                            : 'text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10'
-                        } disabled:opacity-50`}
-                      >
-                        <span className="material-symbols-outlined text-base">
-                          {deletingCategoryId === cat.id ? 'hourglass_top' : 'delete'}
-                        </span>
-                      </button>
-                    )}
+                  <div className="flex items-center gap-0.5 md:gap-1 shrink-0 ml-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setEditingCategory(cat); }}
+                      className={`w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full transition-all ${
+                        (activeTab === 'knowledge' ? selectedCategoryId : selectedMemoryCategoryId) === cat.id ? 'text-white/80 hover:text-white hover:bg-white/15' : 'text-slate-300 hover:text-primary'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-sm md:text-base">edit</span>
+                    </button>
+                    <button
+                      onClick={(e) => { 
+                        e.stopPropagation(); 
+                        handleDeleteCategory(cat); 
+                      }}
+                      disabled={deletingCategoryId === cat.id}
+                      className={`w-6 h-6 md:w-7 md:h-7 flex items-center justify-center rounded-full transition-all ${
+                        (activeTab === 'knowledge' ? selectedCategoryId : selectedMemoryCategoryId) === cat.id
+                          ? 'text-white/80 hover:text-white hover:bg-white/15'
+                          : 'text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10'
+                      } disabled:opacity-50`}
+                    >
+                      <span className="material-symbols-outlined text-sm md:text-base">
+                        {deletingCategoryId === cat.id ? 'hourglass_top' : 'delete'}
+                      </span>
+                    </button>
                   </div>
                 </div>
               ))}
               {(activeTab === 'knowledge' ? categories : memoryCategories).length === 0 && !isLoading && (
-                <div className="text-center py-8 text-slate-400 text-xs">暂无内容</div>
+                <div className="text-center py-8 text-slate-400 text-xs">暂无分类</div>
               )}
             </div>
           </div>
         </div>
 
         {/* Content Area */}
-        <div className="lg:col-span-3 space-y-6">
+        <div className="lg:col-span-3 space-y-6 order-1 lg:order-2">
           <AnimatePresence mode="wait">
             {searchResult ? (
               <motion.div 
@@ -440,9 +605,17 @@ const KnowledgeBase: React.FC = () => {
                 {documents.map(doc => (
                   <div 
                     key={doc.id} 
-                    onClick={() => handleShowDetail(doc.id, doc.name, 'knowledge')}
-                    className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-5 shadow-sm hover:shadow-md transition-all group cursor-pointer"
+                    onClick={() => movingDocId !== doc.id && handleShowDetail(doc.id, doc.name, 'knowledge')}
+                    className={`bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-5 shadow-sm hover:shadow-md transition-all group relative overflow-hidden ${
+                      movingDocId === doc.id ? 'opacity-75 cursor-wait' : 'cursor-pointer'
+                    }`}
                   >
+                    {movingDocId === doc.id && (
+                      <div className="absolute inset-0 z-10 bg-white/60 dark:bg-surface-dark/80 backdrop-blur-[2px] flex flex-col items-center justify-center text-primary text-center px-4">
+                        <div className="w-6 h-6 border-2 border-primary/20 border-t-primary rounded-full animate-spin mb-2"></div>
+                        <span className="text-[10px] font-bold">AI 深度整理中...</span>
+                      </div>
+                    )}
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
@@ -461,16 +634,26 @@ const KnowledgeBase: React.FC = () => {
                           </span>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-slate-900 dark:text-white truncate" title={doc.name}>{doc.name}</h4>
+                          <h4 className="font-bold text-slate-900 dark:text-white truncate text-sm md:text-base" title={doc.name}>{doc.name}</h4>
                           <p className="text-[10px] text-slate-400">{doc.type.toUpperCase()} · {doc.chunkCount} 个分块</p>
                         </div>
                       </div>
-                      <button 
-                        onClick={(e) => { e.stopPropagation(); handleDeleteDocument(doc.id); }}
-                        className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all md:opacity-0 md:group-hover:opacity-100"
-                      >
-                        <span className="material-symbols-outlined text-lg">delete</span>
-                      </button>
+                      <div className={`flex items-center gap-1 transition-all ${movingDocId === doc.id ? 'invisible' : 'md:opacity-0 md:group-hover:opacity-100'}`}>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleMoveToMemory(doc); }}
+                          title="转为长期记忆"
+                          className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-purple-500 hover:bg-purple-50 dark:hover:bg-purple-500/10 rounded-full"
+                        >
+                          <span className="material-symbols-outlined text-lg">psychology</span>
+                        </button>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeleteDocument(doc.id); }}
+                          title="删除文档"
+                          className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full"
+                        >
+                          <span className="material-symbols-outlined text-lg">delete</span>
+                        </button>
+                      </div>
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed bg-slate-50 dark:bg-white/[0.02] p-2 rounded-xl break-words">
                       {doc.summary}
@@ -482,7 +665,7 @@ const KnowledgeBase: React.FC = () => {
                   </div>
                 ))}
                 {documents.length === 0 && !isLoading && (
-                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
+                  <div className="col-span-full flex flex-col items-center justify-center py-10 md:py-20 text-slate-400">
                     <span className="material-symbols-outlined text-5xl mb-4 opacity-20">inventory_2</span>
                     <p className="text-sm font-bold">该分类下暂无文档</p>
                     <p className="text-xs mt-1">点击右上角按钮开始上传</p>
@@ -500,15 +683,26 @@ const KnowledgeBase: React.FC = () => {
                   <div 
                     key={mem.id} 
                     onClick={() => handleShowDetail(mem.id, `记忆片段 ${mem.id.slice(-6)}`, 'memory')}
-                    className="bg-white dark:bg-surface-dark rounded-3xl border border-slate-200 dark:border-white/5 p-5 shadow-sm hover:shadow-md transition-all group cursor-pointer"
+                    className={`bg-white dark:bg-surface-dark rounded-3xl border ${
+                      selectedMemoryIds.includes(mem.id) 
+                        ? 'border-purple-500 shadow-md shadow-purple-500/10' 
+                        : 'border-slate-200 dark:border-white/5 shadow-sm'
+                    } p-5 hover:shadow-md transition-all group cursor-pointer relative`}
                   >
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                          <span className="material-symbols-outlined text-2xl">sticky_note</span>
+                        <div 
+                          className="w-10 h-10 rounded-xl bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 cursor-pointer hover:scale-110 transition-transform"
+                          onClick={(e) => toggleSelectMemory(mem.id, e)}
+                        >
+                          <span className={`material-symbols-outlined text-2xl ${
+                            selectedMemoryIds.includes(mem.id) ? 'fill-1' : ''
+                          }`}>
+                            {selectedMemoryIds.includes(mem.id) ? 'check_circle' : 'sticky_note'}
+                          </span>
                         </div>
                         <div className="min-w-0 flex-1">
-                          <h4 className="font-bold text-slate-900 dark:text-white truncate">记忆片段 {mem.id.slice(-6)}</h4>
+                          <h4 className="font-bold text-slate-900 dark:text-white truncate text-sm md:text-base">记忆片段 {mem.id.slice(-6)}</h4>
                           <div className="flex flex-wrap items-center gap-2">
                             <span className={`text-[10px] font-bold ${
                               mem.importance >= 4 ? 'text-orange-500' : 'text-slate-400'
@@ -523,7 +717,7 @@ const KnowledgeBase: React.FC = () => {
                       </div>
                       <button 
                         onClick={(e) => { e.stopPropagation(); handleDeleteMemory(mem.id); }}
-                        className="w-8 h-8 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-full transition-all md:opacity-0 md:group-hover:opacity-100"
+                        className="w-8 h-8 flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-all md:opacity-0 md:group-hover:opacity-100"
                       >
                         <span className="material-symbols-outlined text-lg">delete</span>
                       </button>
@@ -538,7 +732,7 @@ const KnowledgeBase: React.FC = () => {
                   </div>
                 ))}
                 {memoryEntries.length === 0 && !isLoading && (
-                  <div className="col-span-full flex flex-col items-center justify-center py-20 text-slate-400">
+                  <div className="col-span-full flex flex-col items-center justify-center py-10 md:py-20 text-slate-400">
                     <span className="material-symbols-outlined text-5xl mb-4 opacity-20">cloud_off</span>
                     <p className="text-sm font-bold">该主题下暂无记忆</p>
                     <p className="text-xs mt-1">记忆会在您与智能体的对话中自动生成</p>
@@ -558,7 +752,7 @@ const KnowledgeBase: React.FC = () => {
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-md p-8"
+              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-md p-6 md:p-8"
             >
               <h3 className="text-xl font-bold mb-6 dark:text-white">创建新知识分类</h3>
               <div className="space-y-4">
@@ -602,18 +796,70 @@ const KnowledgeBase: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Detail Modal */}
+      {/* Edit Category Modal */}
       <AnimatePresence>
-        {selectedItem && (
+        {editingCategory && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
             <motion.div 
               initial={{ scale: 0.9, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
               exit={{ scale: 0.9, opacity: 0 }}
-              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
+              className="bg-white dark:bg-surface-dark rounded-[32px] shadow-2xl w-full max-w-md p-6 md:p-8"
             >
-              <div className="p-8 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/5">
-                <div>
+              <h3 className="text-xl font-bold mb-6 dark:text-white">编辑{activeTab === 'knowledge' ? '知识分类' : '记忆主题'}</h3>
+              <div className="space-y-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">名称</label>
+                  <input 
+                    type="text"
+                    value={editingCategory.name}
+                    onChange={e => setEditingCategory({...editingCategory, name: e.target.value})}
+                    placeholder="分类名称"
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase ml-1">描述</label>
+                  <textarea 
+                    value={editingCategory.description}
+                    onChange={e => setEditingCategory({...editingCategory, description: e.target.value})}
+                    placeholder="说明该分类包含的内容"
+                    className="w-full px-4 py-2.5 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 dark:text-white"
+                    rows={3}
+                  />
+                </div>
+                <div className="flex gap-4 pt-4">
+                  <button 
+                    onClick={handleUpdateCategory}
+                    className="flex-1 py-3 bg-primary text-white rounded-2xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20"
+                  >
+                    保存修改
+                  </button>
+                  <button 
+                    onClick={() => setEditingCategory(null)}
+                    className="flex-1 py-3 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white rounded-2xl font-bold hover:bg-slate-200 dark:hover:bg-white/10 transition-all"
+                  >
+                    取消
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Detail Modal */}
+      <AnimatePresence>
+        {selectedItem && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 md:p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              className="bg-white dark:bg-surface-dark rounded-2xl md:rounded-[32px] shadow-2xl w-full max-w-4xl max-h-[95vh] md:max-h-[85vh] flex flex-col overflow-hidden"
+            >
+              <div className="p-4 md:p-8 border-b border-slate-100 dark:border-white/5 flex justify-between items-center bg-slate-50/50 dark:bg-white/5">
+                <div className="min-w-0">
                   <div className="flex items-center gap-2 text-primary mb-1">
                     <span className="material-symbols-outlined text-sm">
                       {selectedItem.type === 'knowledge' ? 'description' : 'psychology'}
@@ -622,38 +868,75 @@ const KnowledgeBase: React.FC = () => {
                       {selectedItem.type === 'knowledge' ? '知识库文档' : '长期记忆'}
                     </span>
                   </div>
-                  <h3 className="text-xl font-bold dark:text-white truncate max-w-2xl">{selectedItem.name}</h3>
+                  <h3 className="text-base md:text-xl font-bold dark:text-white truncate max-w-[200px] md:max-w-2xl">{selectedItem.name}</h3>
                 </div>
-                <button 
-                  onClick={() => setSelectedItem(null)}
-                  className="w-10 h-10 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-white/10 transition-all text-slate-500"
-                >
-                  <span className="material-symbols-outlined">close</span>
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  {!isEditingItem && (
+                    <button 
+                      onClick={() => setIsEditingItem(true)}
+                      className="flex items-center gap-1 md:gap-2 px-3 md:px-4 py-1.5 md:py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-white rounded-xl hover:bg-slate-50 transition-all text-[10px] md:text-xs font-bold"
+                    >
+                      <span className="material-symbols-outlined text-sm">edit</span>
+                      <span className="hidden md:inline">编辑内容</span>
+                    </button>
+                  )}
+                  <button 
+                    onClick={() => setSelectedItem(null)}
+                    className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-white/10 transition-all text-slate-500"
+                  >
+                    <span className="material-symbols-outlined">close</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-4 md:p-8 custom-scrollbar">
                 {isLoadingContent ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+                  <div className="flex flex-col items-center justify-center py-10 md:py-20 text-slate-400">
                     <div className="w-8 h-8 border-4 border-primary/20 border-t-primary rounded-full animate-spin mb-4"></div>
                     <p className="text-sm">正在加载全文内容...</p>
                   </div>
+                ) : isEditingItem ? (
+                  <div className="h-full min-h-[300px] md:min-h-[400px]">
+                    <textarea 
+                      value={editedContent}
+                      onChange={e => setEditedContent(e.target.value)}
+                      className="w-full h-full min-h-[300px] md:min-h-[400px] p-4 md:p-6 bg-slate-50 dark:bg-black/20 border border-primary/20 rounded-2xl text-xs md:text-sm leading-relaxed text-slate-700 dark:text-slate-200 font-mono outline-none focus:ring-2 focus:ring-primary/10 resize-none"
+                      placeholder="在此编辑内容..."
+                    />
+                  </div>
                 ) : (
                   <div className="prose dark:prose-invert max-w-none">
-                    <div className="whitespace-pre-wrap break-words text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-mono bg-slate-50 dark:bg-white/5 p-6 rounded-2xl border border-slate-100 dark:border-white/5">
+                    <div className="whitespace-pre-wrap break-words text-xs md:text-sm leading-relaxed text-slate-600 dark:text-slate-300 font-mono bg-slate-50 dark:bg-white/5 p-4 md:p-6 rounded-2xl border border-slate-100 dark:border-white/5">
                       {itemContent}
                     </div>
                   </div>
                 )}
               </div>
 
-              <div className="p-6 bg-slate-50/50 dark:bg-white/5 border-t border-slate-100 dark:border-white/5 flex justify-end">
-                <button 
-                  onClick={() => setSelectedItem(null)}
-                  className="px-6 py-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-all shadow-lg shadow-slate-900/20"
-                >
-                  关闭
-                </button>
+              <div className="p-4 md:p-6 bg-slate-50/50 dark:bg-white/5 border-t border-slate-100 dark:border-white/5 flex justify-end gap-3">
+                {isEditingItem ? (
+                  <>
+                    <button 
+                      onClick={handleSaveContent}
+                      className="flex-1 md:flex-none px-6 py-2 bg-primary text-white rounded-xl font-bold hover:bg-primary/90 transition-all shadow-lg shadow-primary/20 text-sm"
+                    >
+                      保存修改
+                    </button>
+                    <button 
+                      onClick={() => { setIsEditingItem(false); setEditedContent(itemContent || ''); }}
+                      className="flex-1 md:flex-none px-6 py-2 bg-white dark:bg-white/5 border border-slate-200 dark:border-white/10 text-slate-600 dark:text-white rounded-xl hover:bg-slate-50 transition-all font-bold text-sm"
+                    >
+                      取消
+                    </button>
+                  </>
+                ) : (
+                  <button 
+                    onClick={() => setSelectedItem(null)}
+                    className="w-full md:w-auto px-8 py-2 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-900 transition-all shadow-lg shadow-slate-900/20 text-sm"
+                  >
+                    关闭
+                  </button>
+                )}
               </div>
             </motion.div>
           </div>

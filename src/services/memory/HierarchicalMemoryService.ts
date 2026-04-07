@@ -13,6 +13,7 @@ import {
 } from '../../types/memory.js';
 import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
+import { PromptService } from '../PromptService.js';
 
 export class HierarchicalMemoryService implements IMemoryService {
   private store: LocalStore;
@@ -113,31 +114,11 @@ export class HierarchicalMemoryService implements IMemoryService {
         ? recentEntries.map((item, index) => `${index + 1}. [ID: ${item.id}] [分类: ${item.categoryName}] [日期: ${new Date(item.createdAt).toISOString()}]\n摘要: ${item.summary}`).join('\n\n')
         : '暂无已存在记忆。';
       
-      const classifierPrompt = `你是一个记忆管理助手。你的任务是将新的记忆片段分类到现有的层级结构中，或建议创建一个新分类。
-
-现有的分类如下：
-${categoriesStr || '目前暂无分类。'}
-
-最近几条已存在记忆（这些内容已经在记忆库中，请将其视为已存在上下文，用于避免重复表达并帮助判断分类）：
-${recentEntriesStr}
-
-待分类的内容：
-"${content}"
-
-规则：
-1. **语义匹配**：基于内容的语义逻辑进行分类，而不是简单的关键词。
-2. **多级目录原则**：优先使用现有分类。如果现有分类都不合适，请提供一个新的 [分类ID] (英文小写下划线) 和 [分类名称] (中文)。
-3. **精炼摘要**：为这条记忆生成一个 1 句话的精炼摘要（中文），捕捉核心事实、技术细节或偏好。
-4. **摘要去重提示**：如果内容主要是对已有事实的重复表述，摘要中应尽量保留能区分本条记录的新信息，避免产出空泛复述。
-5. **参考已有内容**：上面的“最近几条已存在记忆”都已经存在，请不要把它们当成待保存的新内容；你需要结合这些已有内容判断当前内容是否只是补充、更新或细化，并在摘要中突出新增信息。
-
-请以 JSON 格式输出：
-{
-  "categoryId": "分类ID",
-  "categoryName": "分类名称 (仅当建议新建时提供)",
-  "categoryDescription": "分类描述 (仅当建议新建时提供)",
-  "entrySummary": "记忆精炼摘要"
-}`;
+      const classifierPrompt = PromptService.getInstance().getPrompt('memory_classifier', {
+        categoriesStr: categoriesStr || '目前暂无分类。',
+        recentEntriesStr,
+        content
+      });
 
       const result = await this.agentService.runAgent('memory_assistant', classifierPrompt, undefined, { silent: true, noTools: true, noSkills: true });
       
@@ -300,6 +281,89 @@ ${recentEntriesStr}
     this.saveRoot(root);
   }
 
+  async updateCategory(id: string, name: string, description?: string): Promise<void> {
+    const root = this.loadRoot();
+    const catSum = root.categories.find(c => c.id === id);
+    if (!catSum) throw new Error(`Category ${id} not found`);
+
+    const category = this.loadCategory(id);
+    if (!category) throw new Error(`Category details for ${id} not found`);
+
+    catSum.name = name;
+    if (description !== undefined) catSum.description = description;
+    catSum.lastUpdatedAt = Date.now();
+
+    category.name = name;
+    if (description !== undefined) category.description = description;
+    category.updatedAt = Date.now();
+
+    this.saveCategory(category);
+    this.saveRoot(root);
+  }
+
+  async mergeCategories(ids: string[], targetName: string, targetDescription?: string): Promise<string> {
+    if (ids.length < 2) throw new Error("At least two categories are required for merge");
+
+    LogService.info(`Merging ${ids.length} memory categories into ${targetName}...`);
+    
+    // 1. Create/Find target category
+    const targetId = targetName.toLowerCase().replace(/[^a-z0-9]/g, '_') || 'merged_category';
+    let targetCategory = this.loadCategory(targetId);
+    const root = this.loadRoot();
+
+    if (!targetCategory) {
+      targetCategory = {
+        id: targetId,
+        name: targetName,
+        description: targetDescription || `${ids.length} 个主题合并后的记录`,
+        entries: [],
+        updatedAt: Date.now()
+      };
+      
+      root.categories.push({
+        id: targetId,
+        name: targetCategory.name,
+        description: targetCategory.description,
+        entryCount: 0,
+        lastUpdatedAt: Date.now()
+      });
+    }
+
+    // 2. Move entries from source categories to target
+    for (const id of ids) {
+      if (id === targetId) continue;
+      const sourceCategory = this.loadCategory(id);
+      if (!sourceCategory) continue;
+
+      for (const entrySum of sourceCategory.entries) {
+        if (!targetCategory.entries.find(e => e.id === entrySum.id)) {
+          targetCategory.entries.push(entrySum);
+        }
+      }
+
+      // Physical deletion of source category files and root entries
+      const categoryPath = path.join(this.categoryDir, `${id}.json`);
+      if (fs.existsSync(categoryPath)) fs.unlinkSync(categoryPath);
+      
+      root.categories = root.categories.filter(c => c.id !== id);
+    }
+
+    // 3. Save final state
+    targetCategory.updatedAt = Date.now();
+    const targetRootCat = root.categories.find(c => c.id === targetId);
+    if (targetRootCat) {
+      targetRootCat.entryCount = targetCategory.entries.length;
+      targetRootCat.lastUpdatedAt = targetCategory.updatedAt;
+    }
+    
+    root.updatedAt = Date.now();
+    this.saveCategory(targetCategory);
+    this.saveRoot(root);
+
+    LogService.info(`Memory categories merged into: ${targetId}`);
+    return targetId;
+  }
+
   async getCategories(): Promise<MemoryCategorySummary[]> {
     try {
       const root = this.loadRoot();
@@ -336,18 +400,10 @@ ${recentEntriesStr}
       const minImportance = options.minImportance ?? 1;
       const limit = options.limit ?? 5;
 
-      const rootNavPrompt = `你是一个精准的记忆检索助手。你的任务是根据用户的查询，从记忆库的顶层分类中选出**真正相关**的分类。
-
-现有分类及其描述如下：
-${root.categories.map(c => `- [ID: ${c.id}] ${c.name}: ${c.description}`).join('\n')}
-
-用户查询：
-"${query}"
-
-规则：
-1. **严格筛选**：仅选出那些与查询语义高度契合的分类。如果分类只是看起来像但内容不符，请不要选择。
-2. **宁缺毋滥**：如果没有相关的分类，请直接输出 []。
-只需输出 JSON 数组，例如：["category_id_1"]。`;
+      const rootNavPrompt = PromptService.getInstance().getPrompt('memory_root_nav', {
+        categoriesStr: root.categories.map(c => `- [ID: ${c.id}] ${c.name}: ${c.description}`).join('\n'),
+        query
+      });
 
       const navResult = await this.agentService.runAgent('memory_assistant', rootNavPrompt, undefined, { silent: true, noTools: true, noSkills: true });
       let selectedCatIds: string[] = [];
@@ -374,20 +430,11 @@ ${root.categories.map(c => `- [ID: ${c.id}] ${c.name}: ${c.description}`).join('
           continue;
         }
 
-        const entryChoicePrompt = `你正在查看记忆分类 [${category.name}] 的内容索引。
-这个分类包含以下记忆片段的摘要（已提前排除当天写入的记录，并按重要度与时间排序）：
-${eligibleEntries.map((e, i) => `${i+1}. [ID: ${e.id}] (重要度: ${e.importance}, 日期: ${new Date(e.createdAt).toISOString().split('T')[0]}) 摘要: ${e.summary}`).join('\n')}
-
-用户查询：
-"${query}"
-
-任务：
-请选出能**直接帮助回答**此查询的记忆 ID。
-**判别标准**：
-- 仅选择那些能提供事实证据、具体偏好或直接答案的条目。
-- 如果某个条目只是背景信息但与当前问题无关，请忽略。
-- 如果没有相关条目，请输出 []。
-只需输出 JSON 数组，例如：["mem_1"]。`;
+        const entryChoicePrompt = PromptService.getInstance().getPrompt('memory_entry_choice', {
+          categoryName: category.name,
+          entriesStr: eligibleEntries.map((e, i) => `${i+1}. [ID: ${e.id}] (重要度: ${e.importance}, 日期: ${new Date(e.createdAt).toISOString().split('T')[0]}) 摘要: ${e.summary}`).join('\n'),
+          query
+        });
 
         const choiceResult = await this.agentService.runAgent('memory_assistant', entryChoicePrompt, undefined, { silent: false, noTools: true, noSkills: true });
         let chosenIds: string[] = [];
@@ -418,21 +465,10 @@ ${eligibleEntries.map((e, i) => `${i+1}. [ID: ${e.id}] (重要度: ${e.importanc
           const fullContent = fs.readFileSync(entryPath, 'utf8');
           
           // 对每一条记忆进行独立的精准提取，过滤掉无关噪音
-          const extractionPrompt = `你是一个精准的信息过滤器。
-原始记忆内容：
-"""
-${fullContent}
-"""
-
-用户查询：
-"${query}"
-
-任务：
-请从上述内容中，**仅提取**出与用户查询直接相关的原句或核心事实。
-**严禁要求**：
-- 如果内容不相关，请直接回复“无相关内容”。
-- 严禁保留任何与查询主题（如“模型发布”）无关的信息（如硬件、融资、政策等）。
-- 保持原意，不要进行总结，只做提取。`;
+          const extractionPrompt = PromptService.getInstance().getPrompt('memory_extraction', {
+            fullContent,
+            query
+          });
 
           const extractionResult = await this.agentService.runAgent('memory_assistant', extractionPrompt, undefined, { silent: false, noTools: true, noSkills: true });
           const cleanedContent = extractionResult.content.trim();
@@ -446,14 +482,10 @@ ${fullContent}
       if (extractedSnippets.length === 0) return "虽然找到了相关条目，但经精读后发现其中并无直接相关的细节内容。";
 
       // --- 阶段 4: 最终汇总 ---
-      const finalSummaryPrompt = `你是一个专业的记忆总结助手。以下是经过精准过滤后的相关记忆片段：
-
-${extractedSnippets.join('\n\n---\n\n')}
-
-用户查询：
-"${query}"
-
-请基于这些**纯净的片段**，为用户提供一个准确、简洁的回答。不要包含任何未提及的信息。`;
+      const finalSummaryPrompt = PromptService.getInstance().getPrompt('memory_final_summary', {
+        snippetsStr: extractedSnippets.join('\n\n---\n\n'),
+        query
+      });
 
       const finalResult = await this.agentService.runAgent('memory_assistant', finalSummaryPrompt, undefined, { silent: false, noTools: true, noSkills: true });
       const content = finalResult.content;
@@ -489,6 +521,90 @@ ${extractedSnippets.join('\n\n---\n\n')}
       }
     }
     this.saveRoot(root);
+  }
+
+  async updateMemoryContent(id: string, content: string): Promise<void> {
+    const entryPath = path.join(this.entryDir, `${id}.md`);
+    if (!fs.existsSync(entryPath)) throw new Error("Memory entry not found");
+
+    // 1. Update full text file
+    fs.writeFileSync(entryPath, content);
+
+    // 2. Update summary in index if possible
+    const root = this.loadRoot();
+    for (const catSum of root.categories) {
+      const category = this.loadCategory(catSum.id);
+      if (!category) continue;
+
+      const entrySum = category.entries.find(e => e.id === id);
+      if (entrySum) {
+        // Try to update summary (simple truncation for now, or could call AI)
+        entrySum.summary = content.slice(0, 100).replace(/\n/g, ' ');
+        entrySum.hash = crypto.createHash('sha256').update(content).digest('hex');
+        category.updatedAt = Date.now();
+        this.saveCategory(category);
+        
+        catSum.lastUpdatedAt = category.updatedAt;
+        this.saveRoot(root);
+        break;
+      }
+    }
+  }
+
+  async mergeMemories(ids: string[], options: { 
+    agentId?: string;
+    targetCategoryId?: string;
+  } = {}): Promise<string> {
+    if (!this.agentService) {
+      throw new Error("AgentService 不可用，无法进行记忆合并推理。");
+    }
+
+    if (ids.length < 2) {
+      throw new Error("合并至少需要两条记忆。");
+    }
+
+    LogService.info(`Merging ${ids.length} memories into a new one...`);
+
+    // 1. 获取所有记忆全文
+    const contents: string[] = [];
+    for (const id of ids) {
+      const content = await this.getMemoryFullText(id);
+      if (content !== '记忆内容未找到') {
+        contents.push(`[记忆 ID: ${id}]\n${content}`);
+      }
+    }
+
+    if (contents.length === 0) {
+      throw new Error("未找到指定的记忆内容。");
+    }
+
+    // 2. 调用 AI 进行合并
+    const mergePrompt = PromptService.getInstance().getPrompt('memory_merge', {
+      contents: contents.join('\n\n---\n\n')
+    });
+
+    const result = await this.agentService.runAgent('memory_assistant', mergePrompt, undefined, { silent: false, noTools: true, noSkills: true });
+    const mergedContent = result.content;
+
+    if (!mergedContent || mergedContent === 'No response generated (AI returned empty content)') {
+      throw new Error("AI 合并失败，返回内容为空。");
+    }
+
+    // 3. 保存新记忆
+    const newId = await this.saveMemory(mergedContent, {
+      agentId: options.agentId,
+      importance: 3, // 合并后的记忆通常较为重要
+      tags: ['merged'],
+      metadata: { mergedFrom: ids }
+    });
+
+    // 4. 删除旧记忆
+    for (const id of ids) {
+      await this.deleteMemory(id);
+    }
+
+    LogService.info(`Memories merged successfully into new ID: ${newId}`);
+    return newId;
   }
 
   async getMemoryFullText(id: string): Promise<string> {

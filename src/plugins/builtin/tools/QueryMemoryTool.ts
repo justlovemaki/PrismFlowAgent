@@ -10,7 +10,7 @@ export class QueryMemoryTool extends BaseTool {
     properties: {
       query: { 
         type: 'string', 
-        description: '关键词或自然语言描述（例如：“用户喜欢的编程语言是什么？”）' 
+        description: '关键词或自然语言描述（例如：“用户喜欢的编程语言是什么？”）。建议搜索完整的意图以获得更准确的深度匹配结果。' 
       },
       limit: { 
         type: 'number', 

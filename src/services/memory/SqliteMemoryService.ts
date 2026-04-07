@@ -3,6 +3,7 @@ import { AgentService } from '../agents/AgentService.js';
 import { MemoryEntry, MemorySearchResult, IMemoryService } from '../../types/memory.js';
 import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
+import { PromptService } from '../PromptService.js';
 
 export class SqliteMemoryService implements IMemoryService {
   private store: LocalStore;
@@ -65,16 +66,7 @@ export class SqliteMemoryService implements IMemoryService {
     }).join('\n\n');
 
     // 4. 定义子 Agent 的 Prompt
-    const subAgentSystemPrompt = `你是一个记忆检索助手。你的任务是从提供的原始记忆片段中提取并重构出与用户查询最相关的核心信息。
-
-规则：
-1. **忠实原文**：仅基于提供的记录进行回答，不得凭空捏造。
-2. **确保完整性**：在整合信息时，必须保留关键的技术细节、参数、特定偏好和决策背景。
-3. **逻辑重组**：将分散的记录按时间或逻辑顺序重组。如果记录中有冲突，请清晰指出不同阶段的变化或演进。
-4. **动态篇幅**：根据信息量决定长度，不设硬性字数限制，但应避免冗余。
-5. **标识来源**：每个关键点应简要对应其相关的记录标签或日期。
-
-用户查询词：${query}`;
+    const subAgentSystemPrompt = PromptService.getInstance().getPrompt('memory_query_subagent', { query });
 
     // 5. 启动影子 Agent（临时创建）
     // 注意：这里我们使用 AgentService 现有的 runAgent 能力，但我们需要一个临时的定义
@@ -96,7 +88,12 @@ export class SqliteMemoryService implements IMemoryService {
         });
       }
 
-      const result = await this.agentService.runAgent(tempAgentId, `原始记录如下：\n\n${contextStr}\n\n请总结与"${query}"相关的记忆内容。`, undefined, { silent: true });
+      const summaryPrompt = PromptService.getInstance().getPrompt('memory_query_summarization', {
+        contextStr,
+        query
+      });
+
+      const result = await this.agentService.runAgent(tempAgentId, summaryPrompt, undefined, { silent: true });
       const content = result.content;
       // 避免返回 AgentService 的默认错误内容
       if (content === 'No response generated (AI returned empty content)') {
@@ -110,8 +107,73 @@ export class SqliteMemoryService implements IMemoryService {
     }
   }
 
+  async mergeMemories(ids: string[], options: { 
+    agentId?: string;
+    targetCategoryId?: string;
+  } = {}): Promise<string> {
+    if (!this.agentService) {
+      throw new Error("AgentService 不可用，无法进行记忆合并推理。");
+    }
+
+    if (ids.length < 2) {
+      throw new Error("合并至少需要两条记忆。");
+    }
+
+    LogService.info(`Merging ${ids.length} memories in SQLite mode...`);
+
+    // 1. 获取所有记忆全文
+    const contents: string[] = [];
+    for (const id of ids) {
+      const content = await this.getMemoryFullText(id);
+      if (content !== '内容未找到') {
+        contents.push(`[记忆 ID: ${id}]\n${content}`);
+      }
+    }
+
+    if (contents.length === 0) {
+      throw new Error("未找到指定的记忆内容。");
+    }
+
+    // 2. 调用 AI 进行合并
+    const mergePrompt = PromptService.getInstance().getPrompt('memory_merge', { 
+      contents: contents.join('\n\n---\n\n') 
+    });
+
+    const result = await this.agentService.runAgent('memory_assistant', mergePrompt, undefined, { silent: false, noTools: true, noSkills: true });
+    const mergedContent = result.content;
+
+    if (!mergedContent || mergedContent === 'No response generated (AI returned empty content)') {
+      throw new Error("AI 合并失败，返回内容为空。");
+    }
+
+    // 3. 保存新记忆
+    const newId = await this.saveMemory(mergedContent, {
+      agentId: options.agentId,
+      importance: 3,
+      tags: ['merged'],
+      metadata: { mergedFrom: ids }
+    });
+
+    // 4. 删除旧记忆
+    for (const id of ids) {
+      await this.deleteMemory(id);
+    }
+
+    LogService.info(`Memories merged successfully in SQLite. New ID: ${newId}`);
+    return newId;
+  }
+
   async deleteMemory(id: string): Promise<void> {
     await this.store.deleteMemory(id);
+  }
+
+  async updateMemoryContent(id: string, content: string): Promise<void> {
+    const memories = await this.store.searchMemories('', { limit: 1000 });
+    const memory = memories.find(m => m.id === id);
+    if (!memory) throw new Error("Memory entry not found");
+
+    memory.content = content;
+    await this.store.saveMemory(memory);
   }
 
   async getMemoryFullText(id: string): Promise<string> {
@@ -152,5 +214,14 @@ export class SqliteMemoryService implements IMemoryService {
     for (const mem of memories) {
       await this.store.deleteMemory(mem.id);
     }
+  }
+
+  async updateCategory(id: string, name: string, description?: string): Promise<void> {
+    LogService.warn("Update category not supported in SQLite mode.");
+  }
+
+  async mergeCategories(ids: string[], targetName: string, targetDescription?: string): Promise<string> {
+    LogService.warn("Merge categories not supported in SQLite mode.");
+    return "default";
   }
 }

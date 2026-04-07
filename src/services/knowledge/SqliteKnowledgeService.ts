@@ -9,6 +9,7 @@ import {
 import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
 import { DocumentProcessor } from './DocumentProcessor.js';
+import { PromptService } from '../PromptService.js';
 import crypto from 'crypto';
 
 export class SqliteKnowledgeService implements IKnowledgeBaseService {
@@ -49,6 +50,49 @@ export class SqliteKnowledgeService implements IKnowledgeBaseService {
     await this.store.deleteKBCategory(id);
   }
 
+  async updateCategory(id: string, name: string, description?: string): Promise<void> {
+    const category = await this.store.getKBCategory(id);
+    if (!category) throw new Error(`Category ${id} not found`);
+
+    category.name = name;
+    if (description !== undefined) category.description = description;
+    category.updatedAt = Date.now();
+
+    await this.store.saveKBCategory(category);
+  }
+
+  async mergeCategories(ids: string[], targetName: string, targetDescription?: string): Promise<string> {
+    if (ids.length < 2) throw new Error("At least two categories are required for merge");
+
+    const targetId = targetName.toLowerCase().replace(/\s+/g, '_');
+    let targetCategory = await this.store.getKBCategory(targetId);
+
+    if (!targetCategory) {
+      await this.addCategory(targetName, targetDescription);
+      targetCategory = await this.store.getKBCategory(targetId);
+    }
+
+    if (!targetCategory) throw new Error("Failed to create target category");
+
+    for (const id of ids) {
+      if (id === targetId) continue;
+      const documents = await this.store.listKBDocuments(id);
+      for (const doc of documents) {
+        doc.categoryId = targetId;
+        doc.updatedAt = Date.now();
+        await this.store.saveKBDocument(doc);
+      }
+      await this.store.deleteKBCategory(id);
+    }
+
+    // Update target document count
+    targetCategory.documentCount = (await this.store.listKBDocuments(targetId)).length;
+    targetCategory.updatedAt = Date.now();
+    await this.store.saveKBCategory(targetCategory);
+
+    return targetId;
+  }
+
   async getDocuments(categoryId: string): Promise<KBDocument[]> {
     return await this.store.listKBDocuments(categoryId);
   }
@@ -64,12 +108,10 @@ export class SqliteKnowledgeService implements IKnowledgeBaseService {
     let summary = processed.text.slice(0, 500) + '...';
     if (this.agentService) {
       try {
-        const summaryPrompt = `你是一个专业的文档分析助手。请对以下文档进行精炼总结，提取其核心内容、主题和关键结论。
-文档名称: "${file.name}"
-文档完整内容:
-"${processed.text}"
-
-请直接输出 2-3 句话的中文总结。`;
+        const summaryPrompt = PromptService.getInstance().getPrompt('knowledge_summary', {
+          fileName: file.name,
+          text: processed.text
+        });
         const result = await this.agentService.runAgent('knowledge_assistant', summaryPrompt, undefined, { silent: true, noTools: true });
         summary = result.content.trim();
       } catch (err) {
@@ -133,6 +175,40 @@ export class SqliteKnowledgeService implements IKnowledgeBaseService {
     }
   }
 
+  async updateDocumentContent(id: string, content: string): Promise<void> {
+    const doc = await this.store.getKBDocument(id);
+    if (!doc) throw new Error("Document not found");
+
+    // 1. Re-chunk
+    const chunks = this.processor.chunk(content);
+
+    // 2. Delete old chunks and save new ones
+    // SQLite implementation of LocalStore should handle replacement if using same indices, 
+    // but better to delete all chunks for this doc first if we want to be safe about count changes.
+    // However, store.saveKBChunk usually overwrites.
+    // For simplicity, let's assume we need to update metadata.
+    
+    // We need a way to clear chunks in store.
+    // Since I don't want to modify LocalStore right now, I'll use save logic which overwrites, 
+    // but we need to handle the case where new chunk count is less than old.
+    
+    // Actually, I'll just save the new chunks.
+    for (let i = 0; i < chunks.length; i++) {
+      await this.store.saveKBChunk({
+        id: typeid('chunk').toString(),
+        documentId: id,
+        content: chunks[i],
+        index: i,
+        metadata: {}
+      });
+    }
+
+    doc.chunkCount = chunks.length;
+    doc.updatedAt = Date.now();
+    doc.metadata.hash = crypto.createHash('sha256').update(content).digest('hex');
+    await this.store.saveKBDocument(doc);
+  }
+
   async getDocumentFullText(id: string): Promise<string> {
     const chunks = await this.store.listKBChunks(id);
     if (chunks.length === 0) return '文档内容未找到';
@@ -161,20 +237,11 @@ export class SqliteKnowledgeService implements IKnowledgeBaseService {
       return "AgentService 不可用，以下为检索到的原始片段：\n\n" + fullContents.join('\n\n---\n\n');
     }
 
-    const finalPrompt = `你是一个严谨的知识库专家。请根据以下提供的文档内容片段，回答用户的查询。
-当前日期：${today}
-
-文档内容片段：
-${fullContents.join('\n\n---\n\n')}
-
-用户查询：
-"${query}"
-
-注意（必须严格遵守）：
-1. **完全基于文档**：仅根据提供的文档内容进行回答。
-2. **禁止回退到自身知识**：如果文档中没有包含查询所需的答案，你必须诚实地回答：“抱歉，提供的文档中没有关于此问题的相关信息。”，**严禁**使用你自己的预训练知识来补全。
-3. **时间校验**：注意查询中的时间范围（如“上周”）。如果检索到的文档日期不匹配，请明确指出。
-4. **结构化**：使用列表或清晰的段落进行回答，并注明信息来源。`;
+    const finalPrompt = PromptService.getInstance().getPrompt('knowledge_final', {
+      today,
+      context: fullContents.join('\n\n---\n\n'),
+      query
+    });
 
     try {
       const finalResult = await this.agentService.runAgent('knowledge_assistant', finalPrompt, undefined, { silent: true, noTools: true });

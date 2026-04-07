@@ -10,7 +10,7 @@ export class SaveMemoryTool extends BaseTool {
     properties: {
       content: { 
         type: 'string', 
-        description: '需要保存的内容（例如：“用户更喜欢使用 TypeScript 进行开发”）' 
+        description: '必须遵循 Markdown 记忆协议（# 主题 / - **核心结论** / - **关键细节** / - **背景**）。严禁压缩路径、版本等关键参数。' 
       },
       importance: { 
         type: 'number', 

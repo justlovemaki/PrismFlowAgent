@@ -19,6 +19,7 @@ import { getISODate, parseGithubUrl } from '../utils/helpers.js';
 import { parseOPML } from '../utils/opml.js';
 
 import { LogService } from '../services/LogService.js';
+import { PromptService } from '../services/PromptService.js';
 import { ServiceContext } from '../services/ServiceContext.js';
 import { ToolRegistry } from '../registries/ToolRegistry.js';
 import { AdapterRegistry } from '../registries/AdapterRegistry.js';
@@ -1738,6 +1739,30 @@ export async function createServer(existingStore?: LocalStore) {
     return { status: 'success' };
   });
 
+  fastify.put('/api/kb/categories/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      const { name, description } = request.body as any;
+      await context.knowledgeBaseService.updateCategory(id, name, description);
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/kb/categories/merge', async (request, reply) => {
+    try {
+      const { ids, targetName, targetDescription } = request.body as any;
+      if (!ids || ids.length < 2 || !targetName) {
+        return reply.status(400).send({ error: '合并至少需要两个 ID (ids) 和目标名称 (targetName)' });
+      }
+      const newId = await context.knowledgeBaseService.mergeCategories(ids, targetName, targetDescription);
+      return { status: 'success', id: newId };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.get('/api/kb/documents', async (request) => {
     const { categoryId } = request.query as any;
     if (!categoryId) return [];
@@ -1776,6 +1801,52 @@ export async function createServer(existingStore?: LocalStore) {
     return { content };
   });
 
+  fastify.put('/api/kb/documents/:id/content', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      const { content } = request.body as any;
+      await context.knowledgeBaseService.updateDocumentContent(id, content);
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/kb/documents/:id/move-to-memory', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      
+      // 1. 获取文档内容
+      const content = await context.knowledgeBaseService.getDocumentFullText(id);
+      if (content === '文档内容未找到') {
+        return reply.status(404).send({ error: '文档不存在' });
+      }
+
+      // 2. 调用 AI 进行深度整理 (按照流光记忆协议重构内容)
+      const organizePrompt = PromptService.getInstance().getPrompt('knowledge_organize_for_memory', { content });
+
+      const organizeResult = await context.agentService?.runAgent('memory_assistant', organizePrompt, undefined, { silent: false, noTools: true });
+      const organizedContent = organizeResult?.content || content;
+
+      if (!organizeResult?.content || organizeResult.content === 'No response generated (AI returned empty content)') {
+        LogService.warn(`AI organization failed for document ${id}, falling back to raw content.`);
+      }
+
+      // 3. 存入记忆 (使用 AI 整理后的内容)
+      const memoryId = await context.memoryService.saveMemory(organizedContent, {
+        importance: 4, // 经过整理的知识通常重要度较高
+        tags: ['organized_from_kb']
+      });
+
+      // 4. 删除原文档
+      await context.knowledgeBaseService.deleteDocument(id);
+
+      return { status: 'success', memoryId };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.post('/api/kb/query', async (request) => {
     const { query, categoryIds, limit } = request.body as any;
     const answer = await context.knowledgeBaseService.queryKnowledge(query, { categoryIds, limit });
@@ -1799,6 +1870,30 @@ export async function createServer(existingStore?: LocalStore) {
     return { status: 'success' };
   });
 
+  fastify.put('/api/memory/categories/:id', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      const { name, description } = request.body as any;
+      await context.memoryService.updateCategory(id, name, description);
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
+  fastify.post('/api/memory/categories/merge', async (request, reply) => {
+    try {
+      const { ids, targetName, targetDescription } = request.body as any;
+      if (!ids || ids.length < 2 || !targetName) {
+        return reply.status(400).send({ error: '合并至少需要两个 ID (ids) 和目标名称 (targetName)' });
+      }
+      const newId = await context.memoryService.mergeCategories(ids, targetName, targetDescription);
+      return { status: 'success', id: newId };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.post('/api/memory/query', async (request) => {
     const { query, categoryIds, limit } = request.body as any;
     const answer = await context.memoryService.queryMemory(query, { categoryIds, limit });
@@ -1811,10 +1906,34 @@ export async function createServer(existingStore?: LocalStore) {
     return { status: 'success' };
   });
 
+  fastify.post('/api/memory/merge', async (request, reply) => {
+    try {
+      const { ids, targetCategoryId } = request.body as any;
+      if (!ids || !Array.isArray(ids) || ids.length < 2) {
+        return reply.status(400).send({ error: '合并至少需要两条记忆 ID (ids)' });
+      }
+      const newId = await context.memoryService.mergeMemories(ids, { targetCategoryId });
+      return { status: 'success', id: newId };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.get('/api/memory/:id/content', async (request) => {
     const { id } = request.params as any;
     const content = await context.memoryService.getMemoryFullText(id);
     return { content };
+  });
+
+  fastify.put('/api/memory/:id/content', async (request, reply) => {
+    try {
+      const { id } = request.params as any;
+      const { content } = request.body as any;
+      await context.memoryService.updateMemoryContent(id, content);
+      return { status: 'success' };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
   });
 
   fastify.setNotFoundHandler((request, reply) => {

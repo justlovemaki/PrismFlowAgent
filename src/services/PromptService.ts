@@ -31,10 +31,24 @@ export class PromptService {
     const files = await fs.readdir(this.promptsDir);
     for (const file of files) {
       if (file.endsWith('.md') || file.endsWith('.txt')) {
-        const name = path.basename(file, path.extname(file));
         const content = await fs.readFile(path.join(this.promptsDir, file), 'utf-8');
-        this.templates.set(name, content);
-        LogService.info(`Prompt template loaded: ${name}`);
+        
+        // 支持多模板语法: ## [TemplateName]
+        if (content.includes('## [') && content.includes(']')) {
+          const sections = content.split(/## \[([\w-]+)\]/g);
+          // sections[0] 是第一个 ## [ 前的内容，通常为空或描述
+          for (let i = 1; i < sections.length; i += 2) {
+            const name = sections[i].trim();
+            const body = sections[i + 1].trim();
+            this.templates.set(name, body);
+            LogService.info(`Prompt template loaded from multi-section file (${file}): ${name}`);
+          }
+        } else {
+          // 回退到单模板语法: 文件名即模板名
+          const name = path.basename(file, path.extname(file));
+          this.templates.set(name, content.trim());
+          LogService.info(`Prompt template loaded: ${name}`);
+        }
       }
     }
   }
@@ -48,8 +62,8 @@ export class PromptService {
 
     if (variables) {
       for (const [key, value] of Object.entries(variables)) {
-        const regex = new RegExp(`{{${key}}}`, 'g');
-        template = template.replace(regex, value);
+        // 使用 split/join 代替 replace，避免 $ 符号被错误解析
+        template = template.split(`{{${key}}}`).join(value);
       }
     }
 
