@@ -57,21 +57,6 @@ export class QueryDataTool extends BaseTool {
       limit: args.limit
     });
 
-    // 查询 endDate 5 天内的 GitHub Archive 提交历史
-    const historyDates: string[] = [];
-    const endDateObj = new Date(args.endDate);
-    for (let i = 0; i < 5; i++) {
-      const d = new Date(endDateObj);
-      d.setDate(d.getDate() - i);
-      historyDates.push(d.toISOString().split('T')[0]);
-    }
-
-    const historyResult = await context.taskService.getCommitHistory({
-      platform: 'GitHub Archive',
-      dates: historyDates,
-      limit: 50
-    });
-    
     const mappedItems = result.items.map(item => {
       const content = item.metadata?.ai_summary || item.metadata?.content_html || '';
       return {
@@ -87,24 +72,11 @@ export class QueryDataTool extends BaseTool {
         metadata: item.metadata
       };
     });
-
-    const historyItems = historyResult.records.map(record => ({
-      id: `history-${record.id}`,
-      title: record.commitMessage || `Archive: ${record.date}`,
-      url: '',
-      description: '',
-      html: record.fullContent || '',
-      score: undefined,
-      date: new Date(record.commitTime).toISOString(),
-      source: record.platform,
-      category: 'history'
-    }));
     
     return {
       total: result.total,
       count: mappedItems.length,
-      items: mappedItems,
-      historyItems: historyItems
+      items: mappedItems
     };
   }
 }
