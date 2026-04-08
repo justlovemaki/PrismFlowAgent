@@ -55,6 +55,26 @@ export class SkillService {
     }
   }
 
+  private async listSkillFiles(dirPath: string, currentDir = dirPath): Promise<string[]> {
+    const entries = await fs.readdir(currentDir, { withFileTypes: true });
+    const files: string[] = [];
+
+    for (const entry of entries) {
+      const fullPath = path.join(currentDir, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...await this.listSkillFiles(dirPath, fullPath));
+        continue;
+      }
+
+      const relativePath = path.relative(dirPath, fullPath).replace(/\\/g, '/');
+      if (relativePath !== 'SKILL.md') {
+        files.push(relativePath);
+      }
+    }
+
+    return files.sort((a, b) => a.localeCompare(b));
+  }
+
   private async parseSkillFile(filePath: string): Promise<SkillEntry> {
     const content = await fs.readFile(filePath, 'utf-8');
     const dirPath = path.dirname(filePath);
@@ -78,6 +98,7 @@ export class SkillService {
       name: frontmatter.name || id,
       description: frontmatter.description || '',
       instructions,
+      files: await this.listSkillFiles(dirPath),
       frontmatter,
       dirPath,
       fullPath: filePath,

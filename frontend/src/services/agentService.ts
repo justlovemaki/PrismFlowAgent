@@ -24,6 +24,15 @@ export interface Skill {
   isBuiltin?: boolean;
 }
 
+export interface SkillScanResult {
+  status: 'success';
+  added: number;
+  removed: number;
+  updated: number;
+  unchanged: number;
+  scanned: number;
+}
+
 export interface Agent {
   id: string;
   name: string;
@@ -132,6 +141,9 @@ export const agentService = {
   },
   
   getSkills: () => request('/api/skills'),
+  scanSkills: (): Promise<SkillScanResult> => request('/api/skills/scan', {
+    method: 'POST'
+  }),
   uploadSkill: async (file: File) => {
     const formData = new FormData();
     formData.append('file', file);

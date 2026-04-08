@@ -14,6 +14,7 @@ import {
 import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
 import { PromptService } from '../PromptService.js';
+import { MEMORY_READ_AGENT_ID, MEMORY_WRITE_AGENT_ID } from '../agents/defaultAgentIds.js';
 
 export class HierarchicalMemoryService implements IMemoryService {
   private store: LocalStore;
@@ -120,7 +121,7 @@ export class HierarchicalMemoryService implements IMemoryService {
         content
       });
 
-      const result = await this.agentService.runAgent('memory_assistant', classifierPrompt, undefined, { silent: true, noTools: true, noSkills: true });
+      const result = await this.agentService.runAgent(MEMORY_WRITE_AGENT_ID, classifierPrompt, undefined, { silent: true, noTools: true, noSkills: true });
       
       let decision;
       try {
@@ -485,7 +486,7 @@ export class HierarchicalMemoryService implements IMemoryService {
         query
       });
 
-      const navResult = await this.agentService.runAgent('memory_assistant', rootNavPrompt, undefined, { silent: true, noTools: true, noSkills: true });
+      const navResult = await this.agentService.runAgent(MEMORY_READ_AGENT_ID, rootNavPrompt, undefined, { silent: true, noTools: true, noSkills: true });
       let selectedCatIds: string[] = [];
       try {
         const jsonMatch = navResult.content.match(/\[[\s\S]*\]/);
@@ -516,7 +517,7 @@ export class HierarchicalMemoryService implements IMemoryService {
           query
         });
 
-        const choiceResult = await this.agentService.runAgent('memory_assistant', entryChoicePrompt, undefined, { silent: false, noTools: true, noSkills: true });
+        const choiceResult = await this.agentService.runAgent(MEMORY_READ_AGENT_ID, entryChoicePrompt, undefined, { silent: false, noTools: true, noSkills: true });
         let chosenIds: string[] = [];
         try {
           const jsonMatch = choiceResult.content.match(/\[[\s\S]*\]/);
@@ -550,7 +551,7 @@ export class HierarchicalMemoryService implements IMemoryService {
             query
           });
 
-          const extractionResult = await this.agentService.runAgent('memory_assistant', extractionPrompt, undefined, { silent: false, noTools: true, noSkills: true });
+          const extractionResult = await this.agentService.runAgent(MEMORY_READ_AGENT_ID, extractionPrompt, undefined, { silent: false, noTools: true, noSkills: true });
           const cleanedContent = extractionResult.content.trim();
           
           if (cleanedContent && cleanedContent !== "无相关内容") {
@@ -567,7 +568,7 @@ export class HierarchicalMemoryService implements IMemoryService {
         query
       });
 
-      const finalResult = await this.agentService.runAgent('memory_assistant', finalSummaryPrompt, undefined, { silent: false, noTools: true, noSkills: true });
+      const finalResult = await this.agentService.runAgent(MEMORY_READ_AGENT_ID, finalSummaryPrompt, undefined, { silent: false, noTools: true, noSkills: true });
       const content = finalResult.content;
       // 避免返回 AgentService 的默认错误内容
       if (content === 'No response generated (AI returned empty content)') {
@@ -663,7 +664,7 @@ export class HierarchicalMemoryService implements IMemoryService {
       contents: contents.join('\n\n---\n\n')
     });
 
-    const result = await this.agentService.runAgent('memory_assistant', mergePrompt, undefined, { silent: false, noTools: true, noSkills: true });
+    const result = await this.agentService.runAgent(MEMORY_WRITE_AGENT_ID, mergePrompt, undefined, { silent: false, noTools: true, noSkills: true });
     const mergedContent = result.content;
 
     if (!mergedContent || mergedContent === 'No response generated (AI returned empty content)') {

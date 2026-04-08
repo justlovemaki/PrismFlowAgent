@@ -21,6 +21,8 @@ import { parseOPML } from '../utils/opml.js';
 import { LogService } from '../services/LogService.js';
 import { PromptService } from '../services/PromptService.js';
 import { ServiceContext } from '../services/ServiceContext.js';
+import { MEMORY_WRITE_AGENT_ID } from '../services/agents/defaultAgentIds.js';
+import { syncSkillsFromFilesystem } from '../services/agents/SkillSyncService.js';
 import { ToolRegistry } from '../registries/ToolRegistry.js';
 import { AdapterRegistry } from '../registries/AdapterRegistry.js';
 import { PublisherRegistry } from '../registries/PublisherRegistry.js';
@@ -1175,6 +1177,15 @@ export async function createServer(existingStore?: LocalStore) {
     return await store.listSkills();
   });
 
+  fastify.post('/api/skills/scan', async (request, reply) => {
+    try {
+      const result = await syncSkillsFromFilesystem(store, context.skillService);
+      return { status: 'success', ...result };
+    } catch (error: any) {
+      reply.status(500).send({ error: error.message });
+    }
+  });
+
   fastify.get('/api/skills/store/search', async (request, reply) => {
     try {
       const { q, page, limit, sortBy } = request.query as any;
@@ -1825,7 +1836,7 @@ export async function createServer(existingStore?: LocalStore) {
       // 2. 调用 AI 进行深度整理 (按照流光记忆协议重构内容)
       const organizePrompt = PromptService.getInstance().getPrompt('knowledge_organize_for_memory', { content });
 
-      const organizeResult = await context.agentService?.runAgent('memory_assistant', organizePrompt, undefined, { silent: false, noTools: true });
+      const organizeResult = await context.agentService?.runAgent(MEMORY_WRITE_AGENT_ID, organizePrompt, undefined, { silent: false, noTools: true });
       const organizedContent = organizeResult?.content || content;
 
       if (!organizeResult?.content || organizeResult.content === 'No response generated (AI returned empty content)') {

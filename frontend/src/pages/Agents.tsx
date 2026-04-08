@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { agentService } from '../services/agentService';
-import type { Agent, Skill, Tool, Workflow, WorkflowStep, MCPServerConfig } from '../services/agentService';
+import type { Agent, Skill, SkillScanResult, Tool, Workflow, WorkflowStep, MCPServerConfig } from '../services/agentService';
 import { getSettings } from '../services/settingsService';
 import { useToast } from '../context/ToastContext.js';
 import { copyToClipboard } from '../utils/clipboardUtils';
@@ -67,6 +67,7 @@ const Agents: React.FC = () => {
   const [testingAgentId, setTestingAgentId] = useState<string | null>(null);
   const [testInput, setTestInput] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isScanningSkills, setIsScanningSkills] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const skillFileRef = React.useRef<HTMLInputElement>(null);
@@ -844,6 +845,29 @@ const Agents: React.FC = () => {
     }
   };
 
+  const handleScanSkills = async () => {
+    try {
+      setIsScanningSkills(true);
+      setUploadError(null);
+      const result = await agentService.scanSkills() as SkillScanResult;
+      await loadData();
+
+      if (previewSkill) {
+        const refreshedSkills = await agentService.getSkills();
+        const updatedPreviewSkill = refreshedSkills.find((skill: Skill) => skill.id === previewSkill.id) || null;
+        setPreviewSkill(updatedPreviewSkill);
+      }
+
+      toastSuccess(`扫描完成：共 ${result.scanned} 个，本次新增 ${result.added} 个，更新 ${result.updated} 个，移除 ${result.removed} 个旧内置技能`);
+    } catch (error: any) {
+      const msg = error.message || '扫描失败';
+      setUploadError(msg);
+      toastError(msg);
+    } finally {
+      setIsScanningSkills(false);
+    }
+  };
+
   const handleDeleteSkill = async (id: string) => {
     if (!confirm('确定删除该技能吗？')) return;
     try {
@@ -921,8 +945,16 @@ const Agents: React.FC = () => {
             }}
           />
           <button
+            onClick={handleScanSkills}
+            disabled={isUploading || isScanningSkills || !!installingSkillId}
+            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all text-sm font-bold shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined">{isScanningSkills ? 'hourglass_top' : 'autorenew'}</span>
+            {isScanningSkills ? '扫描中...' : '扫描本地技能'}
+          </button>
+          <button
             onClick={() => setShowStoreModal(true)}
-            disabled={isUploading || !!installingSkillId}
+            disabled={isUploading || isScanningSkills || !!installingSkillId}
             className="flex items-center gap-2 px-4 py-2 bg-slate-800 text-white rounded-xl hover:bg-slate-900 transition-all text-sm font-bold shadow-lg shadow-slate-500/20 disabled:opacity-50"
           >
             <span className="material-symbols-outlined">search</span>
@@ -930,7 +962,7 @@ const Agents: React.FC = () => {
           </button>
           <button
             onClick={handleImportFromGithub}
-            disabled={isUploading || !!installingSkillId}
+            disabled={isUploading || isScanningSkills || !!installingSkillId}
             className="flex items-center gap-2 px-4 py-2 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-white rounded-xl hover:bg-slate-200 dark:hover:bg-white/10 transition-all text-sm font-bold shadow-lg shadow-slate-500/10 disabled:opacity-50"
           >
             <span className="material-symbols-outlined">link</span>
@@ -938,7 +970,7 @@ const Agents: React.FC = () => {
           </button>
           <button
             onClick={() => skillFileRef.current?.click()}
-            disabled={isUploading || !!installingSkillId}
+            disabled={isUploading || isScanningSkills || !!installingSkillId}
             className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all text-sm font-bold shadow-lg shadow-blue-500/20 disabled:opacity-50"
           >
             <span className="material-symbols-outlined">{isUploading ? 'hourglass_top' : 'upload_file'}</span>
@@ -977,7 +1009,15 @@ const Agents: React.FC = () => {
             <span className="material-symbols-outlined text-4xl text-blue-400">inventory_2</span>
           </div>
           <h3 className="text-xl font-bold text-slate-400 dark:text-slate-500 mb-2">暂无技能</h3>
-          <p className="text-sm text-slate-400/80 dark:text-slate-500/80 mb-6">拖拽 .zip 压缩包到此处，或点击上方按钮上传</p>
+          <p className="text-sm text-slate-400/80 dark:text-slate-500/80 mb-6">拖拽 .zip 压缩包到此处，或点击上方按钮上传，也可以先扫描本地已存在的 skill 目录</p>
+          <button
+            onClick={handleScanSkills}
+            disabled={isUploading || isScanningSkills || !!installingSkillId}
+            className="mb-6 flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 transition-all text-sm font-bold shadow-lg shadow-emerald-500/20 disabled:opacity-50"
+          >
+            <span className="material-symbols-outlined">{isScanningSkills ? 'hourglass_top' : 'autorenew'}</span>
+            {isScanningSkills ? '扫描中...' : '扫描本地技能'}
+          </button>
           <div className="p-4 bg-white dark:bg-surface-dark rounded-2xl border border-slate-200 dark:border-white/5 max-w-md">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">压缩包结构 (Claude Skills 规范)</p>
             <pre className="text-[11px] text-slate-500 font-mono leading-relaxed">{'my-skill.zip\n├── SKILL.md       (必需)\n├── scripts/       (可选: 脚本)\n└── resources/     (可选: 模板/数据)'}</pre>

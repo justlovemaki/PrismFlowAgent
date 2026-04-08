@@ -11,6 +11,8 @@ import { MCPService } from './agents/MCPService.js';
 import { SkillStoreService } from './agents/SkillStoreService.js';
 
 import { SkillService } from './agents/SkillService.js';
+import { MEMORY_READ_AGENT_ID, MEMORY_WRITE_AGENT_ID } from './agents/defaultAgentIds.js';
+import { syncSkillsFromFilesystem } from './agents/SkillSyncService.js';
 import { MemoryService } from './memory/MemoryService.js';
 import { KnowledgeBaseService } from './knowledge/KnowledgeBaseService.js';
 import { ToolRegistry } from '../registries/ToolRegistry.js';
@@ -127,7 +129,7 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   if (agentService) {
     await seedDefaultAgents(store, agentService, settings);
     
-    // 只有显式开启时才执行记忆系统迁移，避免启动时后台调用 memory_assistant 干扰正常工作流
+    // 只有显式开启时才执行记忆系统迁移，避免启动时后台调用记忆读写 Agent 干扰正常工作流
     if (settings.MEMORY_SYSTEM_TYPE === 'hierarchical' && settings.MEMORY_AUTO_MIGRATE === true) {
       memoryService.migrateFromSqlite().catch(err => LogService.error(`Memory migration failed: ${err.message}`));
     }
@@ -137,7 +139,7 @@ export async function initServices(store: LocalStore): Promise<AppServices> {
   await seedDefaultSchedules(store, adapterInstances);
 
   // Seed Default Skills from filesystem
-  await seedDefaultSkills(store, skillService);
+  await syncSkillsFromFilesystem(store, skillService);
 
   // Restore status
   taskService.initStatus().catch(err => console.error('Failed to init task status:', err));
@@ -365,24 +367,90 @@ async function seedDefaultAgents(store: LocalStore, agentService: AgentService, 
   }
 
   // 2. 种子化系统内置 Agent (这些 Agent 对系统功能至关重要，且默认隐藏)
-  const memoryAssistant = agents.find(a => a.id === 'memory_assistant');
-  if (!memoryAssistant) {
+  const memoryReadAssistant = agents.find(a => a.id === MEMORY_READ_AGENT_ID);
+  const expectedMemoryReadSkillIds = ['memory-read'];
+  if (!memoryReadAssistant) {
     await store.saveAgent({
-      id: 'memory_assistant',
-      name: '流光记忆助手',
-      description: '一个拥有长期记忆能力的智能助手，能够通过渐进式披露回顾之前的对话内容。',
-      systemPrompt: '你是一个拥有记忆能力的助手。请随时在对话中使用 `save_memory` 记录重要信息，并在需要时通过 `query_memory` 回顾。保持对话的连贯性和针对性。',
+      id: MEMORY_READ_AGENT_ID,
+      name: '流光记忆检索助手',
+      description: '专用于检索和整理历史参考信息的隐藏 Agent。',
+      systemPrompt: '你是一个专门负责历史检索的助手。只返回检索得到的历史参考信息，不追加建议、结论或写入动作。',
       providerId: settings.ACTIVE_AI_PROVIDER_ID,
       model: defaultModel,
-      temperature: 0.7,
-      toolIds: ['save_memory', 'query_memory'],
-      skillIds: ['memory'],
+      temperature: 0.3,
+      toolIds: ['query_memory', 'query_knowledge'],
+      skillIds: expectedMemoryReadSkillIds,
       mcpServerIds: [],
       isHidden: true
     });
-  } else if (!memoryAssistant.isHidden) {
-    memoryAssistant.isHidden = true;
-    await store.saveAgent(memoryAssistant);
+  } else {
+    let needsUpdate = false;
+    if (!memoryReadAssistant.isHidden) {
+      memoryReadAssistant.isHidden = true;
+      needsUpdate = true;
+    }
+    const currentSkillIds = Array.isArray(memoryReadAssistant.skillIds) ? memoryReadAssistant.skillIds : [];
+    const hasExpectedSkillIds = expectedMemoryReadSkillIds.every(id => currentSkillIds.includes(id)) && currentSkillIds.length === expectedMemoryReadSkillIds.length;
+    if (!hasExpectedSkillIds) {
+      memoryReadAssistant.skillIds = expectedMemoryReadSkillIds;
+      needsUpdate = true;
+    }
+    const expectedToolIds = ['query_memory', 'query_knowledge'];
+    const currentToolIds = Array.isArray(memoryReadAssistant.toolIds) ? memoryReadAssistant.toolIds : [];
+    const hasExpectedToolIds = expectedToolIds.every(id => currentToolIds.includes(id)) && currentToolIds.length === expectedToolIds.length;
+    if (!hasExpectedToolIds) {
+      memoryReadAssistant.toolIds = expectedToolIds;
+      needsUpdate = true;
+    }
+    if (needsUpdate) {
+      await store.saveAgent(memoryReadAssistant);
+    }
+  }
+
+  const memoryWriteAssistant = agents.find(a => a.id === MEMORY_WRITE_AGENT_ID);
+  const expectedMemoryWriteSkillIds = ['memory-write'];
+  if (!memoryWriteAssistant) {
+    await store.saveAgent({
+      id: MEMORY_WRITE_AGENT_ID,
+      name: '流光记忆写入助手',
+      description: '专用于整理、分类、合并和写入记忆内容的隐藏 Agent。',
+      systemPrompt: '你是一个专门负责记忆整理与写入准备的助手。你的输出必须服务于记忆分类、整理、合并和结构化写入。',
+      providerId: settings.ACTIVE_AI_PROVIDER_ID,
+      model: defaultModel,
+      temperature: 0.7,
+      toolIds: ['save_memory'],
+      skillIds: expectedMemoryWriteSkillIds,
+      mcpServerIds: [],
+      isHidden: true
+    });
+  } else {
+    let needsUpdate = false;
+    if (!memoryWriteAssistant.isHidden) {
+      memoryWriteAssistant.isHidden = true;
+      needsUpdate = true;
+    }
+    const currentSkillIds = Array.isArray(memoryWriteAssistant.skillIds) ? memoryWriteAssistant.skillIds : [];
+    const hasExpectedSkillIds = expectedMemoryWriteSkillIds.every(id => currentSkillIds.includes(id)) && currentSkillIds.length === expectedMemoryWriteSkillIds.length;
+    if (!hasExpectedSkillIds) {
+      memoryWriteAssistant.skillIds = expectedMemoryWriteSkillIds;
+      needsUpdate = true;
+    }
+    const expectedToolIds = ['save_memory'];
+    const currentToolIds = Array.isArray(memoryWriteAssistant.toolIds) ? memoryWriteAssistant.toolIds : [];
+    const hasExpectedToolIds = expectedToolIds.every(id => currentToolIds.includes(id)) && currentToolIds.length === expectedToolIds.length;
+    if (!hasExpectedToolIds) {
+      memoryWriteAssistant.toolIds = expectedToolIds;
+      needsUpdate = true;
+    }
+    if (needsUpdate) {
+      await store.saveAgent(memoryWriteAssistant);
+    }
+  }
+
+  const legacyMemoryAssistant = agents.find(a => a.id === 'memory_assistant');
+  if (legacyMemoryAssistant && !legacyMemoryAssistant.isHidden) {
+    legacyMemoryAssistant.isHidden = true;
+    await store.saveAgent(legacyMemoryAssistant);
   }
 
   const knowledgeAssistant = agents.find(a => a.id === 'knowledge_assistant');
@@ -436,29 +504,3 @@ async function seedDefaultSchedules(store: LocalStore, adapters: any[]) {
   }
 }
 
-async function seedDefaultSkills(store: LocalStore, skillService: SkillService) {
-  const existingSkills = await store.listSkills();
-  const fsSkills = skillService.listSkills();
-
-  for (const skill of fsSkills) {
-    const existing = existingSkills.find(s => s.id === skill.id);
-    if (!existing) {
-      console.log(`Seeding skill from filesystem: ${skill.name} (${skill.id})`);
-      await store.saveSkill({
-        id: skill.id,
-        name: skill.name,
-        description: skill.description,
-        instructions: skill.instructions,
-        files: [],
-        dirPath: skill.dirPath,
-        isBuiltin: true
-      });
-    } else if (existing.isBuiltin && existing.dirPath !== skill.dirPath) {
-      // 内置技能的路径可能因环境切换（Docker ↔ 本地）而变化，需要同步更新
-      console.log(`Updating built-in skill path: ${skill.name} (${existing.dirPath} -> ${skill.dirPath})`);
-      existing.dirPath = skill.dirPath;
-      existing.instructions = skill.instructions;
-      await store.saveSkill(existing);
-    }
-  }
-}

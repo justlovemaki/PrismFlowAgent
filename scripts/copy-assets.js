@@ -15,6 +15,7 @@ async function copyAssets() {
   try {
     // Copy prompts
     if (await fs.pathExists(srcPrompts)) {
+      await fs.remove(distPrompts);
       await fs.ensureDir(distPrompts);
       await fs.copy(srcPrompts, distPrompts);
       console.log('✅ Prompts copied to dist/prompts');
@@ -22,6 +23,7 @@ async function copyAssets() {
     
     // Copy skills
     if (await fs.pathExists(srcSkills)) {
+      await fs.remove(distSkills);
       await fs.ensureDir(distSkills);
       await fs.copy(srcSkills, distSkills);
       console.log('✅ Skills copied to dist/skills');

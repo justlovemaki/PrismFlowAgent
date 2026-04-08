@@ -12,6 +12,7 @@ export interface SkillEntry {
   name: string;
   description: string;
   instructions: string;
+  files: string[];
   frontmatter: SkillFrontmatter;
   dirPath: string;
   fullPath: string;
