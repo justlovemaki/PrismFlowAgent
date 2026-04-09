@@ -11,6 +11,7 @@ import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
 import { PromptService } from '../PromptService.js';
 import { MEMORY_WRITE_AGENT_ID } from '../agents/defaultAgentIds.js';
+import { normalizeTags } from '../../utils/helpers.js';
 
 export class SqliteMemoryService implements IMemoryService {
   private store: LocalStore;
@@ -36,7 +37,7 @@ export class SqliteMemoryService implements IMemoryService {
       agentId: options.agentId,
       content,
       importance: options.importance || 1,
-      tags: options.tags || [],
+      tags: normalizeTags(options.tags),
       metadata: options.metadata || {},
       createdAt: Date.now()
     };
@@ -273,7 +274,7 @@ export class SqliteMemoryService implements IMemoryService {
         id: m.id,
         summary: m.metadata?.summary || m.content.slice(0, 100),
         importance: m.importance,
-        tags: m.tags,
+        tags: normalizeTags(m.tags),
         createdAt: m.createdAt
       })),
       updatedAt: category.updatedAt

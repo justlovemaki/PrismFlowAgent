@@ -9,6 +9,43 @@ export function getISODate(dateObj: Date = new Date()): string {
   return dateString;
 }
 
+/**
+ * 规范化标签，确保返回 string[]
+ */
+export function normalizeTags(tags: any): string[] {
+  if (!tags) return [];
+  
+  // 如果已经是数组
+  if (Array.isArray(tags)) {
+    return tags.map(t => String(t).trim()).filter(Boolean);
+  }
+
+  // 如果是字符串，尝试解析
+  if (typeof tags === 'string') {
+    const trimmed = tags.trim();
+    if (!trimmed) return [];
+
+    // 尝试解析 JSON 数组
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        return normalizeTags(parsed);
+      } catch (e) {
+        // 解析失败，按逗号分隔
+      }
+    }
+
+    // 尝试按逗号、空格或分号分隔
+    return trimmed
+      .split(/[,\s;]+/)
+      .map(t => t.trim())
+      .filter(Boolean);
+  }
+
+  // 其他类型转换为字符串
+  return [String(tags)];
+}
+
 export function escapeHtml(unsafe: any): string {
   if (unsafe === null || typeof unsafe === 'undefined') {
     return '';

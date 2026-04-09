@@ -1,5 +1,6 @@
 import { BaseTool } from '../../base/BaseTool.js';
 import { ServiceContext } from '../../../services/ServiceContext.js';
+import { normalizeTags } from '../../../utils/helpers.js';
 
 export class SaveMemoryTool extends BaseTool {
   readonly id = 'save_memory';
@@ -20,7 +21,7 @@ export class SaveMemoryTool extends BaseTool {
       tags: { 
         type: 'array', 
         items: { type: 'string' },
-        description: '可选的标签，用于分类（例如：["preference", "tech_stack"]）' 
+        description: '可选的标签数组，用于分类（例如：["preference", "tech_stack"]）。请确保输出为真正的 JSON 数组，不要将其写成字符串形式。' 
       }
     },
     required: ['content']
@@ -30,7 +31,7 @@ export class SaveMemoryTool extends BaseTool {
     const context = await ServiceContext.getInstance();
     const id = await context.memoryService.saveMemory(args.content, {
       importance: args.importance,
-      tags: args.tags
+      tags: normalizeTags(args.tags)
     });
 
     return {

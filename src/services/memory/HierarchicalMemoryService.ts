@@ -15,8 +15,10 @@ import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
 import { PromptService } from '../PromptService.js';
 import { MEMORY_READ_AGENT_ID, MEMORY_WRITE_AGENT_ID } from '../agents/defaultAgentIds.js';
+import { normalizeTags } from '../../utils/helpers.js';
 
 export class HierarchicalMemoryService implements IMemoryService {
+
   private store: LocalStore;
   private agentService: AgentService | null;
   private memoryDir: string;
@@ -66,7 +68,19 @@ export class HierarchicalMemoryService implements IMemoryService {
   private loadCategory(id: string): MemoryCategoryIndex | null {
     const filePath = path.join(this.categoryDir, `${id}.json`);
     if (!fs.existsSync(filePath)) return null;
-    return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    try {
+      const category: MemoryCategoryIndex = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+      // 强制规范化所有条目的标签
+      if (category.entries) {
+        category.entries.forEach(entry => {
+          entry.tags = normalizeTags(entry.tags);
+        });
+      }
+      return category;
+    } catch (err) {
+      LogService.error(`Failed to load category ${id}: ${err}`);
+      return null;
+    }
   }
 
   private saveCategory(category: MemoryCategoryIndex) {
@@ -94,7 +108,7 @@ export class HierarchicalMemoryService implements IMemoryService {
       agentId: options.agentId,
       content,
       importance: options.importance || 1,
-      tags: options.tags || [],
+      tags: normalizeTags(options.tags),
       metadata: { ...(options.metadata || {}), hash: contentHash },
       createdAt: Date.now()
     };
@@ -239,7 +253,7 @@ export class HierarchicalMemoryService implements IMemoryService {
         id: entry.id,
         summary: entrySummary || entry.content.slice(0, 100) + '...',
         importance: entry.importance,
-        tags: entry.tags,
+        tags: normalizeTags(entry.tags),
         hash: (entry.metadata as any)?.hash,
         createdAt: entry.createdAt
       });
