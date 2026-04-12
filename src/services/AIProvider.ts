@@ -177,10 +177,18 @@ export class GeminiProvider implements AIProvider {
   }
 
   private getLLM(tools?: any[]) {
+    const isThinkingModel = this.model.includes('thinking') || 
+                          this.model.includes('gemini') ;
+
     const llm = new ChatGoogleGenerativeAI({
       apiKey: this.apiKey,
       model: this.model,
       baseUrl: this.apiUrl || undefined,
+      // @ts-ignore - 开启高度思考 (High Thinking)
+      thinkingConfig: isThinkingModel ? {
+        includeThoughts: true,
+        thinkingBudget: 32000 // 开启高度思考预算 (相当于 High Level)
+      } : undefined,
     });
 
     const geminiBuiltinTools = [
