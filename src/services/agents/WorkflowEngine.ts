@@ -71,9 +71,14 @@ export class WorkflowEngine {
           finalOutput = result.value;
           
           if (this.isResponseEmpty(result.value)) {
-            LogService.warn(`Workflow ${workflowId} interrupted at step ${stepId}: Empty response received.`);
-            shouldInterrupt = true;
-            break;
+            const succs = successors.get(stepId) || [];
+            if (succs.length > 0) {
+              LogService.warn(`Workflow ${workflowId} interrupted at step ${stepId}: Empty response received.`);
+              shouldInterrupt = true;
+              break;
+            } else {
+              LogService.info(`Workflow ${workflowId} step ${stepId} returned empty response but has no successors. Continuing.`);
+            }
           }
         } else {
           LogService.error(`Workflow step ${stepId} failed: ${result.reason}`);
