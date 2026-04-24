@@ -116,9 +116,9 @@ export class WechatRenderer {
     // 3. 处理链接
     html = html.replace(/\[([^\]]+)\]\((https?:\/\/[^\)]+)\)/g, `<span style="${WECHAT_STYLES.inlineLink}">$1</span>`);
 
-    // 4. 数字高亮 (安全过滤：使用负向先行断言，避免匹配到 HTML 属性/样式中的数字或百分比)
-    // 同时也避开我们的占位符中的数字
-    html = html.replace(/(\d+(?:\.\d+)?[倍万亿美元%]+)(?![;\"=_@])/g, `<span style="color: #07C160; font-weight: bold;">$1</span>`);
+    // 4. 数字高亮 (安全过滤：使用负向先行/后行断言，避免匹配到 HTML 属性/样式/链接中的数字)
+    // 同时也支持英伟达 GB300、H100 等型号高亮
+    html = html.replace(/(?<![#@a-zA-Z0-9])((?:[A-Z]{1,10})\d+(?:\.\d+)?|\d+(?:\.\d+)?[倍万亿个家只次点年美元%xX]+)(?![;\"=_@a-zA-Z0-9])/g, `<span style="color: #07C160; font-weight: bold;">$1</span>`);
 
     // 5. 还原图片 (使用全局替换确保万无一失)
     images.forEach((img, i) => {

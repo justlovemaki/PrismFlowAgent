@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { publishContent, generateCoverImage, uploadWechatMaterial } from '../../../../services/contentService';
 import { agentService } from '../../../../services/agentService';
 import type { Agent, Workflow } from '../../../../services/agentService';
@@ -30,6 +30,7 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
   const [isUploadingMaterial, setIsUploadingMaterial] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [urlToMediaIdMap, setUrlToMediaIdMap] = useState<Record<string, string>>({});
+  const coverImageRef = useRef<HTMLImageElement>(null);
 
   const [agents, setAgents] = useState<Agent[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
@@ -121,7 +122,7 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
           } else {
             setIsUploadingMaterial(true);
             try {
-              const materialRes = await uploadWechatMaterial(res.url);
+              const materialRes = await robustUpload(res.url);
               if (materialRes.media_id) {
                 setWechatThumbMediaId(materialRes.media_id);
                 setUrlToMediaIdMap(prev => ({ ...prev, [res.url]: materialRes.media_id }));
@@ -170,6 +171,49 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
     const token = localStorage.getItem('auth_token');
     // 统一通过 /api/temp-image 接口处理，并携带 token 保证安全
     return `/api/temp-image?path=${encodeURIComponent(url)}${token ? `&token=${token}` : ''}`;
+  };
+
+  const robustUpload = async (url: string) => {
+    let originalError: any;
+    try {
+      // 1. 尝试常规 URL 上传
+      return await uploadWechatMaterial(url);
+    } catch (error: any) {
+      originalError = error;
+      console.warn('Regular upload failed, trying frontend capture fallback...', error);
+      // 给用户一个提示，说明正在尝试备选方案
+      toastSuccess('常规上传失败，正在尝试从浏览器缓存抓取图片...');
+    }
+
+    // 2. 备选方案：只要前端有渲染好的图片，就尝试从前端抓取内容上传
+    if (coverImageRef.current) {
+      try {
+        const img = coverImageRef.current;
+        if (img.complete && img.naturalWidth > 0) {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+            if (dataUrl) {
+              console.info('Successfully captured image from frontend DOM, uploading as base64...');
+              const res = await uploadWechatMaterial(dataUrl);
+              toastSuccess('已通过浏览器缓存成功恢复并上传封面');
+              return res;
+            }
+          }
+        } else {
+          console.warn('Image DOM element found but not fully loaded or zero size.');
+        }
+      } catch (frontendError: any) {
+        console.error('Frontend capture process failed:', frontendError);
+      }
+    }
+    
+    // 如果备选方案也失败了，抛出最初的错误
+    throw originalError;
   };
 
   return (
@@ -301,8 +345,8 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
                 <div className="relative rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-white/10 aspect-[2.35/1] bg-slate-50 dark:bg-black/20 flex items-center justify-center group">
                   {wechatCoverUrl ? (
                     <>
-                      <img src={getImageUrl(wechatCoverUrl)} className="w-full h-full object-cover" alt="Cover" />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <img ref={coverImageRef} src={getImageUrl(wechatCoverUrl)} className="w-full h-full object-cover" alt="Cover" crossOrigin="anonymous" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                         <button 
                           onClick={() => {
                             const url = prompt('请输入外部封面图片 URL:', wechatCoverUrl);
@@ -311,9 +355,17 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
                               setWechatThumbMediaId('');
                             }
                           }}
-                          className="px-3 py-1.5 bg-white/20 backdrop-blur-md hover:bg-white/40 text-white rounded-lg text-[10px] font-bold transition-all border border-white/30"
+                          className="px-3 py-1.5 bg-white/20 backdrop-blur-md hover:bg-white/40 text-white rounded-lg text-[10px] font-bold transition-all border border-white/30 whitespace-nowrap"
                         >
                           手动输入 URL
+                        </button>
+                        <button 
+                          onClick={() => window.open(getImageUrl(wechatCoverUrl), '_blank')}
+                          className="px-3 py-1.5 bg-white/20 backdrop-blur-md hover:bg-white/40 text-white rounded-lg text-[10px] font-bold transition-all border border-white/30 flex items-center gap-1 whitespace-nowrap"
+                          title="在新标签页中打开查看图片"
+                        >
+                          <span className="material-symbols-outlined" style={{ fontSize: '14px' }}>open_in_new</span>
+                          查看图片
                         </button>
                       </div>
                     </>
@@ -355,7 +407,7 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
                           // 自动切换并同步上传到微信
                           try {
                             setIsUploadingMaterial(true);
-                            const materialRes = await uploadWechatMaterial(url);
+                            const materialRes = await robustUpload(url);
                             if (materialRes.media_id) {
                               setWechatThumbMediaId(materialRes.media_id);
                               setUrlToMediaIdMap(prev => ({ ...prev, [url]: materialRes.media_id }));
@@ -391,14 +443,14 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
                     onClick={async () => {
                       setIsUploadingMaterial(true);
                       try {
-                        const materialRes = await uploadWechatMaterial(wechatCoverUrl);
+                        const materialRes = await robustUpload(wechatCoverUrl);
                         if (materialRes.media_id) {
                           setWechatThumbMediaId(materialRes.media_id);
                           setUrlToMediaIdMap(prev => ({ ...prev, [wechatCoverUrl]: materialRes.media_id }));
                           toastSuccess('封面图上传成功');
                         }
                       } catch (error: any) {
-                        toastError('重新上传失败: ' + error.message);
+                        toastError('上传失败: ' + error.message);
                       } finally {
                         setIsUploadingMaterial(false);
                       }

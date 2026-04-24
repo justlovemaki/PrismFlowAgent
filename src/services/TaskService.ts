@@ -6,6 +6,9 @@ import { getISODate } from '../utils/helpers.js';
 import { LogService } from './LogService.js';
 import { SystemSettings } from '../types/config.js';
 import { IPublisher } from '../types/plugin.js';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 export class TaskService {
   private adapters: BaseAdapter[];
@@ -65,8 +68,47 @@ export class TaskService {
       }
       // 初始加载后清除缓存，强制下次获取时重新计算
       this.statsCache = null;
+
+      // 启动时清理超过 24 小时的临时文件
+      this.cleanupTempFiles().catch(err => LogService.warn(`Temp cleanup failed: ${err.message}`));
     } catch (error) {
       LogService.error(`Failed to initialize adapter status: ${error}`);
+    }
+  }
+
+  /**
+   * 清理临时目录中由本应用生成的过期文件
+   * @param maxAgeMs 超过此时间的文件将被清理，默认 24 小时
+   */
+  async cleanupTempFiles(maxAgeMs: number = 24 * 60 * 60 * 1000) {
+    const tempDir = os.tmpdir();
+    try {
+      const files = await fs.promises.readdir(tempDir);
+      const now = Date.now();
+      let count = 0;
+      
+      for (const file of files) {
+        // 匹配本应用生成的封面图、微信上传临时文件以及视频处理目录
+        if (file.startsWith('ai_cover_') || file.startsWith('wechat_upload_') || file.startsWith('wechat-video-')) {
+          const filePath = path.join(tempDir, file);
+          try {
+            const stats = await fs.promises.stat(filePath);
+            if (now - stats.mtimeMs > maxAgeMs) {
+              // 使用 recursive: true 以便同时处理文件和目录（如 wechat-video-xxxx）
+              await fs.promises.rm(filePath, { recursive: true, force: true });
+              count++;
+            }
+          } catch (e) {
+            // 忽略单个文件处理错误（如文件已被其他进程删除）
+          }
+        }
+      }
+      
+      if (count > 0) {
+        LogService.info(`Cleaned up ${count} expired temp files/dirs from ${tempDir}`);
+      }
+    } catch (err: any) {
+      LogService.warn(`Failed to scan temp directory for cleanup: ${err.message}`);
     }
   }
 

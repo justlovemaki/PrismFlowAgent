@@ -272,23 +272,33 @@ export class GitHubTrendingAdapter extends BaseAdapter {
 
   transform(rawData: any[], config?: any): UnifiedData[] {
     const now = new Date().toISOString();
-    return rawData.map((project, index) => ({
-      id: `gh-${project.owner}-${project.name}`,
-      title: project.name,
-      url: project.url,
-      description: project.description || '',
-      published_date: now,
-      ingestion_date: now.split('T')[0],
-      source: this.name,
-      category: this.category,
-      author: project.owner,
-      metadata: {
-        language: project.language,
-        stars: project.totalStars,
-        starsToday: project.starsToday,
-        forks: project.forks
-      }
-    }));
+    return rawData.map((project, index) => {
+      const stats = [];
+      if (project.totalStars) stats.push(`总Star: ${project.totalStars}`);
+      if (project.starsToday) stats.push(`今日Star: ${project.starsToday}`);
+      if (project.forks) stats.push(`Fork: ${project.forks}`);
+      const statsStr = stats.length > 0 ? `\n[GitHub 统计] ${stats.join(' | ')}` : '';
+      
+      const fullContent = (project.description || '') + statsStr;
+      
+      return {
+        id: `gh-${project.owner}-${project.name}`,
+        title: project.name,
+        url: project.url,
+        description: fullContent,
+        published_date: now,
+        ingestion_date: now.split('T')[0],
+        source: this.name,
+        category: this.category,
+        author: project.owner,
+        metadata: {
+          language: project.language,
+          stars: project.totalStars,
+          starsToday: project.starsToday,
+          forks: project.forks
+        }
+      };
+    });
   }
 }
 

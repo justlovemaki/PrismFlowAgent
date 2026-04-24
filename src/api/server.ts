@@ -34,7 +34,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export async function createServer(existingStore?: LocalStore) {
-  const fastify = Fastify({ logger: true });
+  const fastify = Fastify({ 
+    logger: true,
+    bodyLimit: 10 * 1024 * 1024 // 增加到 10MB 以支持 Base64 封面图上传
+  });
   const store = existingStore || new LocalStore();
   if (!existingStore) {
     await store.init();
@@ -417,8 +420,22 @@ export async function createServer(existingStore?: LocalStore) {
         return reply.status(400).send({ error: 'Missing path parameter' });
       }
 
-      // 对于 http 链接，直接返回 302 重定向
+      // 对于 http 链接，尝试代理以支持跨域抓取，失败则回退到重定向
       if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+        try {
+          const response = await fetch(filePath, { 
+            method: 'GET',
+            dispatcher: (context as any).proxyAgent 
+          } as any);
+          if (response.ok) {
+            const contentType = response.headers.get('content-type');
+            if (contentType) reply.header('content-type', contentType);
+            const buffer = await response.arrayBuffer();
+            return Buffer.from(buffer);
+          }
+        } catch (e: any) {
+          LogService.warn(`Proxy fetch failed for ${filePath}, falling back to redirect: ${e.message}`);
+        }
         return reply.redirect(filePath);
       }
 

@@ -1,4 +1,4 @@
-﻿import axios from 'axios';
+import axios from 'axios';
 import fs from 'fs';
 import path from 'path';
 import sharp from 'sharp';
@@ -126,6 +126,22 @@ export class WechatService {
           tempFilePath = path.join(tempDir, `wechat_upload_${hash}_${filename}`);
           fs.writeFileSync(tempFilePath, fileBuffer);
           LogService.info(`Downloaded remote resource to temp file: ${tempFilePath}`);
+        } else if (imagePath.startsWith('data:')) {
+          // 处理 Base64 数据内容
+          const matches = imagePath.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+          if (!matches || matches.length !== 3) {
+            throw new Error('Invalid data URL format');
+          }
+          contentType = matches[1];
+          fileBuffer = Buffer.from(matches[2], 'base64');
+          
+          const extension = contentType.split('/')[1] || 'jpg';
+          filename = `base64_upload_${Date.now()}.${extension}`;
+          
+          const tempDir = os.tmpdir();
+          tempFilePath = path.join(tempDir, filename);
+          fs.writeFileSync(tempFilePath, fileBuffer);
+          LogService.info(`Saved base64 resource to temp file: ${tempFilePath}`);
         } else {
           const resolvedPath = path.isAbsolute(imagePath)
             ? imagePath
