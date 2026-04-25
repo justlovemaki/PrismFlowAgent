@@ -1,7 +1,7 @@
 import { BaseAdapter } from '../../../base/BaseAdapter.js';
 import type { UnifiedData } from '../../../../types/index.js';
 import type { AdapterMetadata } from '../../../../registries/AdapterRegistry.js';
-import { stripHtml, getRandomUserAgent } from '../../../../utils/helpers.js';
+import { stripHtml, getRandomUserAgent, getISODate } from '../../../../utils/helpers.js';
 import Parser from 'rss-parser';
 
 export class RSSAdapter extends BaseAdapter {
@@ -70,7 +70,7 @@ export class RSSAdapter extends BaseAdapter {
       url: item.link || '',
       description: stripHtml(item.contentSnippet || item.content || item.summary || ''),
       published_date: item.isoDate || item.pubDate || new Date().toISOString(),
-      ingestion_date: new Date().toISOString().split('T')[0],
+      ingestion_date: getISODate(),
       source: rawData.title || this.name,
       category: config?.category || this.category || 'rss',
       author: item.creator || item.author || ''

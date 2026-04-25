@@ -117,7 +117,7 @@ const Agents: React.FC = () => {
       
       // 2. 执行导入（统一按 TEXT 导入）
       await genericImport('TEXT', defaultCategory, { 
-        title: `${titlePrefix} - ${new Date().toLocaleString()}`, 
+        title: `${titlePrefix} - ${new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}`, 
         content 
       });
       
@@ -2607,7 +2607,7 @@ const Agents: React.FC = () => {
                             {skill.version || 'v1.0.0'}
                           </span>
                           <span className="text-[10px] text-slate-400">
-                            最后更新: {skill.updatedAt ? new Date(typeof skill.updatedAt === 'number' && skill.updatedAt < 10000000000 ? skill.updatedAt * 1000 : skill.updatedAt).toLocaleDateString() : '未知'}
+                            最后更新: {skill.updatedAt ? new Date(typeof skill.updatedAt === 'number' && skill.updatedAt < 10000000000 ? skill.updatedAt * 1000 : skill.updatedAt).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '未知'}
                           </span>
                           {(skill.githubUrl || skill.url || skill.githuburl) && (
                             <a 

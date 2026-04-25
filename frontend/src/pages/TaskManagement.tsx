@@ -182,6 +182,7 @@ const TaskManagement: React.FC = () => {
   const formatTime = (time?: string) => {
     if (!time) return '-';
     return new Date(time).toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
         hour12: false,
         month: '2-digit',
         day: '2-digit',

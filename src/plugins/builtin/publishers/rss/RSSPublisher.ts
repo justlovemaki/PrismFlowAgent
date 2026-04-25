@@ -1,6 +1,7 @@
 import { IPublisher } from '../../../../types/plugin.js';
 import { RSSService } from './RSSService.js';
 import { PublisherMetadata } from '../../../../registries/PublisherRegistry.js';
+import { getISODate } from '../../../../utils/helpers.js';
 
 export interface RSSConfig {
   title: string;
@@ -55,7 +56,7 @@ export class RSSPublisher implements IPublisher {
       success: true,
       content: xml,
       format: 'xml',
-      filename: `rss-${options.date || new Date().toISOString().split('T')[0]}.xml`
+      filename: `rss-${options.date || getISODate()}.xml`
     };
   }
 

@@ -1,5 +1,6 @@
 import { BaseTool } from '../../base/BaseTool.js';
 import { ServiceContext } from '../../../services/ServiceContext.js';
+import { getISODate } from '../../../utils/helpers.js';
 
 export class QueryDataTool extends BaseTool {
   readonly id = 'query_data';
@@ -45,7 +46,7 @@ export class QueryDataTool extends BaseTool {
     const end = new Date(args.endDate);
     
     while (current <= end) {
-      dates.push(current.toISOString().split('T')[0]);
+      dates.push(getISODate(current));
       current.setDate(current.getDate() + 1);
     }
 

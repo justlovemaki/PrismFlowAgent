@@ -36,7 +36,8 @@ const __dirname = path.dirname(__filename);
 export async function createServer(existingStore?: LocalStore) {
   const fastify = Fastify({ 
     logger: true,
-    bodyLimit: 10 * 1024 * 1024 // 增加到 10MB 以支持 Base64 封面图上传
+    bodyLimit: 10 * 1024 * 1024, // 增加到 10MB 以支持 Base64 封面图上传
+    maxParamLength: 5000 // 增加参数长度限制以支持较长的路径
   });
   const store = existingStore || new LocalStore();
   if (!existingStore) {
@@ -287,6 +288,15 @@ export async function createServer(existingStore?: LocalStore) {
         content: typeof result === 'string' ? result : JSON.stringify(result),
         data: typeof result === 'object' ? result : { result }
       };
+    } else if (agentId.startsWith('tool:')) {
+      const toolId = agentId.replace('tool:', '');
+      const toolRegistry = (context as any).toolRegistry || (await import('../registries/ToolRegistry.js')).ToolRegistry.getInstance();
+      // 工具调用通常需要一个对象参数，我们将输入映射为 prompt/input/markdown 以增强兼容性
+      const result = await toolRegistry.callTool(toolId, { prompt: input, input, markdown: input });
+      return {
+        content: typeof result === 'string' ? result : (result.content || result.html || JSON.stringify(result)),
+        data: result
+      };
     } else {
       if (!context.agentService) throw new Error('智能体服务未初始化');
       const actualAgentId = agentId.startsWith('agent:') ? agentId.replace('agent:', '') : agentId;
@@ -297,7 +307,12 @@ export async function createServer(existingStore?: LocalStore) {
   fastify.post('/api/content/:id/regenerate', async (request, reply) => {
     try {
       const { id } = request.params as any;
-      const { agentId, prompt, type, date } = request.body as any;
+      const body = request.body as any;
+      const agentId = body.agentId;
+      const prompt = body.prompt;
+      const type = body.type;
+      const content = body.content;
+      const date = body.date || id; // 优先使用 body 中的 date，否则使用路径中的 id (日期)
       
       if (!agentId) {
         return reply.status(400).send({ error: 'Missing agentId' });
@@ -306,9 +321,14 @@ export async function createServer(existingStore?: LocalStore) {
       // 1. 确定输入内容
       let input: string;
       let item: any = null;
+      let finalContent = content;
 
       if (type === 'cover') {
-        input = prompt || '请为文章生成一张封面图';
+        if (prompt && finalContent) {
+          input = `${prompt}\n\n[分隔符]:\n${finalContent}`;
+        } else {
+          input = prompt || finalContent || '请为文章生成一张封面图';
+        }
       } else {
         item = await store.getSourceData(id);
         if (!item) {
@@ -324,21 +344,32 @@ export async function createServer(existingStore?: LocalStore) {
       if (type === 'cover') {
         const urls: string[] = [];
         
-        // Try to get URLs from result.data
+        // 1. 优先从结构化数据中获取 URL
         if (result.data?.urls && Array.isArray(result.data.urls)) {
           urls.push(...result.data.urls);
         } else if (result.data?.url) {
           urls.push(result.data.url);
         }
         
-        // Match HTTP URLs
-        const httpMatches = result.content.match(/https?:\/\/[^\s)]+/gi);
-        if (httpMatches) {
-          for (const m of httpMatches) {
+        // 2. 检查是否显式返回了 HTML (通常来自专门的渲染工具)
+        if (result.data?.html && urls.length === 0) {
+          return { 
+            status: 'success', 
+            html: result.data.html,
+            isHtml: true 
+          };
+        }
+
+        // 3. 扫描文本内容中的图片 URL 和 Base64
+        // 匹配 HTTP 图片链接 (常见后缀)
+        const imgUrlMatches = result.content.match(/https?:\/\/[^\s)]+\.(?:jpg|jpeg|png|gif|webp|avif)(?:[?#][^\s)]*)?/gi);
+        if (imgUrlMatches) {
+          for (const m of imgUrlMatches) {
             if (!urls.includes(m)) urls.push(m);
           }
         }
-        // Match Base64 data URLs
+        
+        // 匹配 Base64 data URLs
         const base64Matches = result.content.match(/data:image\/[a-zA-Z+]+;base64,[a-zA-Z0-9+/=]+/gi);
         if (base64Matches) {
           for (const m of base64Matches) {
@@ -346,6 +377,18 @@ export async function createServer(existingStore?: LocalStore) {
           }
         }
 
+        // 如果之前没配到图片后缀，但有通用链接且不是 HTML，尝试匹配所有链接 (兼容一些无后缀的 API 链接)
+        const isLikelyHtml = /<\/(p|div|section|h[1-6]|table|ul|ol|img|br)>/i.test(result.content);
+        if (urls.length === 0 && !isLikelyHtml) {
+          const generalHttpMatches = result.content.match(/https?:\/\/[^\s)]+/gi);
+          if (generalHttpMatches) {
+            for (const m of generalHttpMatches) {
+              if (!urls.includes(m)) urls.push(m);
+            }
+          }
+        }
+
+        // 4. 如果找到了图片 URL，处理并返回
         if (urls.length > 0) {
           // 确保所有 URL 都是唯一的并处理 base64
           const processedUrls = await Promise.all(urls.map(async (u) => {
@@ -374,8 +417,18 @@ export async function createServer(existingStore?: LocalStore) {
           // 返回第一个作为默认，同时返回所有
           return { status: 'success', url: uniqueUrls[0], urls: uniqueUrls };
         }
-        // 如果是封面图生成但没找到 URL，才抛出错误
-        throw new Error('AI 未能成功生成图片 URL');
+        
+        // 5. 如果没找到图片，但内容看起来像 HTML，则作为 HTML 返回 (截图流程)
+        if (isLikelyHtml || result.data?.html || result.data?.content?.includes('<')) {
+          return { 
+            status: 'success', 
+            html: result.data?.html || result.data?.content || result.content,
+            isHtml: true 
+          };
+        }
+
+        // 如果是封面图生成但没找到 URL 且没找到 HTML，才抛出错误
+        throw new Error('AI 未能成功生成图片 URL 或渲染内容');
       }
 
       // 更新摘要
@@ -812,7 +865,7 @@ export async function createServer(existingStore?: LocalStore) {
               </div>
               <div class="meta-item">
                 <span class="meta-label">申请时间</span>
-                <span class="meta-value">${new Date(record.created_at).toLocaleString()}</span>
+                <span class="meta-value">${new Date(record.created_at).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}</span>
               </div>
             </div>
 

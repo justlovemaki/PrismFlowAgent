@@ -700,7 +700,7 @@ const KnowledgeBase: React.FC = () => {
                       {doc.summary}
                     </p>
                     <div className="mt-3 flex justify-between items-center text-[10px] text-slate-400">
-                      <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
+                      <span>{new Date(doc.createdAt).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}</span>
                       <span className="px-2 py-0.5 bg-slate-100 dark:bg-white/5 rounded-full">就绪</span>
                     </div>
                   </div>
@@ -779,7 +779,7 @@ const KnowledgeBase: React.FC = () => {
                       “{mem.summary}”
                     </p>
                     <div className="mt-3 flex justify-between items-center text-[10px] text-slate-400">
-                      <span>{new Date(mem.createdAt).toLocaleDateString()}</span>
+                      <span>{new Date(mem.createdAt).toLocaleDateString('zh-CN', { timeZone: 'Asia/Shanghai' })}</span>
                       <span className="px-2 py-0.5 bg-purple-50 dark:bg-purple-500/5 text-purple-600 dark:text-purple-400 rounded-full">长期记忆</span>
                     </div>
                   </div>

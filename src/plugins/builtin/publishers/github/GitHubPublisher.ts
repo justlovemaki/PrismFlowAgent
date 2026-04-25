@@ -2,6 +2,7 @@
 import { IPublisher } from '../../../../types/plugin.js';
 import { LogService } from '../../../../services/LogService.js';
 import { PublisherMetadata } from '../../../../registries/PublisherRegistry.js';
+import { getISODate } from '../../../../utils/helpers.js';
 
 export interface GitHubConfig {
   token: string;
@@ -52,7 +53,7 @@ export class GitHubPublisher implements IPublisher {
   }
 
   async publish(content: string, options: { filePath?: string; message?: string; date?: string; repo?: string; branch?: string; title?: string }) {
-    const date = options.date || new Date().toISOString().split('T')[0];
+    const date = options.date || getISODate();
     const filePath = options.filePath || `${this.config.pathPrefix || 'daily'}/${date}.md`;
     const displayDate = date.replace(/-/g, '/').replace(/\b0(\d)\b/g, '$1');
     const message = options.message || options.title || `AI资讯日报 ${displayDate}`;

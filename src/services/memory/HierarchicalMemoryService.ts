@@ -15,7 +15,7 @@ import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
 import { PromptService } from '../PromptService.js';
 import { MEMORY_READ_AGENT_ID, MEMORY_WRITE_AGENT_ID } from '../agents/defaultAgentIds.js';
-import { normalizeTags } from '../../utils/helpers.js';
+import { normalizeTags, getISODate } from '../../utils/helpers.js';
 
 export class HierarchicalMemoryService implements IMemoryService {
 
@@ -126,7 +126,7 @@ export class HierarchicalMemoryService implements IMemoryService {
       const categoriesStr = root.categories.map(c => `[ID: ${c.id}] ${c.name}: ${c.description}`).join('\n');
       const recentEntries = this.getRecentEntrySummaries(5);
       const recentEntriesStr = recentEntries.length > 0
-        ? recentEntries.map((item, index) => `${index + 1}. [ID: ${item.id}] [分类: ${item.categoryName}] [日期: ${new Date(item.createdAt).toISOString()}]\n摘要: ${item.summary}`).join('\n\n')
+        ? recentEntries.map((item, index) => `${index + 1}. [ID: ${item.id}] [分类: ${item.categoryName}] [日期: ${getISODate(new Date(item.createdAt))}]\n摘要: ${item.summary}`).join('\n\n')
         : '暂无已存在记忆。';
       
       const classifierPrompt = PromptService.getInstance().getPrompt('memory_classifier', {
@@ -174,7 +174,7 @@ export class HierarchicalMemoryService implements IMemoryService {
   }
 
   private getDayKey(timestamp: number): string {
-    return new Date(timestamp).toISOString().slice(0, 10);
+    return getISODate(new Date(timestamp));
   }
 
   private isSameDay(timestamp: number, targetDayKey: string): boolean {
@@ -527,7 +527,7 @@ export class HierarchicalMemoryService implements IMemoryService {
 
         const entryChoicePrompt = PromptService.getInstance().getPrompt('memory_entry_choice', {
           categoryName: category.name,
-          entriesStr: eligibleEntries.map((e, i) => `${i+1}. [ID: ${e.id}] (重要度: ${e.importance}, 日期: ${new Date(e.createdAt).toISOString().split('T')[0]}) 摘要: ${e.summary}`).join('\n'),
+          entriesStr: eligibleEntries.map((e, i) => `${i+1}. [ID: ${e.id}] (重要度: ${e.importance}, 日期: ${getISODate(new Date(e.createdAt))}) 摘要: ${e.summary}`).join('\n'),
           query
         });
 

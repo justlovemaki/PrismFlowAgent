@@ -15,7 +15,10 @@ export class LogService {
   }
 
   private static addLog(level: string, message: string) {
-    const timestamp = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+    const timestamp = new Date().toLocaleTimeString('zh-CN', { 
+      hour12: false,
+      timeZone: 'Asia/Shanghai'
+    });
     this.logs.push({ timestamp, level, message });
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();

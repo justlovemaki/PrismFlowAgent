@@ -10,13 +10,14 @@ import { request } from '../services/api';
 import { useToast } from '../context/ToastContext.js';
 import { copyToClipboard as copyToClipboardUtil } from '../utils/clipboardUtils';
 import { getPublisherPlugin } from '../plugins/publishers';
+import { getTodayShanghai } from '../utils/dateUtils';
 
 const Generation: React.FC = () => {
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
   const location = useLocation();
   const { date: initialDate, result: initialResult, selectedIds: initialSelectedIds, selectedItems: initialSelectedItems } = (location.state as any) || {};
   
-  const [date, setDate] = useState(initialDate || new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(initialDate || getTodayShanghai());
   const [result, setResult] = useState(initialResult || null);
   const [selectedIds, setSelectedIds] = useState(initialSelectedIds || null);
   const [selectedItems, setSelectedItems] = useState(initialSelectedItems || null);

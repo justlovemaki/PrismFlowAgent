@@ -13,7 +13,8 @@ export class PublishToWechatTool extends BaseTool {
       title: { type: 'string', description: '文章标题 (可选)' },
       author: { type: 'string', description: '作者 (可选)' },
       digest: { type: 'string', description: '摘要 (可选)' },
-      displayDate: { type: 'string', description: '显示日期，格式 YYYY/MM/DD (可选)' }
+      displayDate: { type: 'string', description: '显示日期，格式 YYYY/MM/DD (可选)' },
+      articleType: { type: 'string', enum: ['news', 'newspic'], description: '文章类型: news (普通图文, 默认), newspic (纯图片图文)' }
     },
     required: ['html']
   };
@@ -34,7 +35,8 @@ export class PublishToWechatTool extends BaseTool {
         title: args.title || '',
         author: args.author || '',
         digest: args.digest || '',
-        displayDate: args.displayDate
+        displayDate: args.displayDate,
+        articleType: args.articleType
       });
 
       LogService.info(`Tool: publish_to_wechat success. media_id: ${result.media_id}`);

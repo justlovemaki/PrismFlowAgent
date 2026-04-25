@@ -7,6 +7,7 @@ import { LocalStore } from '../LocalStore.js';
 import { AgentService } from '../agents/AgentService.js';
 import { PromptService } from '../PromptService.js';
 import { DocumentProcessor } from './DocumentProcessor.js';
+import { getISODate } from '../../utils/helpers.js';
 import { 
   IKnowledgeBaseService, 
   KBCategory, 
@@ -407,7 +408,7 @@ export class HierarchicalKnowledgeService implements IKnowledgeBaseService {
     const root = this.loadRoot();
     if (root.categories.length === 0) return "[]";
 
-    const today = new Date().toISOString().split('T')[0];
+    const today = getISODate();
 
     try {
       // --- 阶段 1: 顶层导航 (Root Navigation) ---

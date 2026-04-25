@@ -10,6 +10,7 @@ import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
 import { DocumentProcessor } from './DocumentProcessor.js';
 import { PromptService } from '../PromptService.js';
+import { getISODate } from '../../utils/helpers.js';
 import crypto from 'crypto';
 
 export class SqliteKnowledgeService implements IKnowledgeBaseService {
@@ -221,7 +222,7 @@ export class SqliteKnowledgeService implements IKnowledgeBaseService {
   }
 
   async queryKnowledge(query: string, options: { categoryIds?: string[]; limit?: number } = {}): Promise<string> {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getISODate();
     
     // 1. Search relevant chunks from SQLite FTS5
     const searchResults = await this.store.searchKBChunks(query, {

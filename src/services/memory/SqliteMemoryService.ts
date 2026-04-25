@@ -11,7 +11,7 @@ import { typeid } from 'typeid-js';
 import { LogService } from '../LogService.js';
 import { PromptService } from '../PromptService.js';
 import { MEMORY_WRITE_AGENT_ID } from '../agents/defaultAgentIds.js';
-import { normalizeTags } from '../../utils/helpers.js';
+import { normalizeTags, getISODate } from '../../utils/helpers.js';
 
 export class SqliteMemoryService implements IMemoryService {
   private store: LocalStore;
@@ -136,12 +136,12 @@ export class SqliteMemoryService implements IMemoryService {
 
     // 2. 如果没有 AgentService，直接返回原始拼接（降级方案）
     if (!this.agentService) {
-      return rawResults.map(r => `[${new Date(r.createdAt).toLocaleDateString()}] ${r.content}`).join('\n---\n');
+      return rawResults.map(r => `[${getISODate(new Date(r.createdAt))}] ${r.content}`).join('\n---\n');
     }
 
     // 3. 准备子 Agent 输入：将原始记录格式化为上下文
     const contextStr = rawResults.map((r, i) => {
-      const date = new Date(r.createdAt).toISOString().split('T')[0];
+      const date = getISODate(new Date(r.createdAt));
       return `记录 ${i+1} [日期: ${date}, 重要度: ${r.importance}, 标签: ${r.tags.join(',')}]:\n${r.content}`;
     }).join('\n\n');
 

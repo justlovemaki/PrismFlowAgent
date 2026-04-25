@@ -5,10 +5,11 @@ import { loadFromCache, CACHE_KEYS } from '../utils/cacheUtils';
 import { getSettings } from '../services/settingsService';
 import { useToast } from '../context/ToastContext.js';
 import { copyToClipboard as copyToClipboardUtil } from '../utils/clipboardUtils';
+import { getTodayShanghai } from '../utils/dateUtils';
 
 const StandalonePreview: React.FC = () => {
   const [searchParams] = useSearchParams();
-  const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
+  const date = searchParams.get('date') || getTodayShanghai();
   const { success: toastSuccess, error: toastError } = useToast();
   
   const [content, setContent] = useState('');

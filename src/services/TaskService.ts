@@ -266,7 +266,7 @@ export class TaskService {
     
     const yesterday = new Date();
     yesterday.setDate(yesterday.getDate() - 1);
-    const yesterdayDate = yesterday.toISOString().split('T')[0];
+    const yesterdayDate = getISODate(yesterday);
     const allYesterdayData = await this.getAggregatedData(yesterdayDate, { includePreviousDay: false, queryField: 'ingestion_date' });
 
     const stats = {
@@ -354,7 +354,7 @@ export class TaskService {
     for (let i = 0; i < fetchDays; i++) {
       const d = new Date(targetDate);
       d.setDate(d.getDate() - i);
-      dates.push(d.toISOString().split('T')[0]);
+      dates.push(getISODate(d));
     }
 
     const data: Record<string, UnifiedData[]> = {};

@@ -208,6 +208,29 @@ export const agentService = {
     body: JSON.stringify({ input, date })
   }),
 
+  runExecutor: (id: string, input: any, date?: string) => {
+    if (!id) throw new Error('Executor ID is required');
+    if (id.startsWith('tool:')) {
+      const toolId = id.replace('tool:', '');
+      return request(`/api/tools/${toolId}/run`, {
+        method: 'POST',
+        body: JSON.stringify(typeof input === 'string' ? { input, markdown: input } : input)
+      });
+    } else if (id.startsWith('workflow:')) {
+      const workflowId = id.replace('workflow:', '');
+      return request(`/api/workflows/${workflowId}/run`, {
+        method: 'POST',
+        body: JSON.stringify({ input, date })
+      });
+    } else {
+      const agentId = id.startsWith('agent:') ? id.replace('agent:', '') : id;
+      return request(`/api/agents/${agentId}/run`, {
+        method: 'POST',
+        body: JSON.stringify({ input, date })
+      });
+    }
+  },
+
   getMCPConfigs: () => request('/api/mcp-configs'),
   saveMCPConfig: (config: MCPServerConfig) => request('/api/mcp-configs', {
     method: 'POST',

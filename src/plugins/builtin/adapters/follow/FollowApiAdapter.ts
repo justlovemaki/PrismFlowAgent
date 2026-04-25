@@ -1,6 +1,6 @@
 ﻿import { BaseAdapter } from '../../../base/BaseAdapter.js';
 import type { UnifiedData } from '../../../../types/index.js';
-import { stripHtml, getRandomUserAgent, sleep } from '../../../../utils/helpers.js';
+import { stripHtml, getRandomUserAgent, sleep, getISODate } from '../../../../utils/helpers.js';
 import type { AdapterMetadata } from '../../../../registries/AdapterRegistry.js';
 import { LogService } from '../../../../services/LogService.js';
 
@@ -192,7 +192,7 @@ export class FollowApiAdapter extends BaseAdapter {
         url: entry.entries.url,
         description: stripHtml(entry.entries.content || ''),
         published_date: entry.entries.publishedAt,
-        ingestion_date: new Date().toISOString().split('T')[0],
+        ingestion_date: getISODate(),
         source: entry.feeds.title,
         category: this.category,
         author: entry.entries.author,

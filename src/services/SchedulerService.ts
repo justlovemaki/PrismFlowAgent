@@ -130,7 +130,7 @@ export class SchedulerService {
     const today = getISODate();
     const yesterdayDate = new Date();
     yesterdayDate.setDate(yesterdayDate.getDate() - 1);
-    const yesterday = yesterdayDate.toISOString().split('T')[0];
+    const yesterday = getISODate(yesterdayDate);
     
     const dates = [yesterday, today];
     let processedTotal = 0;

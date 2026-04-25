@@ -1282,7 +1282,7 @@ const Settings: React.FC = () => {
                     <div className="hidden sm:block">
                       <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">最后使用</div>
                       <div className="text-xs text-slate-600 dark:text-slate-300">
-                        {keyRecord.lastUsedAt ? new Date(keyRecord.lastUsedAt).toLocaleString() : '从未使用'}
+                        {keyRecord.lastUsedAt ? new Date(keyRecord.lastUsedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '从未使用'}
                       </div>
                     </div>
                     <button 
