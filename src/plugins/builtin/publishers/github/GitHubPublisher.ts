@@ -3,6 +3,7 @@ import { IPublisher } from '../../../../types/plugin.js';
 import { LogService } from '../../../../services/LogService.js';
 import { PublisherMetadata } from '../../../../registries/PublisherRegistry.js';
 import { getISODate } from '../../../../utils/helpers.js';
+import { GITHUB_REST_API_HEADERS } from '../../../../utils/github.js';
 
 export interface GitHubConfig {
   token: string;
@@ -77,7 +78,8 @@ export class GitHubPublisher implements IPublisher {
         owner,
         repo,
         path: filePath,
-        ref: branch
+        ref: branch,
+        headers: GITHUB_REST_API_HEADERS
       });
       if ('sha' in data) {
         sha = data.sha;
@@ -92,7 +94,8 @@ export class GitHubPublisher implements IPublisher {
       path: filePath,
       message,
       content: Buffer.from(content).toString('base64'),
-      branch
+      branch,
+      headers: GITHUB_REST_API_HEADERS
     };
 
     if (sha) {
@@ -115,7 +118,8 @@ export class GitHubPublisher implements IPublisher {
       owner: this.owner,
       repo: this.repo,
       path: filePath,
-      ref: this.config.branch
+      ref: this.config.branch,
+      headers: GITHUB_REST_API_HEADERS
     });
     if ('content' in data) {
       return Buffer.from(data.content, 'base64').toString('utf-8');

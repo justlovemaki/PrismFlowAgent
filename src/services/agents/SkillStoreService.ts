@@ -1,6 +1,7 @@
 import { ProxyAgent, fetch } from 'undici';
 import { LogService } from '../LogService.js';
 import { Octokit } from '@octokit/rest';
+import { GITHUB_REST_API_HEADERS } from '../../utils/github.js';
 
 export interface StoreSkill {
   id: string;
@@ -94,7 +95,8 @@ export class SkillStoreService {
         owner: params.owner,
         repo: params.repo,
         path: currentPath,
-        ref: params.branch
+        ref: params.branch,
+        headers: GITHUB_REST_API_HEADERS
       });
 
       if (Array.isArray(data)) {
@@ -106,7 +108,8 @@ export class SkillStoreService {
               owner: params.owner,
               repo: params.repo,
               path: item.path,
-              ref: params.branch
+              ref: params.branch,
+              headers: GITHUB_REST_API_HEADERS
             });
             
             if ('content' in fileData.data && typeof fileData.data.content === 'string') {

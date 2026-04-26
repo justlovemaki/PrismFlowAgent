@@ -86,6 +86,13 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
     }
   }, [selectedCoverAgentId]);
 
+  // 保存内容处理执行器的选择
+  useEffect(() => {
+    if (selectedContentExecutorId) {
+      localStorage.setItem('wechat_content_executor', selectedContentExecutorId);
+    }
+  }, [selectedContentExecutorId]);
+
   const handleExtractImages = () => {
     // 1. 匹配 Markdown 图片语法: ![alt](url)
     const mdImgRegex = /!\[.*?\]\((https?:\/\/.*?)\)/g;
@@ -185,6 +192,19 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
           if (ags && ags.length > 0) setSelectedCoverAgentId(`agent:${ags[0].id}`);
           else if (wfs && wfs.length > 0) setSelectedCoverAgentId(`workflow:${wfs[0].id}`);
           else if (tls && tls.length > 0) setSelectedCoverAgentId(`tool:${tls[0].id}`);
+        }
+
+        const savedContentExecutorId = localStorage.getItem('wechat_content_executor');
+        if (savedContentExecutorId) {
+          const [type, id] = savedContentExecutorId.split(':');
+          let exists = false;
+          if (type === 'agent') exists = ags?.some((a: Agent) => a.id === id);
+          else if (type === 'workflow') exists = wfs?.some((w: Workflow) => w.id === id);
+          else if (type === 'tool') exists = tls?.some((t: Tool) => t.id === id);
+          
+          if (exists) {
+            setSelectedContentExecutorId(savedContentExecutorId);
+          }
         }
       } catch (e) {
         console.error('Failed to load agents/workflows/tools for cover generation:', e);

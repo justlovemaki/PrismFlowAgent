@@ -3,6 +3,7 @@ import { Octokit } from '@octokit/rest';
 import { IStorageProvider } from '../../../../types/plugin.js';
 import { LogService } from '../../../../services/LogService.js';
 import { StorageMetadata } from '../../../../registries/StorageRegistry.js';
+import { GITHUB_REST_API_HEADERS } from '../../../../utils/github.js';
 
 export interface GitHubStorageConfig {
   token: string;
@@ -67,7 +68,8 @@ export class GitHubStorage implements IStorageProvider {
           path: repoPath,
           message: `feat: Upload asset ${targetFilename}`,
           content: base64Content,
-          branch: this.config.branch
+          branch: this.config.branch,
+          headers: GITHUB_REST_API_HEADERS
         });
         
         const baseUrl = this.config.publicUrlPrefix.replace(/\/$/, '');

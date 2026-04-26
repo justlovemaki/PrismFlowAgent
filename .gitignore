@@ -7,3 +7,7 @@ dist/
 app.log
 .env
 src/plugins/custom
+*.sqlite
+data/
+.DS_Store
+

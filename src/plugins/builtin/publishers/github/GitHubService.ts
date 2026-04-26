@@ -1,5 +1,7 @@
 ﻿import { Octokit } from '@octokit/rest';
 
+import { GITHUB_REST_API_HEADERS } from '../../../../utils/github.js';
+
 export class GitHubService {
   private octokit: Octokit;
   private owner: string;
@@ -21,7 +23,8 @@ export class GitHubService {
         owner: this.owner,
         repo: this.repo,
         path: filePath,
-        ref: this.branch
+        ref: this.branch,
+        headers: GITHUB_REST_API_HEADERS
       });
       if ('sha' in data) {
         sha = data.sha;
@@ -36,7 +39,8 @@ export class GitHubService {
       path: filePath,
       message,
       content: Buffer.from(content).toString('base64'),
-      branch: this.branch
+      branch: this.branch,
+      headers: GITHUB_REST_API_HEADERS
     };
 
     if (sha) {
@@ -51,7 +55,8 @@ export class GitHubService {
       owner: this.owner,
       repo: this.repo,
       path: filePath,
-      ref: this.branch
+      ref: this.branch,
+      headers: GITHUB_REST_API_HEADERS
     });
     if ('content' in data) {
       return Buffer.from(data.content, 'base64').toString('utf-8');

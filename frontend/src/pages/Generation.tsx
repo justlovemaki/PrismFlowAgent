@@ -102,7 +102,7 @@ const Generation: React.FC = () => {
     index: number;
   }>({ list: [], index: -1 });
 
-  // Recent AI selections (persisted in localStorage, max 6 unique)
+  // Recent AI selections (persisted in localStorage, max 9 unique)
   type RecentAISelection = { type: 'workflow' | 'agent'; id: string; name: string };
   const RECENT_KEY = 'ai_picker_recent';
   const loadRecent = (): RecentAISelection[] => {
@@ -110,7 +110,7 @@ const Generation: React.FC = () => {
   };
   const saveRecentSelection = (item: RecentAISelection) => {
     const prev = loadRecent().filter(r => !(r.type === item.type && r.id === item.id));
-    const next = [item, ...prev].slice(0, 6);
+    const next = [item, ...prev].slice(0, 9);
     localStorage.setItem(RECENT_KEY, JSON.stringify(next));
   };
 
@@ -1126,6 +1126,24 @@ const Generation: React.FC = () => {
                                 <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-sm">
                                   expand_more
                                 </span>
+                              </div>
+                            ) : (type === 'array' && prop.items?.enum) ? (
+                              <div className="grid grid-cols-1 gap-1.5 p-2 bg-slate-50 dark:bg-white/[0.02] rounded-xl border border-slate-200 dark:border-white/5">
+                                {prop.items.enum.map((v: string) => (
+                                  <label key={v} className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1 rounded transition-all">
+                                    <input
+                                      type="checkbox"
+                                      checked={Array.isArray(toolArguments[key]) && toolArguments[key].includes(v)}
+                                      onChange={e => {
+                                        const current = Array.isArray(toolArguments[key]) ? toolArguments[key] : [];
+                                        const next = e.target.checked ? [...current, v] : current.filter((i: string) => i !== v);
+                                        setToolArguments({ ...toolArguments, [key]: next });
+                                      }}
+                                      className="w-3.5 h-3.5 rounded border-slate-300 text-primary focus:ring-primary"
+                                    />
+                                    <span className="text-[11px] text-slate-600 dark:text-slate-300">{v}</span>
+                                  </label>
+                                ))}
                               </div>
                             ) : type === 'boolean' ? (
                               <div className="flex items-center gap-3 p-2 bg-slate-50 dark:bg-white/[0.02] rounded-xl border border-slate-200 dark:border-white/5">
