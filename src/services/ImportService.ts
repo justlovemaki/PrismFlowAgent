@@ -1,6 +1,6 @@
 import { LocalStore } from './LocalStore.js';
 import { UnifiedData } from '../types/index.js';
-import { getISODate, stripHtml, getRandomUserAgent } from '../utils/helpers.js';
+import { getISODate, stripHtml, getRandomUserAgent, truncateContent } from '../utils/helpers.js';
 import { LogService } from './LogService.js';
 import crypto from 'crypto';
 
@@ -64,20 +64,24 @@ export class ImportService {
    */
   async importFromText(title: string, content: string, categoryId: string): Promise<UnifiedData> {
     const plainTitle = stripHtml(title || '手动录入内容');
-    const plainContent = stripHtml(content);
+    // 对于手动录入内容，我们保留换行并只进行基础清理，不使用过于激进的 stripHtml，以保留 Markdown 格式
+    const cleanContent = content
+      .replace(/<script[\s\S]*?<\/script>/gi, '')
+      .replace(/<style[\s\S]*?<\/style>/gi, '')
+      .trim();
 
     const item: UnifiedData = {
-      id: `manual-text-${crypto.createHash('md5').update(plainContent + Date.now()).digest('hex').substring(0, 12)}`,
+      id: `manual-text-${crypto.createHash('md5').update(cleanContent + Date.now()).digest('hex').substring(0, 12)}`,
       title: plainTitle,
       url: '#',
-      description: plainContent.substring(0, 20000),
+      description: truncateContent(stripHtml(cleanContent), 500),
       published_date: new Date().toISOString(),
       ingestion_date: getISODate(),
       source: '手动文本导入',
       category: categoryId,
       metadata: {
         import_mode: 'TEXT',
-        content_html: plainContent // 存储纯文本
+        content_html: cleanContent // 存储清理后的文本
       }
     };
 

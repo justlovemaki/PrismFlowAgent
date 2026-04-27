@@ -139,8 +139,8 @@ export function stripHtml(html: string): string {
   processedHtml = processedHtml.replace(/<img[^>]*src="([^"]*)"[^>]*>/gi, '[图片: $1]');
   processedHtml = processedHtml.replace(/<video[^>]*src="([^"]*)"[^>]*>.*?<\/video>/gi, '[视频: $1]');
   
-  // 4. 移除所有其他 HTML 标签
-  return processedHtml.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  // 4. 移除所有其他 HTML 标签，保留原有换行和空格
+  return processedHtml.replace(/<[^>]+>/g, ' ').trim();
 }
 
 export function convertToShanghaiTime(dateString: string | Date): Date {

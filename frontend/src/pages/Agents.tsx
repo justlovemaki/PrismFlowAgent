@@ -2428,24 +2428,37 @@ const Agents: React.FC = () => {
                             expand_more
                           </span>
                         </div>
-                      ) : (type === 'array' && prop.items?.enum) ? (
-                        <div className="grid grid-cols-1 gap-2 p-3 bg-slate-50 dark:bg-white/[0.02] rounded-xl border border-slate-200 dark:border-white/5">
-                          {prop.items.enum.map((v: string) => (
-                            <label key={v} className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1.5 rounded transition-all">
-                              <input
-                                type="checkbox"
-                                checked={Array.isArray(toolArguments[key]) && toolArguments[key].includes(v)}
-                                onChange={e => {
-                                  const current = Array.isArray(toolArguments[key]) ? toolArguments[key] : [];
-                                  const next = e.target.checked ? [...current, v] : current.filter((i: string) => i !== v);
-                                  setToolArguments({ ...toolArguments, [key]: next });
-                                }}
-                                className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
-                              />
-                              <span className="text-sm text-slate-600 dark:text-slate-300">{v}</span>
-                            </label>
-                          ))}
-                        </div>
+                      ) : type === 'array' ? (
+                        prop.items?.enum ? (
+                          <div className="grid grid-cols-1 gap-2 p-3 bg-slate-50 dark:bg-white/[0.02] rounded-xl border border-slate-200 dark:border-white/5">
+                            {prop.items.enum.map((v: string) => (
+                              <label key={v} className="flex items-center gap-2 cursor-pointer hover:bg-slate-100 dark:hover:bg-white/5 px-2 py-1.5 rounded transition-all">
+                                <input
+                                  type="checkbox"
+                                  checked={Array.isArray(toolArguments[key]) && toolArguments[key].includes(v)}
+                                  onChange={e => {
+                                    const current = Array.isArray(toolArguments[key]) ? toolArguments[key] : [];
+                                    const next = e.target.checked ? [...current, v] : current.filter((i: string) => i !== v);
+                                    setToolArguments({ ...toolArguments, [key]: next });
+                                  }}
+                                  className="w-4 h-4 rounded border-slate-300 text-primary focus:ring-primary"
+                                />
+                                <span className="text-sm text-slate-600 dark:text-slate-300">{v}</span>
+                              </label>
+                            ))}
+                          </div>
+                        ) : (
+                          <textarea
+                            value={Array.isArray(toolArguments[key]) ? toolArguments[key].join('\n') : (toolArguments[key] || '')}
+                            onChange={e => {
+                              const val = e.target.value;
+                              const arr = val.split('\n').map(s => s.trim()).filter(Boolean);
+                              setToolArguments({ ...toolArguments, [key]: arr });
+                            }}
+                            placeholder="请输入列表项，每行一个"
+                            className="w-full px-4 py-2.5 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary/20 transition-all dark:text-white min-h-[100px] resize-y font-mono"
+                          />
+                        )
                       ) : type === 'boolean' ? (
                         <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-white/[0.02] rounded-xl border border-slate-200 dark:border-white/5">
                           <span className="text-xs text-slate-500">启用</span>

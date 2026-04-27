@@ -14,7 +14,13 @@ export class PublishToWechatTool extends BaseTool {
       author: { type: 'string', description: '作者 (可选)' },
       digest: { type: 'string', description: '摘要 (可选)' },
       displayDate: { type: 'string', description: '显示日期，格式 YYYY/MM/DD (可选)' },
-      articleType: { type: 'string', enum: ['news', 'newspic'], description: '文章类型: news (普通图文, 默认), newspic (纯图片图文)' }
+      articleType: { type: 'string', enum: ['news', 'newspic'], description: '文章类型: news (普通图文, 默认), newspic (纯图片图文)' },
+      thumbMediaId: { type: 'string', description: '封面图的微信 MediaID (可选，如果不传则自动使用正文第一张图)' },
+      imageMediaIds: { 
+        type: 'array', 
+        items: { type: 'string' }, 
+        description: '图片列表的微信 MediaID 数组 (可选，仅在 articleType 为 newspic 时生效)' 
+      }
     },
     required: ['html']
   };
@@ -36,7 +42,9 @@ export class PublishToWechatTool extends BaseTool {
         author: args.author || '',
         digest: args.digest || '',
         displayDate: args.displayDate,
-        articleType: args.articleType
+        articleType: args.articleType,
+        thumbMediaId: args.thumbMediaId,
+        imageMediaIds: args.imageMediaIds
       });
 
       LogService.info(`Tool: publish_to_wechat success. media_id: ${result.media_id}`);
