@@ -6,6 +6,7 @@ import { getSettings } from '../services/settingsService';
 import { useToast } from '../context/ToastContext.js';
 import { copyToClipboard } from '../utils/clipboardUtils';
 import { genericImport } from '../services/importService';
+import { getTodayShanghai } from '../utils/dateUtils';
 
 const FileTreeNode: React.FC<{
   items: any[];
@@ -66,6 +67,7 @@ const Agents: React.FC = () => {
   const [testResults, setTestResults] = useState<Record<string, string>>({});
   const [testingAgentId, setTestingAgentId] = useState<string | null>(null);
   const [testInput, setTestInput] = useState('');
+  const [testDate, setTestDate] = useState(getTodayShanghai());
   const [isUploading, setIsUploading] = useState(false);
   const [isScanningSkills, setIsScanningSkills] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -210,7 +212,7 @@ const Agents: React.FC = () => {
 
       if (agent?.streaming) {
         let fullContent = '';
-        await agentService.runAgentStream(id, input, undefined, (chunk) => {
+        await agentService.runAgentStream(id, input, testDate, (chunk) => {
           if (chunk.type === 'error') {
             fullContent += `\n[错误: ${chunk.error}]\n`;
             setTestResults(prev => ({ ...prev, [id]: fullContent || '无响应内容' }));
@@ -229,7 +231,7 @@ const Agents: React.FC = () => {
         });
         setTestResults(prev => ({ ...prev, [id]: fullContent || '无响应内容' }));
       } else {
-        const result = await agentService.runAgent(id, input);
+        const result = await agentService.runAgent(id, input, testDate);
         setTestResults(prev => ({ ...prev, [id]: result.content || '无响应内容' }));
       }
     } catch (error: any) {
@@ -751,6 +753,17 @@ const Agents: React.FC = () => {
               </div>
 
               <div className="space-y-4">
+                <div className="flex gap-4">
+                  <div className="flex-1 space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">处理日期</label>
+                    <input 
+                      type="date"
+                      value={testDate}
+                      onChange={e => setTestDate(e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-green-500/20 transition-all dark:text-white"
+                    />
+                  </div>
+                </div>
                 <textarea 
                   rows={3}
                   value={testInput}
@@ -1578,7 +1591,7 @@ const Agents: React.FC = () => {
       });
 
       setWorkflowTestResult(prev => ({ ...prev, [id]: '正在思考...' }));
-      const result = await agentService.runWorkflow(id, input);
+      const result = await agentService.runWorkflow(id, input, testDate);
       let content = '';
       if (result) {
         if (typeof result === 'string') content = result;
@@ -2258,7 +2271,18 @@ const Agents: React.FC = () => {
               </div>
 
               <div className="space-y-4">
-                <textarea
+                <div className="flex gap-4">
+                  <div className="flex-1 space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest ml-1">处理日期</label>
+                    <input 
+                      type="date"
+                      value={testDate}
+                      onChange={e => setTestDate(e.target.value)}
+                      className="w-full px-4 py-2 bg-slate-50 dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500/20 transition-all dark:text-white"
+                    />
+                  </div>
+                </div>
+                <textarea 
                   rows={3}
                   value={workflowTestInput}
                   onChange={e => setWorkflowTestInput(e.target.value)}

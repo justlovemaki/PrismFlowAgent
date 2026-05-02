@@ -1,5 +1,5 @@
 # --- Build Stage ---
-FROM node:20-slim AS builder
+FROM node:22-slim AS builder
 
 WORKDIR /app
 
@@ -30,9 +30,24 @@ RUN npm run build
 # --- Production Stage ---
 FROM node:20-slim
 
-# Install ffmpeg for video processing
-RUN apt-get update && apt-get install -y \
+# Set Language and Timezone environment variables
+ENV LANG=en_US.UTF-8 \
+    LANGUAGE=en_US:en \
+    LC_ALL=en_US.UTF-8 \
+    TZ=Asia/Shanghai
+
+# Install system dependencies (ffmpeg, tzdata, locales)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    tzdata \
+    locales \
+    && sed -i 's/^# *en_US.UTF-8 UTF-8$/en_US.UTF-8 UTF-8/' /etc/locale.gen \
+    && locale-gen \
+    && printf 'LANG=en_US.UTF-8\nLANGUAGE=en_US:en\nLC_ALL=en_US.UTF-8\n' > /etc/default/locale \
+    && ln -fs /usr/share/zoneinfo/${TZ} /etc/localtime \
+    && echo ${TZ} > /etc/timezone \
+    && apt-get purge -y --auto-remove \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
