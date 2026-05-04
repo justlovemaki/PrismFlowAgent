@@ -53,23 +53,30 @@ export class WechatService {
   /**
    * 使用队列管理并发任务，替代忙等轮询
    */
-  private static async runInQueue<T>(task: () => Promise<T>): Promise<T> {
-    // 等待前面的任务完成（或至少让出位置）
+  private static async runInQueue<T>(taskName: string, task: () => Promise<T>): Promise<T> {
+    const startTime = Date.now();
+    LogService.info(`[Queue] Task "${taskName}" entering queue. Active: ${this.activeProcessingCount}/${this.MAX_CONCURRENT_PROCESSING}`);
+    
+    // 等待前面的任务完成
     const previousTask = this.imageProcessingQueue;
     let resolveCurrent: () => void;
     const currentWait = new Promise<void>(resolve => { resolveCurrent = resolve; });
-    
-    // 更新队列链
     this.imageProcessingQueue = previousTask.then(() => currentWait);
 
     try {
-      // 这里的逻辑依然简单限制并发，但通过 Promise 链确保顺序和非阻塞
       while (this.activeProcessingCount >= this.MAX_CONCURRENT_PROCESSING) {
         await new Promise(resolve => setTimeout(resolve, 50));
       }
+      
+      const waitTime = Date.now() - startTime;
       this.activeProcessingCount++;
+      LogService.info(`[Queue] Task "${taskName}" starting execution after ${waitTime}ms wait. Active: ${this.activeProcessingCount}`);
+      
       try {
-        return await task();
+        const executionStart = Date.now();
+        const result = await task();
+        LogService.info(`[Queue] Task "${taskName}" finished in ${Date.now() - executionStart}ms.`);
+        return result;
       } finally {
         this.activeProcessingCount--;
       }
@@ -195,7 +202,8 @@ export class WechatService {
 
     // 2. 格式探测和转换 (受并发队列保护)
     try {
-      const result = await WechatService.runInQueue(async () => {
+      const originalSize = fileBuffer.length;
+      const result = await WechatService.runInQueue<ProcessedImageData>(`ProcessImg:${filename}`, async () => {
         const metadata = await sharp(fileBuffer).metadata();
         const detectedType = metadata.format;
         let processedBuffer = fileBuffer;
@@ -203,7 +211,7 @@ export class WechatService {
         let processedContentType = contentType;
         
         if (detectedType === 'avif' || detectedType === 'heif' || (uploadType === 'body' && detectedType === 'webp')) {
-           LogService.info(`Converting ${detectedType} to jpeg for WeChat compliance: ${filename}`);
+           LogService.info(`[Sharp] Converting ${detectedType} to jpeg: ${filename}`);
            processedBuffer = await sharp(fileBuffer).jpeg({ quality: 85 }).toBuffer();
            processedFilename = filename.replace(/\.(avif|heif|webp)$/i, '.jpg');
            if (!processedFilename.toLowerCase().endsWith('.jpg')) processedFilename += '.jpg';
@@ -211,7 +219,7 @@ export class WechatService {
         }
         
         if (processedBuffer.length > 2 * 1024 * 1024 && detectedType !== 'gif') {
-           LogService.info(`Compressing large image: ${processedBuffer.length} bytes`);
+           LogService.info(`[Sharp] Compressing large image (${(processedBuffer.length / 1024 / 1024).toFixed(2)}MB): ${filename}`);
            processedBuffer = await sharp(processedBuffer).jpeg({ quality: 80 }).toBuffer();
            processedContentType = 'image/jpeg';
         }
@@ -222,6 +230,10 @@ export class WechatService {
       fileBuffer = result.buffer;
       filename = result.filename;
       contentType = result.contentType;
+
+      if (fileBuffer.length !== originalSize) {
+        LogService.info(`[Sharp] Done: ${filename}. Size: ${(originalSize / 1024).toFixed(1)}KB -> ${(fileBuffer.length / 1024).toFixed(1)}KB`);
+      }
     } catch (err) {
       LogService.warn(`Sharp process failed for ${filename}, using original. Error: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -372,14 +384,28 @@ export class WechatService {
           const videoPath = path.join(tempDir, `input_${hash}`);
           const gifPath = path.join(tempDir, `output_${hash}.gif`);
 
-          const response = await axios.get(src, { responseType: 'arraybuffer', timeout: 30000 });
+          LogService.info(`[Video] Downloading video for GIF conversion: ${src}`);
+          const response = await axios.get(src, { responseType: 'arraybuffer', timeout: 60000 });
           fs.writeFileSync(videoPath, Buffer.from(response.data));
 
-          await new Promise((resolve, reject) => {
-            ffmpeg(videoPath)
-              .setStartTime(0)
-              .outputOptions(['-vf', 'fps=8,scale=400:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse', '-frames:v', '40'])
-              .on('end', resolve).on('error', reject).save(gifPath);
+          await WechatService.runInQueue(`Video2Gif:${hash.substring(0, 8)}`, async () => {
+            LogService.info(`[Video] Starting FFmpeg conversion (limit threads: 2)`);
+            await new Promise((resolve, reject) => {
+              ffmpeg(videoPath)
+                .setStartTime(0)
+                // 限制线程数为 2，增加 fps 和 scale 控制，优化调色板以平衡质量与性能
+                .outputOptions([
+                  '-threads', '2', 
+                  '-vf', 'fps=8,scale=400:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse', 
+                  '-frames:v', '40'
+                ])
+                .on('end', resolve)
+                .on('error', (err) => {
+                  LogService.error(`[Video] FFmpeg error: ${err.message}`);
+                  reject(err);
+                })
+                .save(gifPath);
+            });
           });
 
           const resp = await this.uploadResource(gifPath, undefined);
@@ -387,6 +413,7 @@ export class WechatService {
           if (resp.media_id) allMediaIds.push(resp.media_id);
 
           fs.rmSync(tempDir, { recursive: true, force: true });
+          LogService.info(`[Video] Successfully converted video to GIF and uploaded.`);
         } catch (err: any) {
           LogService.error(`Failed to process video ${src} to GIF: ${err.message}`);
           const escapedBlock = fullBlock.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
