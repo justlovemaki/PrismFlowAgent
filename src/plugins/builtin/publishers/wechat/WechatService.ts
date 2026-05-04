@@ -7,6 +7,9 @@ import os from 'os';
 import crypto from 'crypto';
 import { LogService } from '../../../../services/LogService.js';
 
+// 限制 sharp 并发线程数，避免 HEIF/AVIF 转换抢占所有核心
+sharp.concurrency(1);
+
 export interface WechatConfig {
   appId: string;
   appSecret: string;
@@ -26,14 +29,53 @@ export interface PublishOptions {
   imageMediaIds?: string[];
 }
 
+export interface ProcessedImageData {
+  buffer: Buffer;
+  filename: string;
+  contentType: string;
+}
+
 export class WechatService {
   private static instance: WechatService;
   private config: WechatConfig;
   private accessToken: string | null = null;
   private tokenExpiresAt: number = 0;
 
+  // 全局图片处理并发锁，限制同时进行 CPU 密集型转换的任务数
+  private static imageProcessingQueue: Promise<void> = Promise.resolve();
+  private static readonly MAX_CONCURRENT_PROCESSING = 2;
+  private static activeProcessingCount = 0;
+
   private constructor(config: WechatConfig) {
     this.config = config;
+  }
+
+  /**
+   * 使用队列管理并发任务，替代忙等轮询
+   */
+  private static async runInQueue<T>(task: () => Promise<T>): Promise<T> {
+    // 等待前面的任务完成（或至少让出位置）
+    const previousTask = this.imageProcessingQueue;
+    let resolveCurrent: () => void;
+    const currentWait = new Promise<void>(resolve => { resolveCurrent = resolve; });
+    
+    // 更新队列链
+    this.imageProcessingQueue = previousTask.then(() => currentWait);
+
+    try {
+      // 这里的逻辑依然简单限制并发，但通过 Promise 链确保顺序和非阻塞
+      while (this.activeProcessingCount >= this.MAX_CONCURRENT_PROCESSING) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+      this.activeProcessingCount++;
+      try {
+        return await task();
+      } finally {
+        this.activeProcessingCount--;
+      }
+    } finally {
+      resolveCurrent!();
+    }
   }
 
   public static getInstance(config?: WechatConfig): WechatService {
@@ -85,16 +127,106 @@ export class WechatService {
   /**
    * 上传图片到微信素材库 (获取 media_id, 用于封面或 newspic)
    */
-  public async uploadResource(imagePath: string, baseDir?: string, retries: number = 3): Promise<{ media_id: string; url: string }> {
-    return this.uploadToWechat(imagePath, 'material', baseDir, retries);
+  public async uploadResource(
+    imagePath: string, 
+    baseDir?: string, 
+    retries: number = 3,
+    preProcessed?: ProcessedImageData
+  ): Promise<{ media_id: string; url: string }> {
+    return this.uploadToWechat(imagePath, 'material', baseDir, retries, preProcessed);
   }
 
   /**
    * 上传图片到微信 CDN (仅获取 URL, 用于正文)
    */
-  public async uploadImageToCdn(imagePath: string, baseDir?: string, retries: number = 3): Promise<{ url: string }> {
-    const result = await this.uploadToWechat(imagePath, 'body', baseDir, retries);
+  public async uploadImageToCdn(
+    imagePath: string, 
+    baseDir?: string, 
+    retries: number = 3,
+    preProcessed?: ProcessedImageData
+  ): Promise<{ url: string }> {
+    const result = await this.uploadToWechat(imagePath, 'body', baseDir, retries, preProcessed);
     return { url: result.url };
+  }
+
+  /**
+   * 预处理图片：获取资源、转换格式、压缩大小
+   */
+  private async getProcessedImage(
+    imagePath: string, 
+    baseDir?: string,
+    uploadType: 'body' | 'material' = 'body'
+  ): Promise<ProcessedImageData> {
+    let fileBuffer: Buffer;
+    let filename: string;
+    let contentType: string;
+
+    // 1. 获取原始资源
+    if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
+      const response = await axios.get(imagePath, { responseType: 'arraybuffer', timeout: 60000 });
+      fileBuffer = Buffer.from(response.data);
+      const urlPath = imagePath.split('?')[0];
+      filename = path.basename(urlPath) || 'image.jpg';
+      if (!path.extname(filename)) filename += '.jpg';
+      contentType = response.headers['content-type'] || 'image/jpeg';
+    } else if (imagePath.startsWith('data:')) {
+      const matches = imagePath.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+      if (!matches || matches.length !== 3) throw new Error('Invalid data URL format');
+      contentType = matches[1];
+      fileBuffer = Buffer.from(matches[2], 'base64');
+      const extension = contentType.split('/')[1] || 'jpg';
+      filename = `base64_upload_${Date.now()}.${extension}`;
+    } else {
+      const resolvedPath = path.isAbsolute(imagePath)
+        ? imagePath
+        : path.resolve(baseDir || process.cwd(), imagePath);
+
+      if (!fs.existsSync(resolvedPath)) throw new Error(`Image not found: ${resolvedPath}`);
+
+      fileBuffer = fs.readFileSync(resolvedPath);
+      filename = path.basename(resolvedPath);
+      const ext = path.extname(filename).toLowerCase();
+      const mimeTypes: Record<string, string> = {
+        '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+        '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
+      };
+      contentType = mimeTypes[ext] || 'image/jpeg';
+    }
+
+    // 2. 格式探测和转换 (受并发队列保护)
+    try {
+      const result = await WechatService.runInQueue(async () => {
+        const metadata = await sharp(fileBuffer).metadata();
+        const detectedType = metadata.format;
+        let processedBuffer = fileBuffer;
+        let processedFilename = filename;
+        let processedContentType = contentType;
+        
+        if (detectedType === 'avif' || detectedType === 'heif' || (uploadType === 'body' && detectedType === 'webp')) {
+           LogService.info(`Converting ${detectedType} to jpeg for WeChat compliance: ${filename}`);
+           processedBuffer = await sharp(fileBuffer).jpeg({ quality: 85 }).toBuffer();
+           processedFilename = filename.replace(/\.(avif|heif|webp)$/i, '.jpg');
+           if (!processedFilename.toLowerCase().endsWith('.jpg')) processedFilename += '.jpg';
+           processedContentType = 'image/jpeg';
+        }
+        
+        if (processedBuffer.length > 2 * 1024 * 1024 && detectedType !== 'gif') {
+           LogService.info(`Compressing large image: ${processedBuffer.length} bytes`);
+           processedBuffer = await sharp(processedBuffer).jpeg({ quality: 80 }).toBuffer();
+           processedContentType = 'image/jpeg';
+        }
+
+        return { buffer: processedBuffer, filename: processedFilename, contentType: processedContentType };
+      });
+
+      fileBuffer = result.buffer;
+      filename = result.filename;
+      contentType = result.contentType;
+    } catch (err) {
+      LogService.warn(`Sharp process failed for ${filename}, using original. Error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    return { buffer: fileBuffer, filename, contentType };
   }
 
   /**
@@ -104,10 +236,13 @@ export class WechatService {
     imagePath: string, 
     uploadType: 'body' | 'material',
     baseDir?: string, 
-    retries: number = 3
+    retries: number = 3,
+    preProcessed?: ProcessedImageData
   ): Promise<{ media_id: string; url: string }> {
-    let lastError: any;
+    const { buffer: fileBuffer, filename, contentType } = preProcessed || await this.getProcessedImage(imagePath, baseDir, uploadType);
 
+    // 3. 进入重试循环进行上传
+    let lastError: any;
     for (let i = 0; i <= retries; i++) {
       try {
         if (i > 0) {
@@ -116,62 +251,7 @@ export class WechatService {
         }
 
         const accessToken = await this.getAccessToken();
-        let fileBuffer: Buffer;
-        let filename: string;
-        let contentType: string;
 
-        if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) {
-          const response = await axios.get(imagePath, { responseType: 'arraybuffer', timeout: 60000 });
-          fileBuffer = Buffer.from(response.data);
-          const urlPath = imagePath.split('?')[0];
-          filename = path.basename(urlPath) || 'image.jpg';
-          if (!path.extname(filename)) filename += '.jpg';
-          contentType = response.headers['content-type'] || 'image/jpeg';
-        } else if (imagePath.startsWith('data:')) {
-          const matches = imagePath.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-          if (!matches || matches.length !== 3) throw new Error('Invalid data URL format');
-          contentType = matches[1];
-          fileBuffer = Buffer.from(matches[2], 'base64');
-          const extension = contentType.split('/')[1] || 'jpg';
-          filename = `base64_upload_${Date.now()}.${extension}`;
-        } else {
-          const resolvedPath = path.isAbsolute(imagePath)
-            ? imagePath
-            : path.resolve(baseDir || process.cwd(), imagePath);
-
-          if (!fs.existsSync(resolvedPath)) throw new Error(`Image not found: ${resolvedPath}`);
-
-          fileBuffer = fs.readFileSync(resolvedPath);
-          filename = path.basename(resolvedPath);
-          const ext = path.extname(filename).toLowerCase();
-          const mimeTypes: Record<string, string> = {
-            '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-            '.gif': 'image/gif', '.webp': 'image/webp', '.bmp': 'image/bmp',
-          };
-          contentType = mimeTypes[ext] || 'image/jpeg';
-        }
-
-        // 格式探测和转换
-        try {
-          const metadata = await sharp(fileBuffer).metadata();
-          const detectedType = metadata.format;
-          
-          if (detectedType === 'avif' || detectedType === 'heif' || (uploadType === 'body' && detectedType === 'webp')) {
-             LogService.info(`Converting ${detectedType} to jpeg for WeChat compliance`);
-             fileBuffer = await sharp(fileBuffer).jpeg({ quality: 85 }).toBuffer();
-             filename = filename.replace(/\.(avif|heif|webp)$/i, '.jpg');
-             if (!filename.toLowerCase().endsWith('.jpg')) filename += '.jpg';
-             contentType = 'image/jpeg';
-          }
-          
-          if (fileBuffer.length > 2 * 1024 * 1024 && detectedType !== 'gif') {
-             LogService.info(`Compressing large image: ${fileBuffer.length} bytes`);
-             fileBuffer = await sharp(fileBuffer).jpeg({ quality: 80 }).toBuffer();
-             contentType = 'image/jpeg';
-          }
-        } catch (err) {
-          LogService.warn(`Sharp metadata/process failed for ${filename}`);
-        }
 
         const boundary = `----WebKitFormBoundary${Date.now().toString(16)}`;
         const header = `--${boundary}\r\n` +
@@ -238,10 +318,16 @@ export class WechatService {
       try {
         let resp = uploadedMap.get(src);
         if (!resp) {
-          const cdnResp = await this.uploadImageToCdn(src, baseDir);
+          // 预处理图片：下载并进行格式转换/压缩
+          const preProcessed = await this.getProcessedImage(src, baseDir);
+          
+          // 上传到 CDN (用于 HTML 内容)
+          const cdnResp = await this.uploadImageToCdn(src, baseDir, 3, preProcessed);
+          
           let mediaId = '';
+          // 如果是封面图或 newspic 模式，需要上传到素材库获取 media_id
           if (articleType === 'newspic' || !firstMediaId) {
-            const materialResp = await this.uploadResource(src, baseDir);
+            const materialResp = await this.uploadResource(src, baseDir, 3, preProcessed);
             mediaId = materialResp.media_id;
             if (!firstMediaId) firstMediaId = mediaId;
           }
