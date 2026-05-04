@@ -7,8 +7,14 @@ import os from 'os';
 import crypto from 'crypto';
 import { LogService } from '../../../../services/LogService.js';
 
-// 限制 sharp 并发线程数，避免 HEIF/AVIF 转换抢占所有核心
-sharp.concurrency(1);
+// 从环境变量读取性能配置，提供默认值以保证稳定性
+const SHARP_THREADS = parseInt(process.env.WECHAT_SHARP_THREADS || '1', 10);
+const FFMPEG_THREADS = process.env.WECHAT_FFMPEG_THREADS || '1';
+const MAX_CONCURRENT = parseInt(process.env.WECHAT_MAX_CONCURRENT || '2', 10);
+
+// 限制 sharp 资源消耗
+sharp.concurrency(SHARP_THREADS);
+sharp.cache(false); // 禁用内存缓存，以节省内存
 
 export interface WechatConfig {
   appId: string;
@@ -42,8 +48,7 @@ export class WechatService {
   private tokenExpiresAt: number = 0;
 
   // 全局图片处理并发锁，限制同时进行 CPU 密集型转换的任务数
-  private static imageProcessingQueue: Promise<void> = Promise.resolve();
-  private static readonly MAX_CONCURRENT_PROCESSING = 2;
+  private static readonly MAX_CONCURRENT_PROCESSING = MAX_CONCURRENT;
   private static activeProcessingCount = 0;
 
   private constructor(config: WechatConfig) {
@@ -51,37 +56,43 @@ export class WechatService {
   }
 
   /**
-   * 使用队列管理并发任务，替代忙等轮询
+   * 使用信号量机制管理并发任务，增加超时和内存监控
    */
-  private static async runInQueue<T>(taskName: string, task: () => Promise<T>): Promise<T> {
+  private static async runInQueue<T>(taskName: string, task: () => Promise<T>, timeoutMs: number = 180000): Promise<T> {
     const startTime = Date.now();
-    LogService.info(`[Queue] Task "${taskName}" entering queue. Active: ${this.activeProcessingCount}/${this.MAX_CONCURRENT_PROCESSING}`);
+    const memBefore = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
     
-    // 等待前面的任务完成
-    const previousTask = this.imageProcessingQueue;
-    let resolveCurrent: () => void;
-    const currentWait = new Promise<void>(resolve => { resolveCurrent = resolve; });
-    this.imageProcessingQueue = previousTask.then(() => currentWait);
+    LogService.info(`[Queue] "${taskName}" waiting. Active: ${this.activeProcessingCount}/${this.MAX_CONCURRENT_PROCESSING}, Mem: ${memBefore}MB`);
+    
+    // 等待获取空闲槽位
+    while (this.activeProcessingCount >= this.MAX_CONCURRENT_PROCESSING) {
+      // 避免无限等待，如果排队超过 5 分钟也强行报错
+      if (Date.now() - startTime > 300000) {
+        throw new Error(`[Queue] Task "${taskName}" wait timeout after 5 minutes`);
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    this.activeProcessingCount++;
+    const executionStart = Date.now();
+    LogService.info(`[Queue] "${taskName}" started. Mem: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
 
     try {
-      while (this.activeProcessingCount >= this.MAX_CONCURRENT_PROCESSING) {
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-      
-      const waitTime = Date.now() - startTime;
-      this.activeProcessingCount++;
-      LogService.info(`[Queue] Task "${taskName}" starting execution after ${waitTime}ms wait. Active: ${this.activeProcessingCount}`);
-      
-      try {
-        const executionStart = Date.now();
-        const result = await task();
-        LogService.info(`[Queue] Task "${taskName}" finished in ${Date.now() - executionStart}ms.`);
-        return result;
-      } finally {
-        this.activeProcessingCount--;
-      }
+      // 使用 Promise.race 实现超时控制
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error(`[Queue] Task "${taskName}" execution timeout after ${timeoutMs}ms`)), timeoutMs);
+      });
+
+      const result = await Promise.race([task(), timeoutPromise]);
+      const duration = Date.now() - executionStart;
+      const memAfter = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+      LogService.info(`[Queue] "${taskName}" success in ${duration}ms. Mem: ${memAfter}MB (Diff: ${memAfter - memBefore}MB)`);
+      return result;
+    } catch (err: any) {
+      LogService.error(`[Queue] "${taskName}" failed: ${err.message}`);
+      throw err;
     } finally {
-      resolveCurrent!();
+      this.activeProcessingCount = Math.max(0, this.activeProcessingCount - 1);
     }
   }
 
@@ -389,15 +400,16 @@ export class WechatService {
           fs.writeFileSync(videoPath, Buffer.from(response.data));
 
           await WechatService.runInQueue(`Video2Gif:${hash.substring(0, 8)}`, async () => {
-            LogService.info(`[Video] Starting FFmpeg conversion (limit threads: 2)`);
+            LogService.info(`[Video] Starting FFmpeg conversion (limit threads: ${FFMPEG_THREADS})`);
             await new Promise((resolve, reject) => {
               ffmpeg(videoPath)
+                .inputOptions(['-t', '5']) // 严格限制输入只读前 5 秒，防止大文件缓冲区溢出
                 .setStartTime(0)
-                // 限制线程数为 2，增加 fps 和 scale 控制，优化调色板以平衡质量与性能
                 .outputOptions([
-                  '-threads', '2', 
-                  '-vf', 'fps=8,scale=400:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse', 
-                  '-frames:v', '40'
+                  '-threads', FFMPEG_THREADS, 
+                  '-vf', 'fps=8,scale=400:-1:flags=fast_bilinear,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer:bayer_scale=1', 
+                  '-frames:v', '40',
+                  '-f', 'gif'
                 ])
                 .on('end', resolve)
                 .on('error', (err) => {
