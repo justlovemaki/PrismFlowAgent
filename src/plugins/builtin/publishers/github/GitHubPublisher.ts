@@ -121,11 +121,34 @@ export class GitHubPublisher implements IPublisher {
       ref: this.config.branch,
       headers: GITHUB_REST_API_HEADERS
     });
-    if ('content' in data) {
+    if ('content' in data && !Array.isArray(data)) {
       return Buffer.from(data.content, 'base64').toString('utf-8');
     }
     throw new Error('Not a file');
   }
+
+  /**
+   * 列出目录内容
+   */
+  async listDirectory(dirPath: string): Promise<any[]> {
+    try {
+      const { data } = await this.octokit.repos.getContent({
+        owner: this.owner,
+        repo: this.repo,
+        path: dirPath,
+        ref: this.config.branch,
+        headers: GITHUB_REST_API_HEADERS
+      });
+      if (Array.isArray(data)) {
+        return data;
+      }
+      return [];
+    } catch (error: any) {
+      if (error.status === 404) return [];
+      throw error;
+    }
+  }
+
 
   getItemUrl(item: any) {
     if (!item || !item.filePath || !this.owner || !this.repo) return '';

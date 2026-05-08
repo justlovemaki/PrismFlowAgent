@@ -239,7 +239,7 @@ export function getAppUrl(): string {
 感谢您的理解与陪伴，让我们一起走得更远！
 >
 👇 **点击下方链接，阅读今日完整资讯**
-### [前往官网查看完整版 (ai.hubtoday.app)](https://ai.hubtoday.app/)
+### [前往官网查看完整版 (hex2077.dev)](https://hex2077.dev/)
 >
 **或者微信关注公众号: 何夕2077**
 >
