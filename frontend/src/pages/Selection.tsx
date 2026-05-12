@@ -472,8 +472,9 @@ const Selection: React.FC = () => {
       const descMatch = item.description.toLowerCase().includes(query);
       const sourceMatch = item.source?.toLowerCase().includes(query);
       const authorMatch = item.author?.toLowerCase().includes(query);
+      const aiSummaryMatch = item.metadata?.ai_summary?.toLowerCase().includes(query);
       
-      return categoryMatch && (titleMatch || descMatch || sourceMatch || authorMatch);
+      return categoryMatch && (titleMatch || descMatch || sourceMatch || authorMatch || aiSummaryMatch);
     }).sort((a, b) => {
       let dateA: number;
       let dateB: number;

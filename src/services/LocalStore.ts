@@ -278,6 +278,43 @@ export class LocalStore {
       await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_ingestion_date ON source_data(ingestion_date)`);
       await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_published_date ON source_data(published_date)`);
       
+      // --- 升级：资讯数据全文搜索 (FTS5) ---
+      await this.db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS source_data_fts USING fts5(
+          id UNINDEXED,
+          title,
+          description,
+          ai_summary,
+          tokenize='unicode61'
+        );
+      `);
+
+      // 保持同步的触发器 (资讯数据)
+      await this.db.exec(`
+        CREATE TRIGGER IF NOT EXISTS trg_source_data_ai AFTER INSERT ON source_data BEGIN
+          INSERT INTO source_data_fts(id, title, description, ai_summary) 
+          VALUES (new.id, new.title, new.description, json_extract(new.metadata, '$.ai_summary'));
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_source_data_ad AFTER DELETE ON source_data BEGIN
+          DELETE FROM source_data_fts WHERE id = old.id;
+        END;
+        CREATE TRIGGER IF NOT EXISTS trg_source_data_au AFTER UPDATE ON source_data BEGIN
+          DELETE FROM source_data_fts WHERE id = old.id;
+          INSERT INTO source_data_fts(id, title, description, ai_summary) 
+          VALUES (new.id, new.title, new.description, json_extract(new.metadata, '$.ai_summary'));
+        END;
+      `);
+
+      // 初始化同步：如果 FTS 表为空但主表有数据，进行一次全量同步
+      const ftsCount = await this.db.get('SELECT COUNT(*) as count FROM source_data_fts');
+      if (ftsCount?.count === 0) {
+        console.log('Initializing source_data_fts index...');
+        await this.db.exec(`
+          INSERT INTO source_data_fts(id, title, description, ai_summary)
+          SELECT id, title, description, json_extract(metadata, '$.ai_summary') FROM source_data
+        `);
+      }
+
       // 系统启动时，将所有运行中的任务状态设置为中断
       await this.db.exec(`UPDATE task_logs SET status = 'interrupted', message = '系统重启导致任务中断' WHERE status = 'running'`);
 
@@ -1060,58 +1097,72 @@ export class LocalStore {
     offset?: number;
     search?: string;
   }): Promise<{ items: UnifiedData[]; total: number }> {
-    let query = 'SELECT * FROM source_data WHERE 1=1';
-    let countQuery = 'SELECT COUNT(*) as total FROM source_data WHERE 1=1';
+    let query = 'SELECT s.* FROM source_data s';
+    let countQuery = 'SELECT COUNT(*) as total FROM source_data s';
     const params: any[] = [];
     const countParams: any[] = [];
 
+    if (options?.search) {
+      // 构造 FTS5 查询，支持多关键词分词和前缀匹配
+      const ftsQuery = options.search.split(/\s+/).filter(Boolean).map(t => `${t}*`).join(' AND ');
+      
+      query += ' JOIN source_data_fts f ON s.id = f.id';
+      countQuery += ' JOIN source_data_fts f ON s.id = f.id';
+      
+      query += " WHERE source_data_fts MATCH ?";
+      countQuery += " WHERE source_data_fts MATCH ?";
+      params.push(ftsQuery);
+      countParams.push(ftsQuery);
+    } else {
+      query += ' WHERE 1=1';
+      countQuery += ' WHERE 1=1';
+    }
+
     if (options?.source) {
-      query += ' AND source = ?';
-      countQuery += ' AND source = ?';
+      query += ' AND s.source = ?';
+      countQuery += ' AND s.source = ?';
       params.push(options.source);
       countParams.push(options.source);
     }
 
     if (options?.category) {
-      query += ' AND category = ?';
-      countQuery += ' AND category = ?';
+      query += ' AND s.category = ?';
+      countQuery += ' AND s.category = ?';
       params.push(options.category);
       countParams.push(options.category);
     }
 
     if (options?.status) {
-      query += ' AND status = ?';
-      countQuery += ' AND status = ?';
+      query += ' AND s.status = ?';
+      countQuery += ' AND s.status = ?';
       params.push(options.status);
       countParams.push(options.status);
     }
 
     if (options?.ingestionDate) {
-      query += ' AND ingestion_date = ?';
-      countQuery += ' AND ingestion_date = ?';
+      query += ' AND s.ingestion_date = ?';
+      countQuery += ' AND s.ingestion_date = ?';
       params.push(options.ingestionDate);
       countParams.push(options.ingestionDate);
     }
 
     if (options?.ingestionDates && options.ingestionDates.length > 0) {
       const placeholders = options.ingestionDates.map(() => '?').join(',');
-      query += ` AND ingestion_date IN (${placeholders})`;
-      countQuery += ` AND ingestion_date IN (${placeholders})`;
+      query += ` AND s.ingestion_date IN (${placeholders})`;
+      countQuery += ` AND s.ingestion_date IN (${placeholders})`;
       params.push(...options.ingestionDates);
       countParams.push(...options.ingestionDates);
     }
 
     if (options?.minScore !== undefined) {
-      query += " AND CAST(json_extract(metadata, '$.ai_score') AS REAL) >= ?";
-      countQuery += " AND CAST(json_extract(metadata, '$.ai_score') AS REAL) >= ?";
+      query += " AND CAST(json_extract(s.metadata, '$.ai_score') AS REAL) >= ?";
+      countQuery += " AND CAST(json_extract(s.metadata, '$.ai_score') AS REAL) >= ?";
       params.push(options.minScore);
       countParams.push(options.minScore);
     }
 
     if (options?.publishedDates && options.publishedDates.length > 0) {
-      // 这里的 published_date 可能是完整的 ISO 字符串，也可能是 YYYY-MM-DD
-      // 我们使用 LIKE 或者前缀匹配
-      const clauses = options.publishedDates.map(() => 'published_date LIKE ?').join(' OR ');
+      const clauses = options.publishedDates.map(() => 's.published_date LIKE ?').join(' OR ');
       query += ` AND (${clauses})`;
       countQuery += ` AND (${clauses})`;
       params.push(...options.publishedDates.map(d => `${d}%`));
@@ -1119,21 +1170,13 @@ export class LocalStore {
     }
 
     if (options?.adapterName) {
-      query += ' AND adapter_name = ?';
-      countQuery += ' AND adapter_name = ?';
+      query += ' AND s.adapter_name = ?';
+      countQuery += ' AND s.adapter_name = ?';
       params.push(options.adapterName);
       countParams.push(options.adapterName);
     }
 
-    if (options?.search) {
-      const pattern = `%${options.search}%`;
-      query += ' AND (title LIKE ? OR description LIKE ?)';
-      countQuery += ' AND (title LIKE ? OR description LIKE ?)';
-      params.push(pattern, pattern);
-      countParams.push(pattern, pattern);
-    }
-
-    query += ' ORDER BY fetched_at DESC';
+    query += ' ORDER BY s.fetched_at DESC';
 
     if (options?.limit) {
       query += ' LIMIT ?';
@@ -1300,6 +1343,10 @@ export class LocalStore {
 
   async updateApiKeyStatus(id: string, status: string): Promise<void> {
     await this.db?.run('UPDATE api_keys SET status = ? WHERE id = ?', status, id);
+  }
+
+  async updateApiKeyName(id: string, name: string): Promise<void> {
+    await this.db?.run('UPDATE api_keys SET name = ? WHERE id = ?', name, id);
   }
 
   async getApiKeyByFingerprint(fingerprint: string): Promise<any | null> {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { getSettings, saveSettings, getModels, getPluginMetadata, testProvider, importOPML, getApiKeys, deleteApiKey } from '../services/settingsService';
+import { getSettings, saveSettings, getModels, getPluginMetadata, testProvider, importOPML, getApiKeys, deleteApiKey, createApiKey, updateApiKey } from '../services/settingsService';
 import { agentService } from '../services/agentService';
 import IconPicker from '../components/UI/IconPicker';
 import { useToast } from '../context/ToastContext.js';
@@ -11,6 +11,8 @@ const Settings: React.FC = () => {
   const [settings, setSettings] = useState<Record<string, any>>({});
   const [pluginMetadata, setPluginMetadata] = useState<{ adapters: any[], publishers: any[], storages: any[], aiProviders: any[] }>({ adapters: [], publishers: [], storages: [], aiProviders: [] });
   const [apiKeys, setApiKeys] = useState<any[]>([]);
+  const [deletedApiKeyIds, setDeletedApiKeyIds] = useState<Set<string>>(new Set());
+  const [updatedApiKeyIds, setUpdatedApiKeyIds] = useState<Set<string>>(new Set());
   const [agents, setAgents] = useState<any[]>([]);
   const [workflows, setWorkflows] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -22,6 +24,7 @@ const Settings: React.FC = () => {
   const [showApiKeys, setShowApiKeys] = useState<Record<string, boolean>>({});
   const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
   const [expandedProviders, setExpandedProviders] = useState<Record<string, boolean>>({});
+  const [newlyCreatedKey, setNewlyCreatedKey] = useState<{ name: string; key: string } | null>(null);
 
 
   const [iconPickerState, setIconPickerState] = useState<{ isOpen: boolean; catId: string | null; currentIcon: string }>({
@@ -60,6 +63,8 @@ const Settings: React.FC = () => {
       setAgents(agentsData || []);
       setWorkflows(workflowsData || []);
       setApiKeys(apiKeysData || []);
+      setDeletedApiKeyIds(new Set());
+      setUpdatedApiKeyIds(new Set());
 
 
     } catch (error) {
@@ -74,8 +79,28 @@ const Settings: React.FC = () => {
   const handleSave = async () => {
     try {
       setIsSaving(true);
+      
+      // 1. 保存全局设置
       await saveSettings(settings);
+
+      // 2. 处理被删除的 API Key
+      if (deletedApiKeyIds.size > 0) {
+        await Promise.all(Array.from(deletedApiKeyIds).map(id => deleteApiKey(id)));
+      }
+
+      // 3. 处理更新的 API Key (名称或状态)
+      if (updatedApiKeyIds.size > 0) {
+        await Promise.all(Array.from(updatedApiKeyIds).map(id => {
+          const key = apiKeys.find(k => k.id === id);
+          if (key) {
+            return updateApiKey(id, { name: key.name, status: key.status });
+          }
+          return Promise.resolve();
+        }));
+      }
+
       toastSuccess('配置保存成功！');
+      await loadSettings(); // 重新加载以清理暂存状态并同步后端
     } catch (error) {
       console.error('Failed to save settings:', error);
       toastError('保存配置失败，请检查网络或控制台。');
@@ -230,14 +255,50 @@ const Settings: React.FC = () => {
 
 
   const handleDeleteApiKey = async (id: string) => {
-    if (!window.confirm('确定要删除此 API Key 吗？相关的 AI 系统将无法再访问您的系统。')) return;
+    if (!window.confirm('确定要移除此 API Key 吗？修改将在点击“保存配置”后生效。')) return;
+    setApiKeys(prev => prev.filter(k => k.id !== id));
+    setDeletedApiKeyIds(prev => new Set(prev).add(id));
+    // 如果该 ID 也在更新队列中，移除它
+    setUpdatedApiKeyIds(prev => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const handleCreateApiKey = async () => {
+    const name = window.prompt('请输入 API Key 名称 (例如: 外部助手)');
+    if (!name) return;
+    
+    if (!window.confirm('生成新的 API Key 将立即写入数据库并生效，是否继续？')) return;
+
     try {
-      await deleteApiKey(id);
-      toastSuccess('API Key 已成功删除');
-      loadSettings();
+      const result = await createApiKey(name);
+      setNewlyCreatedKey({ name, key: result.key });
+      
+      // 重新从后端获取最新列表，但要保留当前已经在前端做的“暂存”修改
+      const latestFromBackend = await getApiKeys();
+      
+      setApiKeys(prev => {
+        // 以最新的后端数据为基础，叠加还没保存的本地修改
+        return latestFromBackend.map((bk: any) => {
+          const pendingUpdate = prev.find(pk => pk.id === bk.id);
+          if (pendingUpdate && updatedApiKeyIds.has(bk.id)) {
+            return { ...bk, ...pendingUpdate };
+          }
+          return bk;
+        }).filter((bk: any) => !deletedApiKeyIds.has(bk.id));
+      });
+
+      toastSuccess('API Key 已即时生成并生效');
     } catch (error: any) {
-      toastError('删除失败: ' + error.message);
+      toastError('生成失败: ' + error.message);
     }
+  };
+
+  const handleUpdateApiKey = (id: string, data: any) => {
+    setApiKeys(prev => prev.map(k => k.id === id ? { ...k, ...data } : k));
+    setUpdatedApiKeyIds(prev => new Set(prev).add(id));
   };
 
 
@@ -1248,6 +1309,50 @@ const Settings: React.FC = () => {
     if (field.key === 'INTEROP_KEYS') {
       return (
         <div className="col-span-full space-y-6">
+          <div className="flex items-center justify-between mb-2">
+            <h4 className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest">已授权的 API Key</h4>
+            <button 
+              onClick={handleCreateApiKey}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-xl hover:bg-primary/90 transition-all text-xs font-bold shadow-lg shadow-primary/20"
+            >
+              <span className="material-symbols-outlined text-sm">add</span>
+              手动新增 Key
+            </button>
+          </div>
+
+          {newlyCreatedKey && (
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="p-6 bg-amber-50 dark:bg-amber-500/10 border-2 border-dashed border-amber-200 dark:border-amber-500/30 rounded-3xl space-y-4"
+            >
+              <div className="flex items-center gap-3 text-amber-600 dark:text-amber-400">
+                <span className="material-symbols-outlined font-bold">warning</span>
+                <h5 className="font-bold">请立即保存您的 API Key</h5>
+              </div>
+              <p className="text-xs text-amber-600/80 dark:text-amber-400/80">出于安全考虑，该 Key 仅显示一次。如果您丢失了它，将无法找回，只能重新生成。</p>
+              <div className="flex items-center gap-3 bg-white dark:bg-black/20 p-4 rounded-xl border border-amber-200 dark:border-amber-500/20">
+                <code className="flex-1 font-mono text-sm break-all select-all">{newlyCreatedKey.key}</code>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(newlyCreatedKey.key);
+                    toastSuccess('已复制到剪贴板');
+                  }}
+                  className="p-2 hover:bg-slate-100 dark:hover:bg-white/10 rounded-lg transition-colors text-primary"
+                  title="复制到剪贴板"
+                >
+                  <span className="material-symbols-outlined text-xl">content_copy</span>
+                </button>
+              </div>
+              <button 
+                onClick={() => setNewlyCreatedKey(null)}
+                className="w-full py-2 bg-amber-500 text-white rounded-xl text-xs font-bold hover:bg-amber-600 transition-colors"
+              >
+                我已保存，关闭提示
+              </button>
+            </motion.div>
+          )}
+
           {apiKeys.length === 0 ? (
             <div className="text-center py-12 bg-slate-50 dark:bg-white/[0.02] rounded-3xl border-2 border-dashed border-slate-200 dark:border-white/10">
               <span className="material-symbols-outlined text-4xl text-slate-300 mb-2">key_off</span>
@@ -1256,39 +1361,72 @@ const Settings: React.FC = () => {
           ) : (
             <div className="grid gap-4">
               {apiKeys.map((keyRecord: any) => (
-                <div key={keyRecord.id} className="p-5 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-2xl shadow-sm flex items-center justify-between gap-4">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${keyRecord.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-amber-500/10 text-amber-500'}`}>
+                <div key={keyRecord.id} className={`p-5 bg-white dark:bg-surface-dark border rounded-2xl shadow-sm flex items-center justify-between gap-4 transition-all ${keyRecord.status === 'active' ? 'border-slate-200 dark:border-white/5' : 'border-slate-100 dark:border-white/5 opacity-60 grayscale-[0.5]'}`}>
+                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${keyRecord.status === 'active' ? 'bg-green-500/10 text-green-500' : 'bg-slate-500/10 text-slate-500'}`}>
                       <span className="material-symbols-outlined">
-                        {keyRecord.status === 'active' ? 'vpn_key' : 'pending_actions'}
+                        {keyRecord.status === 'active' ? 'vpn_key' : 'key_off'}
                       </span>
                     </div>
-                    <div>
-                      <h4 className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                        {keyRecord.name}
-                        {keyRecord.status === 'active' && (
-                          <span className="px-1.5 py-0.5 bg-green-500/10 text-green-500 text-[10px] font-bold rounded uppercase">已激活</span>
-                        )}
-                        {keyRecord.status === 'pending' && (
-                          <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-500 text-[10px] font-bold rounded uppercase">待验证</span>
-                        )}
-                      </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-1">
-                        Prefix: <span className="bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">{keyRecord.prefix}</span>
-                      </p>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <input 
+                          type="text"
+                          value={keyRecord.name}
+                          onChange={(e) => {
+                            // 仅用于本地显示，失去焦点或回车才触发更新
+                            const newName = e.target.value;
+                            setApiKeys(prev => prev.map(k => k.id === keyRecord.id ? { ...k, name: newName } : k));
+                          }}
+                          onBlur={(e) => handleUpdateApiKey(keyRecord.id, { name: e.target.value })}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleUpdateApiKey(keyRecord.id, { name: (e.target as HTMLInputElement).value });
+                              (e.target as HTMLInputElement).blur();
+                            }
+                          }}
+                          className="font-bold text-slate-900 dark:text-white bg-transparent border-none p-0 focus:ring-0 text-sm truncate w-full max-w-[240px] hover:bg-slate-50 dark:hover:bg-white/5 rounded px-1 -ml-1 transition-colors cursor-text"
+                          title="点击重命名"
+                        />
+                      </div>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">
+                          Prefix: <span className="bg-slate-100 dark:bg-white/5 px-1.5 py-0.5 rounded text-slate-600 dark:text-slate-300">{keyRecord.prefix}</span>
+                        </p>
+                        <div className="flex items-center gap-1.5">
+                          {keyRecord.status === 'active' ? (
+                            <span className="px-1.5 py-0.5 bg-green-500/10 text-green-500 text-[9px] font-bold rounded uppercase">已启用</span>
+                          ) : keyRecord.status === 'pending' ? (
+                            <span className="px-1.5 py-0.5 bg-amber-500/10 text-amber-500 text-[9px] font-bold rounded uppercase">待验证</span>
+                          ) : (
+                            <span className="px-1.5 py-0.5 bg-slate-500/10 text-slate-500 text-[9px] font-bold rounded uppercase">已禁用</span>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4 text-right">
-                    <div className="hidden sm:block">
-                      <div className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">最后使用</div>
-                      <div className="text-xs text-slate-600 dark:text-slate-300">
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="hidden sm:block text-right mr-2">
+                      <div className="text-[9px] text-slate-400 uppercase font-bold tracking-wider">最后使用</div>
+                      <div className="text-[10px] text-slate-600 dark:text-slate-300">
                         {keyRecord.lastUsedAt ? new Date(keyRecord.lastUsedAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '从未使用'}
                       </div>
                     </div>
+                    
+                    <button 
+                      onClick={() => handleUpdateApiKey(keyRecord.id, { status: keyRecord.status === 'active' ? 'disabled' : 'active' })}
+                      className={`w-9 h-9 flex items-center justify-center rounded-full transition-all ${keyRecord.status === 'active' ? 'text-slate-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10' : 'text-primary hover:bg-primary/10'}`}
+                      title={keyRecord.status === 'active' ? '禁用此 Key' : '启用/激活此 Key'}
+                    >
+                      <span className="material-symbols-outlined">
+                        {keyRecord.status === 'active' ? 'pause_circle' : 'play_circle'}
+                      </span>
+                    </button>
+
                     <button 
                       onClick={() => handleDeleteApiKey(keyRecord.id)}
                       className="w-9 h-9 flex items-center justify-center text-slate-300 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all"
-                      title="撤销此 Key"
+                      title="撤销此 Key (永久删除)"
                     >
                       <span className="material-symbols-outlined">delete_forever</span>
                     </button>

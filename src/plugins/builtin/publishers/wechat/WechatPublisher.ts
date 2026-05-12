@@ -17,7 +17,7 @@ export class WechatPublisher implements IPublisher {
       { key: 'title', label: '默认标题', type: 'text', required: false },
       { key: 'author', label: '文章作者', type: 'text', default: '' },
       { key: 'baseUrl', label: 'API 基础 URL', type: 'text', default: 'https://api.weixin.qq.com', required: false },
-      { key: 'fallbackLogoUrl', label: '备用封面图片 URL', type: 'text', default: 'https://source.hubtoday.app/logo/ai.hubtoday.app.png', required: false }
+      { key: 'fallbackLogoUrl', label: '备用封面图片 URL', type: 'text', default: 'https://source.hex2077.dev/logo/hex2077.ai.png', required: false }
     ]
   };
 
@@ -68,7 +68,7 @@ export class WechatPublisher implements IPublisher {
       .trim();
 
     // 处理图片 (上传到微信)
-    const fallbackLogo = this.config.fallbackLogoUrl || 'https://source.hubtoday.app/logo/ai.hubtoday.app.png';
+    const fallbackLogo = this.config.fallbackLogoUrl || 'https://source.hex2077.dev/logo/hex2077.ai.png';
     const { html: processedHtml, firstMediaId, allMediaIds } = await this.service.processHtmlImages(
       finalContent, 
       undefined, 

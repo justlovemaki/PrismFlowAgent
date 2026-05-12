@@ -183,6 +183,25 @@ const Agents: React.FC = () => {
     }
   };
 
+  const handleCopyAgent = async (agent: Agent) => {
+    if (!confirm(`确定要复制智能体 "${agent.name}" 吗？`)) return;
+    try {
+      const newAgent = {
+        ...agent,
+        id: `agent_${Math.random().toString(36).substr(2, 5)}`,
+        name: `${agent.name} (副本)`
+      };
+      setIsSaving(true);
+      await agentService.saveAgent(newAgent);
+      await loadData();
+      toastSuccess('Agent 复制成功');
+    } catch (error) {
+      toastError('复制失败');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleExecuteTool = async () => {
     if (!executingTool) return;
     try {
@@ -392,6 +411,13 @@ const Agents: React.FC = () => {
                           title="测试"
                         >
                           <span className="material-symbols-outlined text-xl">play_arrow</span>
+                        </button>
+                        <button 
+                          onClick={() => handleCopyAgent(agent)}
+                          className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-full transition-all"
+                          title="复制"
+                        >
+                          <span className="material-symbols-outlined text-xl">content_copy</span>
                         </button>
                         <button 
                           onClick={() => setEditingAgent(agent)}
@@ -1581,6 +1607,25 @@ const Agents: React.FC = () => {
     }
   };
 
+  const handleCopyWorkflow = async (workflow: Workflow) => {
+    if (!confirm(`确定要复制工作流 "${workflow.name}" 吗？`)) return;
+    try {
+      const newWorkflow = {
+        ...workflow,
+        id: `wf_${Date.now().toString(36)}`,
+        name: `${workflow.name} (副本)`
+      };
+      setIsSaving(true);
+      await agentService.saveWorkflow(newWorkflow);
+      await loadData();
+      toastSuccess('工作流复制成功');
+    } catch (error) {
+      toastError('复制失败');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleRunWorkflow = async (id: string, input: string) => {
     try {
       // 在测试前清除上一次的测试结果
@@ -1924,6 +1969,13 @@ const Agents: React.FC = () => {
                     title="运行"
                   >
                     <span className="material-symbols-outlined text-xl">play_arrow</span>
+                  </button>
+                  <button
+                    onClick={() => handleCopyWorkflow(wf)}
+                    className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10 rounded-full transition-all"
+                    title="复制"
+                  >
+                    <span className="material-symbols-outlined text-xl">content_copy</span>
                   </button>
                   <button
                     onClick={() => setEditingWorkflow(wf)}

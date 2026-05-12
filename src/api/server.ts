@@ -658,9 +658,17 @@ export async function createServer(existingStore?: LocalStore) {
 
   fastify.post('/api/settings/api-keys', async (request, reply) => {
     if ((request as any).isApiKeyAuth) return reply.status(403).send({ error: 'Forbidden' });
-    const { name } = request.body as any;
+    const { name, status } = request.body as any;
     if (!name) return reply.status(400).send({ error: 'Missing name' });
-    return await context.interopService.createApiKey({ name, status: 'active' });
+    return await context.interopService.createApiKey({ name, status: status || 'active' });
+  });
+
+  fastify.patch('/api/settings/api-keys/:id', async (request, reply) => {
+    if ((request as any).isApiKeyAuth) return reply.status(403).send({ error: 'Forbidden' });
+    const { id } = request.params as any;
+    const data = request.body as any;
+    await context.interopService.updateApiKey(id, data);
+    return { status: 'success' };
   });
 
   fastify.delete('/api/settings/api-keys/:id', async (request, reply) => {

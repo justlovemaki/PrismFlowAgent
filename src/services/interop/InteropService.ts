@@ -90,6 +90,26 @@ export class InteropService {
   }
 
   /**
+   * 更新 API Key 属性
+   */
+  async updateApiKey(id: string, data: { name?: string; status?: string }): Promise<void> {
+    if (data.status) {
+      await this.store.updateApiKeyStatus(id, data.status);
+    }
+    
+    if (data.name) {
+      // 需要先获取原记录，因为 store.saveApiKey 是 INSERT OR REPLACE
+      const keys = await this.store.listApiKeys();
+      const existing = keys.find(k => k.id === id);
+      if (existing) {
+        // 由于 listApiKeys 不返回 keyHash，我们需要单独处理名称更新
+        // 在 LocalStore 中增加专门的更新方法更安全
+        await (this.store as any).updateApiKeyName(id, data.name);
+      }
+    }
+  }
+
+  /**
    * 验证 API Key 及其状态
    */
   async verifyApiKey(rawKey: string): Promise<boolean> {
