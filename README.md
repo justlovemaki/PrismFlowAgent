@@ -60,6 +60,7 @@
 前往 **设置 (Settings)** 页面：
 - **AI 配置**：填写你的 Gemini 或 OpenAI API Key。
 - **插件配置**：配置 GitHub Token 或微信公众号凭据。
+- **浏览器发布渠道说明**：像 **小红书** 这类通过浏览器自动化发布的渠道，需额外配合 [OpenChromeCLI](https://github.com/justlovemaki/OpenChromeCLI) 一起使用，并在系统设置中配置对应的 **浏览器桥接 Host / Port**。
 
 ### 3. 运行抓取
 在 **任务管理 (Task Management)** 页面，点击任务旁的 **立即运行**（如 GitHub Trending），系统将自动拉取最新资讯。
@@ -74,6 +75,10 @@
 
 ### 6. 发布
 生成完成后，一键点击 **发布到 GitHub** 或 **发布到微信** 即可完成全自动分发。
+
+> 说明：若使用 **小红书** 这类浏览器自动化发布渠道，请先确保已启动并正确配置 [OpenChromeCLI](https://github.com/justlovemaki/OpenChromeCLI)，否则系统无法连接浏览器执行自动发布。
+
+> 特别标识：系统中的发布渠道分为 **API 直连发布** 与 **浏览器自动化发布** 两类。像 **小红书** 这样的渠道会在界面中明确标注“浏览器自动化发布”，以提醒用户它依赖额外的浏览器桥接环境，而不是纯 API 推送。
 
 ---
 

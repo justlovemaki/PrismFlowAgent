@@ -132,6 +132,11 @@ const XhsPublishModal: React.FC<XhsPublishModalProps> = ({ date, content, onClos
           </button>
         </div>
 
+        <div className="px-4 sm:px-6 py-2.5 bg-amber-50 dark:bg-amber-950/10 border-b border-amber-200/60 dark:border-amber-900/20 flex items-center gap-2 text-[11px] sm:text-xs text-amber-700 dark:text-amber-400">
+          <span className="material-symbols-outlined text-sm">browser_updated</span>
+          <span className="font-medium">该渠道属于浏览器自动化发布，需配合 OpenChromeCLI 与浏览器桥接服务使用。</span>
+        </div>
+
         <div className="p-4 sm:p-6 space-y-4 sm:space-y-6 overflow-auto max-h-[75vh]">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1.5 sm:space-y-2 md:col-span-2">

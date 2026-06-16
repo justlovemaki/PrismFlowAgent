@@ -90,6 +90,8 @@ export class MyCustomAdapter extends BaseAdapter {
 
 ## 内容发布器 (Publishers)
 
+> 补充说明：若某个发布器采用“浏览器自动化发布”模式（例如小红书），则除了插件本身的配置外，还依赖外部浏览器桥接程序。[OpenChromeCLI](https://github.com/justlovemaki/OpenChromeCLI) 是推荐搭配使用的桥接工具。相关共享连接配置（如浏览器桥接 Host / Port）应放在系统级设置中，而不是重复定义在单个发布器里。
+
 ### 1. 开发步骤
 在 `src/plugins/custom/publishers/` 目录下创建文件。
 

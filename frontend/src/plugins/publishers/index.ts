@@ -1,6 +1,7 @@
 export interface PublisherPlugin {
   id: string;
   name: string;
+  mode?: 'api' | 'browser-automation';
   modal?: React.ComponentType<any>;
 }
 

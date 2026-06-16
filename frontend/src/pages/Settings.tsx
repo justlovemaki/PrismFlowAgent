@@ -946,7 +946,14 @@ const Settings: React.FC = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <span className="material-symbols-outlined text-primary">{pubMeta.icon || 'send'}</span>
-                    <span className="font-bold text-slate-900 dark:text-white">{pubMeta.name}</span>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-bold text-slate-900 dark:text-white">{pubMeta.name}</span>
+                      {pubMeta.id === 'xhs' && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                          浏览器自动化发布
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <label className="relative inline-flex items-center cursor-pointer">
                     <input 

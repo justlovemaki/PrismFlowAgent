@@ -239,10 +239,11 @@ const Generation: React.FC = () => {
     key: p.id,
     label: p.name,
     icon: p.icon || 'publish',
-    desc: p.description || `发布到 ${p.name}`
+    desc: p.description || `发布到 ${p.name}`,
+    mode: getPublisherPlugin(p.id)?.mode || 'api'
   })) : [
-    { key: 'github', label: 'GitHub', icon: 'code', desc: '提交到 GitHub 仓库' },
-    { key: 'wechat', label: '微信公众号', icon: 'chat', desc: '发布到微信公众号草稿箱' },
+    { key: 'github', label: 'GitHub', icon: 'code', desc: '提交到 GitHub 仓库', mode: 'api' },
+    { key: 'wechat', label: '微信公众号', icon: 'chat', desc: '发布到微信公众号草稿箱', mode: 'api' },
   ];
 
   const openCommitPicker = () => {
@@ -1287,8 +1288,13 @@ const Generation: React.FC = () => {
                       <span className="material-symbols-outlined text-lg sm:text-xl">{target.icon}</span>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">{target.label}</span>
+                        {target.mode === 'browser-automation' && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+                            浏览器自动化发布
+                          </span>
+                        )}
                       </div>
                       <div className="text-[10px] sm:text-xs text-slate-400 dark:text-text-secondary mt-0.5">{target.desc}</div>
                     </div>
