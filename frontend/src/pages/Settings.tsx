@@ -374,6 +374,8 @@ const Settings: React.FC = () => {
       fields: [
         { label: 'API 接口代理', key: 'API_PROXY', type: 'text', placeholder: '例如: http://127.0.0.1:7890' },
         { label: '图片代理模板', key: 'IMAGE_PROXY', type: 'text', placeholder: '例如: https://i0.wp.com/{url} 或 /api/proxy/image?url={url}' },
+        { label: '浏览器桥接 Host', key: 'BROWSER_BRIDGE_HOST', type: 'text', placeholder: '例如: 127.0.0.1（留空则使用 CLI 默认值）' },
+        { label: '浏览器桥接 Port', key: 'BROWSER_BRIDGE_PORT', type: 'text', placeholder: '例如: 9333（留空则使用 CLI 默认值）' },
       ]
     },
     {

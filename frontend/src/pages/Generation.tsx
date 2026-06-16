@@ -217,7 +217,15 @@ const Generation: React.FC = () => {
 
         if (metadata && metadata.publishers) {
           const closedPlugins = settings?.CLOSED_PLUGINS || [];
-          const filteredPublishers = metadata.publishers.filter((p: any) => !closedPlugins.includes(p.id));
+          const enabledPublisherIds = new Set(
+            ((settings?.PUBLISHERS || []) as any[])
+              .filter((p: any) => p.enabled)
+              .map((p: any) => p.id)
+          );
+
+          const filteredPublishers = metadata.publishers.filter(
+            (p: any) => !closedPlugins.includes(p.id) && enabledPublisherIds.has(p.id)
+          );
           setPublishers(filteredPublishers);
         }
       } catch (e) {

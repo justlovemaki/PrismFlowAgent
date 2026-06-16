@@ -106,6 +106,8 @@ export const defaultSettings: SystemSettings = {
   
   API_PROXY: '',
   IMAGE_PROXY: '',
+  BROWSER_BRIDGE_HOST: '',
+  BROWSER_BRIDGE_PORT: '',
 
   IMAGE_PROCESS_CONFIG: {
     CONVERT_IMAGES: true,

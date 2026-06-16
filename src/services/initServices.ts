@@ -286,7 +286,12 @@ function initPublishers(settings: SystemSettings): IPublisher[] {
     const PublisherClass = registry.get(pubConfig.id);
     if (PublisherClass) {
       try {
-        instances.push(new PublisherClass(pubConfig.config));
+        const mergedConfig = {
+          ...(pubConfig.config || {}),
+          browserBridgeHost: settings.BROWSER_BRIDGE_HOST || pubConfig.config?.browserBridgeHost,
+          browserBridgePort: settings.BROWSER_BRIDGE_PORT || pubConfig.config?.browserBridgePort,
+        };
+        instances.push(new PublisherClass(mergedConfig));
       } catch (e) {
         console.error(`Failed to init publisher ${pubConfig.id}:`, e);
       }

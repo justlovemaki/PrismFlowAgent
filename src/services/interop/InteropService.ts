@@ -320,6 +320,8 @@ export class InteropService {
       'CATEGORIES',
       'API_PROXY', 
       'IMAGE_PROXY', 
+      'BROWSER_BRIDGE_HOST',
+      'BROWSER_BRIDGE_PORT',
       'CLOSED_PLUGINS', 
       'SELECTION_FETCH_DAYS',
       'SELECTION_QUERY_FIELD',
