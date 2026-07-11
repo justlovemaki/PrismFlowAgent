@@ -10,6 +10,8 @@ import { ToolRegistry } from '../../registries/ToolRegistry.js';
 import { LogService } from '../LogService.js';
 import { DiscoveryResponse, ExecuteRequest } from '../../types/interop.js';
 import { ToolDefinition } from '../../types/agent.js';
+import type { SystemSettings } from '../../types/config.js';
+import type { SchedulerService } from '../SchedulerService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,8 +22,8 @@ export class InteropService {
     private agentService: AgentService | null,
     private skillService: SkillService,
     private workflowEngine: WorkflowEngine | null,
-    private schedulerService: any,
-    private settings: any
+    private schedulerService: SchedulerService,
+    private settings: SystemSettings
   ) {}
 
   /**

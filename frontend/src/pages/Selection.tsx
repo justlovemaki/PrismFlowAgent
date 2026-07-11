@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo, memo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, memo, useCallback, useDeferredValue, startTransition } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getContent, regenerateSummary, deleteContent } from '../services/contentService';
+import { getContent, getContentItem, regenerateSummary, deleteContent } from '../services/contentService';
 import { getSettings } from '../services/settingsService';
 import { agentService } from '../services/agentService';
 import { useToast } from '../context/ToastContext';
@@ -32,6 +32,16 @@ interface ContentItem {
   };
 }
 
+const INITIAL_RENDERED_ITEMS = 60;
+const RENDER_MORE_ITEMS = 60;
+
+const getCardPreview = (content: string): string => content
+  .replace(/<[^>]*>/g, ' ')
+  .replace(/!?(?:\[[^\]]*\]\([^)]*\))/g, ' ')
+  .replace(/[`*_>#]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();
+
 const ContentCard = memo(({ 
   item, 
   onToggle, 
@@ -39,7 +49,6 @@ const ContentCard = memo(({
   onRegenerate, 
   onDelete, 
   aiMode, 
-  imageProxy, 
   categories 
 }: { 
   item: ContentItem, 
@@ -48,7 +57,6 @@ const ContentCard = memo(({
   onRegenerate: (item: ContentItem) => void,
   onDelete: (e: React.MouseEvent, item: ContentItem) => void,
   aiMode: boolean,
-  imageProxy: string,
   categories: any[]
 }) => {
   const getTypeStyle = (category: string) => {
@@ -128,12 +136,11 @@ const ContentCard = memo(({
 
       <div className="flex flex-col">
         <div className="text-slate-500 dark:text-text-secondary text-sm mb-4 line-clamp-5 break-words overflow-hidden">
-          <ContentRenderer 
-            content={(aiMode && item.metadata?.ai_summary) 
-              ? `${item.metadata.ai_summary}\n\n${item.metadata?.translated_description || item.description}`
-              : (item.metadata?.translated_description || item.description)} 
-            imageProxy={imageProxy}
-          />
+          {getCardPreview(
+            (aiMode && item.metadata?.ai_summary)
+              ? item.metadata.ai_summary
+              : (item.metadata?.translated_description || item.description || '')
+          )}
         </div>
         
         <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-white/5 h-12 flex-shrink-0">
@@ -207,7 +214,9 @@ const Selection: React.FC = () => {
   const [categories, setCategories] = useState<any[]>([]);
   const [imageProxy, setImageProxy] = useState('');
   const [previewItem, setPreviewItem] = useState<ContentItem | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [columnCount, setColumnCount] = useState(3);
   const [aiMode, setAiMode] = useState(false); // AI 推荐模式开关
   const [queryField, setQueryField] = useState<'published_date' | 'ingestion_date'>('published_date');
@@ -217,7 +226,9 @@ const Selection: React.FC = () => {
   const [showAgentSelector, setShowAgentSelector] = useState(false);
   const [targetItem, setTargetItem] = useState<ContentItem | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [loadingGenerationData, setLoadingGenerationData] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+  const [renderedItemCount, setRenderedItemCount] = useState(INITIAL_RENDERED_ITEMS);
 
   // 辅助函数：剪裁数据以减少缓存体积，防止 localStorage 超出配额
   const pruneItemsForCache = useCallback((itemsToPrune: ContentItem[]): ContentItem[] => {
@@ -428,90 +439,61 @@ const Selection: React.FC = () => {
     });
   }, [date, pruneItemsForCache]);
 
+  const categoryLookup = useMemo(() => {
+    const byLabel = new Map<string, string>();
+    const validIds = new Set<string>(['history']);
+    for (const category of categories) {
+      const id = category.id.toLowerCase();
+      validIds.add(id);
+      byLabel.set(category.label.toLowerCase(), id);
+      byLabel.set(id, id);
+    }
+    return { byLabel, validIds };
+  }, [categories]);
+
+  const activeCategoryId = useMemo(() => {
+    if (activeTab === '全部') return null;
+    if (activeTab === '历史存档') return 'history';
+    return categoryLookup.byLabel.get(activeTab.toLowerCase()) || '__missing__';
+  }, [activeTab, categoryLookup]);
+
   const filteredItems = useMemo(() => {
-    return items.filter(item => {
-      // 分类过滤
+    const normalizedQuery = deferredSearchQuery.trim().toLowerCase();
+    const matchingItems = items.filter(item => {
       const cat = item.category.toLowerCase();
-      
-      // 获取当前有效的分类 ID 列表
-      const validCategoryIds = new Set(categories.map(c => c.id.toLowerCase()));
-      validCategoryIds.add('history'); // 历史存档始终有效
+      const categoryMatch = activeCategoryId === null
+        ? categoryLookup.validIds.has(cat)
+        : cat === activeCategoryId;
 
-      let categoryMatch = true;
-      if (activeTab === '全部') {
-        // 在“全部”模式下，只显示在有效分类列表中的项目，避免显示已删除分类的残留数据
-        categoryMatch = validCategoryIds.has(cat);
-      }
-      else if (activeTab === '历史存档') {
-        categoryMatch = cat === 'history';
-      }
-      else {
-        // 查找当前选中的页签对应的分类 ID
-        const activeCat = categories.find(c => 
-          c.label === activeTab || 
-          c.id === activeTab ||
-          c.label.toLowerCase() === activeTab.toLowerCase() ||
-          c.id.toLowerCase() === activeTab.toLowerCase()
-        );
-        
-        if (activeCat) {
-          // 使用 ID 进行匹配 (忽略大小写)
-          categoryMatch = cat === activeCat.id.toLowerCase();
-        } else {
-          // 如果没找到分类配置，且不是全部/历史存档，则不匹配
-          categoryMatch = false;
-        }
-      }
+      if (!normalizedQuery) return categoryMatch;
 
-      
-      // 搜索过滤
-      if (!searchQuery.trim()) return categoryMatch;
-      
-      const query = searchQuery.toLowerCase();
-      const titleMatch = item.title.toLowerCase().includes(query);
-      const descMatch = item.description.toLowerCase().includes(query);
-      const sourceMatch = item.source?.toLowerCase().includes(query);
-      const authorMatch = item.author?.toLowerCase().includes(query);
-      const aiSummaryMatch = item.metadata?.ai_summary?.toLowerCase().includes(query);
-      
+      const titleMatch = item.title.toLowerCase().includes(normalizedQuery);
+      const descMatch = item.description.toLowerCase().includes(normalizedQuery);
+      const sourceMatch = item.source?.toLowerCase().includes(normalizedQuery);
+      const authorMatch = item.author?.toLowerCase().includes(normalizedQuery);
+      const aiSummaryMatch = item.metadata?.ai_summary?.toLowerCase().includes(normalizedQuery);
+
       return categoryMatch && (titleMatch || descMatch || sourceMatch || authorMatch || aiSummaryMatch);
-    }).sort((a, b) => {
-      let dateA: number;
-      let dateB: number;
-
-      if (queryField === 'ingestion_date') {
-        dateA = a.ingestion_date ? new Date(a.ingestion_date).getTime() : 0;
-        dateB = b.ingestion_date ? new Date(b.ingestion_date).getTime() : 0;
-      } else {
-        dateA = a.published_date ? new Date(a.published_date).getTime() : 0;
-        dateB = b.published_date ? new Date(b.published_date).getTime() : 0;
-      }
-
-      // 如果开启了 AI 推荐模式，按分数和时间综合排序
-      if (aiMode) {
-        // 先按日期（天）排序
-        const dayA = new Date(dateA).setHours(0, 0, 0, 0);
-        const dayB = new Date(dateB).setHours(0, 0, 0, 0);
-        
-        if (dayB !== dayA) {
-          return dayB - dayA;
-        }
-        
-        // 同一天内，按 AI 分数排序
-        const scoreA = a.metadata?.ai_score || 0;
-        const scoreB = b.metadata?.ai_score || 0;
-        
-        if (scoreB !== scoreA) {
-          return scoreB - scoreA;
-        }
-        
-        // 如果分数也相同，按具体时间排序
-        return dateB - dateA;
-      }
-      // 按时间降序排序（最新的在前）
-      return dateB - dateA;
     });
-  }, [items, activeTab, categories, searchQuery, aiMode]);
+
+    // 预先计算排序键，避免 Array.sort 的比较函数重复解析日期。
+    return matchingItems
+      .map(item => {
+        const rawDate = queryField === 'ingestion_date' ? item.ingestion_date : item.published_date;
+        const timestamp = rawDate ? Date.parse(rawDate) || 0 : 0;
+        const day = timestamp ? new Date(timestamp).setHours(0, 0, 0, 0) : 0;
+        return { item, timestamp, day, score: item.metadata?.ai_score || 0 };
+      })
+      .sort((a, b) => {
+        if (!aiMode) return b.timestamp - a.timestamp;
+        return b.day - a.day || b.score - a.score || b.timestamp - a.timestamp;
+      })
+      .map(({ item }) => item);
+  }, [items, activeCategoryId, categoryLookup, deferredSearchQuery, aiMode, queryField]);
+
+  useEffect(() => {
+    setRenderedItemCount(INITIAL_RENDERED_ITEMS);
+  }, [activeTab, deferredSearchQuery, aiMode, queryField, date]);
 
   const handleSelectAll = useCallback(() => {
     const visibleIds = new Set(filteredItems.map(item => `${item.category}-${item.id}`));
@@ -542,16 +524,74 @@ const Selection: React.FC = () => {
     });
   }, [filteredItems, date, pruneItemsForCache]);
 
-  const handleGenerate = () => {
+  const handlePreview = useCallback(async (item: ContentItem) => {
+    setPreviewItem(item);
+    setPreviewLoading(true);
+    try {
+      const detail = await getContentItem(item.id);
+      setPreviewItem({
+        ...item,
+        ...detail,
+        // 列表页注入的分类和选中状态不应被详情接口覆盖。
+        category: item.category,
+        selected: item.selected,
+        selectedOrder: item.selectedOrder,
+        metadata: {
+          ...item.metadata,
+          ...detail.metadata
+        }
+      });
+    } catch (error) {
+      console.error('Failed to load content detail:', error);
+      showToast('加载完整内容失败，当前展示列表摘要', 'error');
+    } finally {
+      setPreviewLoading(false);
+    }
+  }, [showToast]);
+
+  const copyPreviewContent = useCallback(async (content: string, label: string) => {
+    try {
+      await navigator.clipboard.writeText(content);
+      showToast(`${label}已复制`, 'success');
+    } catch (error) {
+      console.error(`Failed to copy ${label}:`, error);
+      showToast(`${label}复制失败`, 'error');
+    }
+  }, [showToast]);
+
+  const handleGenerate = async () => {
     // 按选中顺序排序
     const sortedSelectedItems = items
       .filter(i => i.selected)
       .sort((a, b) => (a.selectedOrder || 0) - (b.selectedOrder || 0));
-    
+     
     if (sortedSelectedItems.length === 0) return;
 
     const selectedIds = sortedSelectedItems.map(i => `${i.category}:${i.id}`);
-    navigate('/generation', { state: { date, selectedIds, selectedItems: sortedSelectedItems } });
+    setLoadingGenerationData(true);
+    try {
+      const selectedItems = await Promise.all(sortedSelectedItems.map(async (item) => {
+        const detail = await getContentItem(item.id);
+        return {
+          ...item,
+          ...detail,
+          // 保留列表页的分类与选择顺序，避免详情接口与 UI 分类不一致。
+          category: item.category,
+          selected: item.selected,
+          selectedOrder: item.selectedOrder,
+          metadata: {
+            ...item.metadata,
+            ...detail.metadata
+          }
+        };
+      }));
+      navigate('/generation', { state: { date, selectedIds, selectedItems } });
+    } catch (error) {
+      console.error('Failed to load selected content details:', error);
+      showToast('加载完整素材失败，未进入生成页面', 'error');
+    } finally {
+      setLoadingGenerationData(false);
+    }
   };
 
   const scrollToTop = () => {
@@ -627,16 +667,21 @@ const Selection: React.FC = () => {
   const selectedCount = useMemo(() => items.filter(i => i.selected).length, [items]);
 
   // 将数据分配到各列，按时间从左到右排序
+  const displayedItems = useMemo(
+    () => filteredItems.slice(0, renderedItemCount),
+    [filteredItems, renderedItemCount]
+  );
+
   const columns = useMemo(() => {
     const cols: ContentItem[][] = Array.from({ length: columnCount }, () => []);
     
-    filteredItems.forEach((item, index) => {
+    displayedItems.forEach((item, index) => {
       const columnIndex = index % columnCount;
       cols[columnIndex].push(item);
     });
     
     return cols;
-  }, [filteredItems, columnCount]);
+  }, [displayedItems, columnCount]);
 
 
   return (
@@ -681,7 +726,7 @@ const Selection: React.FC = () => {
             {['全部', '历史存档', ...categories.map(tab => tab.label)].map((tab) => (
               <button 
                 key={tab} 
-                onClick={() => setActiveTab(tab)}
+                onClick={() => startTransition(() => setActiveTab(tab))}
                 className={`pb-3 border-b-2 text-sm font-medium px-1 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-primary text-slate-900 dark:text-white' : 'border-transparent text-slate-500 dark:text-text-secondary hover:text-primary'}`}
               >
                 {tab}
@@ -727,7 +772,7 @@ const Selection: React.FC = () => {
             </button>
           </div>
           <div className="text-xs text-slate-400 dark:text-text-secondary">
-            共 {filteredItems.length} 个项目 (总计 {items.length} 项)
+            已显示 {displayedItems.length} / {filteredItems.length} 个项目 (总计 {items.length} 项)
           </div>
         </div>
       </div>
@@ -747,11 +792,10 @@ const Selection: React.FC = () => {
                     key={`${item.category}-${item.id}`}
                     item={item}
                     onToggle={toggleItem}
-                    onPreview={setPreviewItem}
+                    onPreview={handlePreview}
                     onRegenerate={handleRegenerateClick}
                     onDelete={handleDeleteItem}
                     aiMode={aiMode}
-                    imageProxy={imageProxy}
                     categories={categories}
                   />
                 ))}
@@ -762,6 +806,17 @@ const Selection: React.FC = () => {
                 暂无内容
               </div>
             )}
+          </div>
+        )}
+        {!loading && displayedItems.length < filteredItems.length && (
+          <div className="flex justify-center pt-6">
+            <button
+              onClick={() => setRenderedItemCount(count => Math.min(count + RENDER_MORE_ITEMS, filteredItems.length))}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-600 shadow-sm transition-colors hover:border-primary hover:text-primary dark:border-border-dark dark:bg-surface-dark dark:text-text-secondary"
+            >
+              <span className="material-symbols-outlined text-lg">expand_more</span>
+              加载更多（剩余 {filteredItems.length - displayedItems.length} 条）
+            </button>
           </div>
         )}
       </div>
@@ -783,10 +838,13 @@ const Selection: React.FC = () => {
                 </div>
                 <button 
                   onClick={handleGenerate}
-                  className="bg-primary hover:bg-cyan-400 text-white dark:text-background-dark font-bold text-sm px-5 py-2.5 rounded-xl shadow-lg shadow-primary/20 flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95"
+                  disabled={loadingGenerationData}
+                  className="bg-primary hover:bg-cyan-400 disabled:cursor-wait disabled:opacity-70 text-white dark:text-background-dark font-bold text-sm px-5 py-2.5 rounded-xl shadow-lg shadow-primary/20 flex items-center gap-2 transition-all transform hover:scale-105 active:scale-95"
                 >
-                  <span className="material-symbols-outlined text-xl">auto_awesome</span>
-                  生成 AI 内容
+                  <span className={`material-symbols-outlined text-xl ${loadingGenerationData ? 'animate-spin' : ''}`}>
+                    {loadingGenerationData ? 'progress_activity' : 'auto_awesome'}
+                  </span>
+                  {loadingGenerationData ? '加载完整素材...' : '生成 AI 内容'}
                 </button>
               </div>
             </motion.div>
@@ -961,6 +1019,12 @@ const Selection: React.FC = () => {
                 </div>
                 <div className="p-6 overflow-y-auto">
                   <div className="space-y-4">
+                    {previewLoading && (
+                      <div className="flex items-center gap-2 rounded-xl bg-slate-50 dark:bg-white/5 px-4 py-3 text-sm text-slate-500 dark:text-text-secondary">
+                        <span className="w-4 h-4 border-2 border-primary/20 border-t-primary rounded-full animate-spin" />
+                        正在加载完整内容...
+                      </div>
+                    )}
                     <div className="grid grid-cols-1 gap-4">
                       {previewItem.url && (
                         <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4">
@@ -996,7 +1060,7 @@ const Selection: React.FC = () => {
                         </div>
                       )}
                       {Object.entries(previewItem.metadata || {}).map(([key, value]) => {
-                        if (key === 'description' || key === 'translated_title' || key === 'translated_description' || key === 'ai_summary') return null; // 已经在下面显示了
+                        if (key === 'description' || key === 'translated_title' || key === 'translated_description' || key === 'ai_summary' || key === 'content_html' || key === 'full_content' || key === '_has_full_body' || key === 'fetched_at') return null;
                         return (
                           <div key={key} className="flex flex-col gap-2 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
                             <span className="text-xs font-bold text-primary uppercase tracking-wider">{key}</span>
@@ -1012,11 +1076,19 @@ const Selection: React.FC = () => {
                           </div>
                         );
                       })}
-                      {aiMode && previewItem.metadata?.ai_summary && (
+                      {previewItem.metadata?.ai_summary && (
                         <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
-                          <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                            AI 总结
-                          </span>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-bold text-primary uppercase tracking-wider">AI 总结</span>
+                            <button
+                              onClick={() => copyPreviewContent(String(previewItem.metadata?.ai_summary || ''), 'AI 总结')}
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-primary dark:text-text-secondary dark:hover:bg-white/5"
+                              title="复制 AI 总结"
+                            >
+                              <span className="material-symbols-outlined text-sm">content_copy</span>
+                              复制
+                            </button>
+                          </div>
                           <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                             <ContentRenderer 
                               content={previewItem.metadata.ai_summary} 
@@ -1025,11 +1097,51 @@ const Selection: React.FC = () => {
                           </div>
                         </div>
                       )}
+                      {previewItem.metadata?.content_html && (
+                        <div className="flex flex-col gap-2 border-b border-slate-100 dark:border-white/5 pb-4">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-bold text-primary uppercase tracking-wider">完整 HTML 内容</span>
+                            <button
+                              onClick={() => copyPreviewContent(String(previewItem.metadata?.content_html || ''), '完整 HTML 内容')}
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-primary dark:text-text-secondary dark:hover:bg-white/5"
+                              title="复制完整 HTML 内容"
+                            >
+                              <span className="material-symbols-outlined text-sm">content_copy</span>
+                              复制
+                            </button>
+                          </div>
+                          <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600 dark:border-white/5 dark:bg-slate-900/50 dark:text-slate-300">
+                            <ContentRenderer
+                              content={String(previewItem.metadata.content_html)}
+                              imageProxy={imageProxy}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      {previewItem.metadata?.full_content && (
+                        <div className="flex flex-col gap-2 border-b border-slate-100 dark:border-white/5 pb-4">
+                          <span className="text-xs font-bold text-primary uppercase tracking-wider">完整正文</span>
+                          <div className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600 dark:border-white/5 dark:bg-slate-900/50 dark:text-slate-300">
+                            <ContentRenderer
+                              content={String(previewItem.metadata.full_content)}
+                              imageProxy={imageProxy}
+                            />
+                          </div>
+                        </div>
+                      )}
                       {(previewItem.metadata?.translated_description || previewItem.description) && (
                         <div className="flex flex-col gap-1 border-b border-slate-100 dark:border-white/5 pb-4 last:border-0">
-                          <span className="text-xs font-bold text-primary uppercase tracking-wider">
-                            描述
-                          </span>
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="text-xs font-bold text-primary uppercase tracking-wider">描述</span>
+                            <button
+                              onClick={() => copyPreviewContent(String(previewItem.metadata?.translated_description || previewItem.description || ''), '描述')}
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-primary dark:text-text-secondary dark:hover:bg-white/5"
+                              title="复制描述"
+                            >
+                              <span className="material-symbols-outlined text-sm">content_copy</span>
+                              复制
+                            </button>
+                          </div>
                           <div className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
                             <ContentRenderer 
                               content={previewItem.metadata?.translated_description || previewItem.description} 

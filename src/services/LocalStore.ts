@@ -4,6 +4,10 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import type { UnifiedData } from '../types/index.js';
+import { LogService } from './LogService.js';
+import { KvRepository } from './store/KvRepository.js';
+import { EntityJsonRepository } from './store/EntityJsonRepository.js';
+import { ApiKeyRepository } from './store/ApiKeyRepository.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,6 +15,12 @@ const __dirname = path.dirname(__filename);
 export class LocalStore {
   private db: Database | null = null;
   private dbPath: string;
+  private kvRepo = new KvRepository(() => this.db);
+  private agentRepo = new EntityJsonRepository(() => this.db, 'agents');
+  private skillRepo = new EntityJsonRepository(() => this.db, 'skills');
+  private workflowRepo = new EntityJsonRepository(() => this.db, 'workflows');
+  private mcpRepo = new EntityJsonRepository(() => this.db, 'mcp_configs');
+  private apiKeyRepo = new ApiKeyRepository(() => this.db);
 
   constructor(dbPath?: string) {
     // 优先使用传入的路径，其次使用环境变量，最后使用默认路径
@@ -37,10 +47,10 @@ export class LocalStore {
           fs.writeFileSync(testFile, 'test');
           fs.unlinkSync(testFile);
           dataDir = dir;
-          console.log(`Using data directory: ${dataDir}`);
+          LogService.info(`Using data directory: ${dataDir}`);
           break;
         } catch (err) {
-          console.warn(`Cannot use directory ${dir}:`, err);
+          LogService.warn(`Cannot use directory ${dir}: ${err}`);
         }
       }
 
@@ -48,16 +58,16 @@ export class LocalStore {
     }
 
     this.dbPath = path.resolve(finalPath);
-    console.log(`Database path: ${this.dbPath}`);
+    LogService.info(`Database path: ${this.dbPath}`);
 
     // 确保数据库目录存在
     const dbDir = path.dirname(this.dbPath);
     if (!fs.existsSync(dbDir)) {
       try {
         fs.mkdirSync(dbDir, { recursive: true });
-        console.log(`Created database directory: ${dbDir}`);
+        LogService.info(`Created database directory: ${dbDir}`);
       } catch (err) {
-        console.error(`Failed to create database directory: ${dbDir}`, err);
+        LogService.error(`Failed to create database directory: ${dbDir}: ${err}`);
         throw err;
       }
     }
@@ -73,6 +83,14 @@ export class LocalStore {
         filename: this.dbPath,
         driver: sqlite3.Database
       });
+
+      // Concurrent-friendly SQLite defaults
+      await this.db.exec(`
+        PRAGMA journal_mode = WAL;
+        PRAGMA busy_timeout = 5000;
+        PRAGMA synchronous = NORMAL;
+        PRAGMA foreign_keys = ON;
+      `);
 
       await this.db.exec(`
         CREATE TABLE IF NOT EXISTS kv (
@@ -277,6 +295,9 @@ export class LocalStore {
       await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_status ON source_data(status)`);
       await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_ingestion_date ON source_data(ingestion_date)`);
       await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_published_date ON source_data(published_date)`);
+      // 内容筛选页的主路径：按日期筛选并按抓取时间倒序返回。
+      await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_published_date_fetched_at ON source_data(published_date, fetched_at DESC)`);
+      await this.db.exec(`CREATE INDEX IF NOT EXISTS idx_source_data_ingestion_date_fetched_at ON source_data(ingestion_date, fetched_at DESC)`);
       
       // --- 升级：资讯数据全文搜索 (FTS5) ---
       await this.db.exec(`
@@ -308,7 +329,7 @@ export class LocalStore {
       // 初始化同步：如果 FTS 表为空但主表有数据，进行一次全量同步
       const ftsCount = await this.db.get('SELECT COUNT(*) as count FROM source_data_fts');
       if (ftsCount?.count === 0) {
-        console.log('Initializing source_data_fts index...');
+        LogService.info('Initializing source_data_fts index...');
         await this.db.exec(`
           INSERT INTO source_data_fts(id, title, description, ai_summary)
           SELECT id, title, description, json_extract(metadata, '$.ai_summary') FROM source_data
@@ -333,44 +354,28 @@ export class LocalStore {
         )
       `);
 
-      console.log('Database initialized successfully');
+      LogService.info('Database initialized successfully');
 
     } catch (err) {
-      console.error('Failed to initialize database:', err);
+      LogService.error(`Failed to initialize database: ${err}`);
       throw err;
     }
   }
 
   async get(key: string): Promise<any> {
-    const row = await this.db?.get('SELECT value, expires_at FROM kv WHERE key = ?', key);
-    if (!row) return null;
-    if (row.expires_at && row.expires_at < Date.now()) {
-      await this.delete(key);
-      return null;
-    }
-    try {
-      return JSON.parse(row.value);
-    } catch {
-      return row.value;
-    }
+    return this.kvRepo.get(key);
   }
 
   async put(key: string, value: any, expirationTtl?: number): Promise<void> {
-    const valStr = typeof value === 'string' ? value : JSON.stringify(value);
-    const expiresAt = expirationTtl ? Date.now() + expirationTtl * 1000 : null;
-    await this.db?.run(
-      'INSERT OR REPLACE INTO kv (key, value, expires_at) VALUES (?, ?, ?)',
-      key, valStr, expiresAt
-    );
+    await this.kvRepo.put(key, value, expirationTtl);
   }
 
   async delete(key: string): Promise<void> {
-    await this.db?.run('DELETE FROM kv WHERE key = ?', key);
+    await this.kvRepo.delete(key);
   }
 
   async getAllKeys(): Promise<string[]> {
-    const rows = await this.db?.all('SELECT key FROM kv');
-    return (rows || []).map(row => row.key);
+    return this.kvRepo.getAllKeys();
   }
 
   /**
@@ -430,6 +435,9 @@ export class LocalStore {
     limit?: number;
     offset?: number;
     search?: string;
+    /** 列表场景不读取 full_content，只取前 500 字摘要 */
+    slim?: boolean;
+    includeTotal?: boolean;
   }): Promise<{
     records: Array<{
       id: number;
@@ -442,7 +450,11 @@ export class LocalStore {
     }>;
     total: number;
   }> {
-    let query = 'SELECT * FROM commit_history WHERE 1=1';
+    const includeTotal = options?.includeTotal !== false;
+    const selectCols = options?.slim
+      ? 'id, date, platform, file_path, commit_message, commit_time, substr(full_content, 1, 500) as full_content'
+      : '*';
+    let query = `SELECT ${selectCols} FROM commit_history WHERE 1=1`;
     let countQuery = 'SELECT COUNT(*) as total FROM commit_history WHERE 1=1';
     const params: any[] = [];
     const countParams: any[] = [];
@@ -491,11 +503,11 @@ export class LocalStore {
 
     const [rows, countResult] = await Promise.all([
       this.db?.all(query, ...params),
-      this.db?.get(countQuery, ...countParams)
+      includeTotal ? this.db?.get(countQuery, ...countParams) : Promise.resolve({ total: 0 })
     ]);
 
     return {
-      records: (rows || []).map(row => ({
+      records: (rows || []).map((row: any) => ({
         id: row.id,
         date: row.date,
         platform: row.platform,
@@ -504,7 +516,7 @@ export class LocalStore {
         commitTime: row.commit_time,
         fullContent: row.full_content || ''
       })),
-      total: countResult?.total || 0
+      total: includeTotal ? (countResult?.total || 0) : (rows?.length || 0)
     };
   }
 
@@ -528,21 +540,19 @@ export class LocalStore {
   // --- Agent Metadata CRUD ---
 
   async saveAgent(agent: any): Promise<void> {
-    await this.db?.run('INSERT OR REPLACE INTO agents (id, data) VALUES (?, ?)', agent.id, JSON.stringify(agent));
+    await this.agentRepo.save(agent);
   }
 
   async getAgent(id: string): Promise<any> {
-    const row = await this.db?.get('SELECT data FROM agents WHERE id = ?', id);
-    return row ? JSON.parse(row.data) : null;
+    return this.agentRepo.get(id);
   }
 
   async listAgents(): Promise<any[]> {
-    const rows = await this.db?.all('SELECT data FROM agents ORDER BY rowid DESC');
-    return (rows || []).map(row => JSON.parse(row.data));
+    return this.agentRepo.list();
   }
 
   async deleteAgent(id: string): Promise<void> {
-    await this.db?.run('DELETE FROM agents WHERE id = ?', id);
+    await this.agentRepo.delete(id);
   }
 
   // --- Memory System CRUD ---
@@ -861,59 +871,53 @@ export class LocalStore {
   }
 
   async saveSkill(skill: any): Promise<void> {
-    await this.db?.run('INSERT OR REPLACE INTO skills (id, data) VALUES (?, ?)', skill.id, JSON.stringify(skill));
+    await this.skillRepo.save(skill);
   }
 
   async getSkill(id: string): Promise<any> {
-    const row = await this.db?.get('SELECT data FROM skills WHERE id = ?', id);
-    return row ? JSON.parse(row.data) : null;
+    return this.skillRepo.get(id);
   }
 
   async listSkills(): Promise<any[]> {
-    const rows = await this.db?.all('SELECT data FROM skills ORDER BY rowid DESC');
-    return (rows || []).map(row => JSON.parse(row.data));
+    return this.skillRepo.list();
   }
 
   async deleteSkill(id: string): Promise<void> {
-    await this.db?.run('DELETE FROM skills WHERE id = ?', id);
+    await this.skillRepo.delete(id);
   }
 
   async saveWorkflow(workflow: any): Promise<void> {
-    await this.db?.run('INSERT OR REPLACE INTO workflows (id, data) VALUES (?, ?)', workflow.id, JSON.stringify(workflow));
+    await this.workflowRepo.save(workflow);
   }
 
   async getWorkflow(id: string): Promise<any> {
-    const row = await this.db?.get('SELECT data FROM workflows WHERE id = ?', id);
-    return row ? JSON.parse(row.data) : null;
+    return this.workflowRepo.get(id);
   }
 
   async listWorkflows(): Promise<any[]> {
-    const rows = await this.db?.all('SELECT data FROM workflows ORDER BY rowid DESC');
-    return (rows || []).map(row => JSON.parse(row.data));
+    return this.workflowRepo.list();
   }
 
   async deleteWorkflow(id: string): Promise<void> {
-    await this.db?.run('DELETE FROM workflows WHERE id = ?', id);
+    await this.workflowRepo.delete(id);
   }
 
   // --- MCP Config CRUD ---
 
   async saveMCPConfig(config: any): Promise<void> {
-    await this.db?.run('INSERT OR REPLACE INTO mcp_configs (id, data) VALUES (?, ?)', config.id, JSON.stringify(config));
+    await this.mcpRepo.save(config);
   }
 
   async getMCPConfig(id: string): Promise<any> {
-    const row = await this.db?.get('SELECT data FROM mcp_configs WHERE id = ?', id);
-    return row ? JSON.parse(row.data) : null;
+    return this.mcpRepo.get(id);
   }
 
   async listMCPConfigs(): Promise<any[]> {
-    const rows = await this.db?.all('SELECT data FROM mcp_configs ORDER BY rowid DESC');
-    return (rows || []).map(row => JSON.parse(row.data));
+    return this.mcpRepo.list();
   }
 
   async deleteMCPConfig(id: string): Promise<void> {
-    await this.db?.run('DELETE FROM mcp_configs WHERE id = ?', id);
+    await this.mcpRepo.delete(id);
   }
 
   // --- Schedule CRUD ---
@@ -1082,6 +1086,39 @@ export class LocalStore {
   }
 
   /**
+   * 列表场景下剥离巨大 HTML 字段，显著减小 IO / JSON / 响应体积
+   */
+  private static readonly HEAVY_METADATA_KEYS = [
+    'content_html',
+    'full_content',
+    'raw_html',
+    'raw_content',
+    'html',
+    'raw'
+  ];
+
+  private slimMetadata(metadata: Record<string, any>): Record<string, any> {
+    const slimmed = { ...metadata };
+    let stripped = false;
+    for (const key of LocalStore.HEAVY_METADATA_KEYS) {
+      if (key in slimmed) {
+        delete slimmed[key];
+        stripped = true;
+      }
+    }
+    if (stripped) {
+      slimmed._has_full_body = true;
+    }
+    return slimmed;
+  }
+
+  private nextDayPrefix(dateStr: string): string {
+    const d = new Date(`${dateStr}T00:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+
+  /**
    * 获取原始数据列表
    */
   async listSourceData(options?: {
@@ -1096,8 +1133,26 @@ export class LocalStore {
     limit?: number;
     offset?: number;
     search?: string;
+    /** 剥离 content_html 等大字段，供列表页使用 */
+    slim?: boolean;
+    /** 是否查询 total 计数，列表聚合可关掉以省一次全表扫描 */
+    includeTotal?: boolean;
   }): Promise<{ items: UnifiedData[]; total: number }> {
-    let query = 'SELECT s.* FROM source_data s';
+    const includeTotal = options?.includeTotal !== false;
+    const slim = !!options?.slim;
+    const metadataColumn = slim
+      ? `json_remove(COALESCE(s.metadata, '{}'), '$.content_html', '$.full_content', '$.raw_html', '$.raw_content', '$.html', '$.raw') AS metadata,
+         CASE WHEN json_type(s.metadata, '$.content_html') IS NOT NULL
+                OR json_type(s.metadata, '$.full_content') IS NOT NULL
+                OR json_type(s.metadata, '$.raw_html') IS NOT NULL
+                OR json_type(s.metadata, '$.raw_content') IS NOT NULL
+                OR json_type(s.metadata, '$.html') IS NOT NULL
+                OR json_type(s.metadata, '$.raw') IS NOT NULL
+              THEN 1 ELSE 0 END AS has_full_body`
+      : 's.metadata, 0 AS has_full_body';
+    let query = `SELECT s.id, s.title, s.url, s.description, s.published_date, s.source, s.category,
+                        s.author, s.ingestion_date, s.status, ${metadataColumn}
+                 FROM source_data s`;
     let countQuery = 'SELECT COUNT(*) as total FROM source_data s';
     const params: any[] = [];
     const countParams: any[] = [];
@@ -1162,11 +1217,16 @@ export class LocalStore {
     }
 
     if (options?.publishedDates && options.publishedDates.length > 0) {
-      const clauses = options.publishedDates.map(() => 's.published_date LIKE ?').join(' OR ');
+      // 用范围条件替代 LIKE，便于走 published_date 索引
+      const clauses = options.publishedDates.map(() => '(s.published_date >= ? AND s.published_date < ?)').join(' OR ');
       query += ` AND (${clauses})`;
       countQuery += ` AND (${clauses})`;
-      params.push(...options.publishedDates.map(d => `${d}%`));
-      countParams.push(...options.publishedDates.map(d => `${d}%`));
+      for (const d of options.publishedDates) {
+        const start = d;
+        const end = this.nextDayPrefix(d);
+        params.push(start, end);
+        countParams.push(start, end);
+      }
     }
 
     if (options?.adapterName) {
@@ -1188,26 +1248,39 @@ export class LocalStore {
       params.push(options.offset);
     }
 
-    const [rows, countResult] = await Promise.all([
-      this.db?.all(query, ...params),
-      this.db?.get(countQuery, ...countParams)
-    ]);
+    const rowsPromise = this.db?.all(query, ...params);
+    const countPromise = includeTotal
+      ? this.db?.get(countQuery, ...countParams)
+      : Promise.resolve({ total: 0 });
+
+    const [rows, countResult] = await Promise.all([rowsPromise, countPromise]);
 
     return {
-      items: (rows || []).map(row => ({
-        id: row.id,
-        title: row.title,
-        url: row.url,
-        description: row.description,
-        published_date: row.published_date,
-        source: row.source,
-        category: row.category,
-        author: row.author,
-        ingestion_date: row.ingestion_date,
-        metadata: row.metadata ? JSON.parse(row.metadata) : {},
-        status: row.status
-      })),
-      total: countResult?.total || 0
+      items: (rows || []).map((row: any) => {
+        let metadata: Record<string, any> = {};
+        if (row.metadata) {
+          try {
+            metadata = JSON.parse(row.metadata);
+            if (row.has_full_body) metadata._has_full_body = true;
+          } catch {
+            metadata = {};
+          }
+        }
+        return {
+          id: row.id,
+          title: row.title,
+          url: row.url,
+          description: row.description,
+          published_date: row.published_date,
+          source: row.source,
+          category: row.category,
+          author: row.author,
+          ingestion_date: row.ingestion_date,
+          metadata,
+          status: row.status
+        };
+      }),
+      total: includeTotal ? (countResult?.total || 0) : (rows?.length || 0)
     };
   }
 
@@ -1300,70 +1373,48 @@ export class LocalStore {
   // --- API Key CRUD ---
 
   async listApiKeys(): Promise<any[]> {
-    const rows = await this.db?.all('SELECT * FROM api_keys ORDER BY created_at DESC');
-    return (rows || []).map(row => ({
-      id: row.id,
-      name: row.name,
-      prefix: row.prefix,
-      sourceFingerprint: row.source_fingerprint,
-      status: row.status,
-      createdAt: row.created_at,
-      lastUsedAt: row.last_used_at
-    }));
+    return this.apiKeyRepo.list();
   }
 
-  async saveApiKey(apiKey: { 
-    id: string; 
-    name: string; 
-    keyHash: string; 
-    prefix: string; 
+  async saveApiKey(apiKey: {
+    id: string;
+    name: string;
+    keyHash: string;
+    prefix: string;
     sourceFingerprint?: string;
     verificationToken?: string;
     status?: string;
-    createdAt?: number 
+    createdAt?: number;
   }): Promise<void> {
-    await this.db?.run(
-      `INSERT OR REPLACE INTO api_keys (
-        id, name, key_hash, prefix, source_fingerprint, verification_token, status, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      apiKey.id, 
-      apiKey.name, 
-      apiKey.keyHash, 
-      apiKey.prefix, 
-      apiKey.sourceFingerprint || null,
-      apiKey.verificationToken || null,
-      apiKey.status || 'pending',
-      apiKey.createdAt || Date.now()
-    );
+    await this.apiKeyRepo.save(apiKey);
   }
 
   async getApiKeyByVerificationToken(token: string): Promise<any | null> {
-    return await this.db?.get('SELECT * FROM api_keys WHERE verification_token = ?', token) || null;
+    return this.apiKeyRepo.getByVerificationToken(token);
   }
 
   async updateApiKeyStatus(id: string, status: string): Promise<void> {
-    await this.db?.run('UPDATE api_keys SET status = ? WHERE id = ?', status, id);
+    await this.apiKeyRepo.updateStatus(id, status);
   }
 
   async updateApiKeyName(id: string, name: string): Promise<void> {
-    await this.db?.run('UPDATE api_keys SET name = ? WHERE id = ?', name, id);
+    await this.apiKeyRepo.updateName(id, name);
   }
 
   async getApiKeyByFingerprint(fingerprint: string): Promise<any | null> {
-    return await this.db?.get('SELECT * FROM api_keys WHERE source_fingerprint = ?', fingerprint) || null;
+    return this.apiKeyRepo.getByFingerprint(fingerprint);
   }
 
   async deleteApiKey(id: string): Promise<void> {
-    await this.db?.run('DELETE FROM api_keys WHERE id = ?', id);
+    await this.apiKeyRepo.delete(id);
   }
 
   async getApiKeysByPrefix(prefix: string): Promise<any[]> {
-    const rows = await this.db?.all('SELECT * FROM api_keys WHERE prefix = ?', prefix);
-    return (rows || []);
+    return this.apiKeyRepo.getByPrefix(prefix);
   }
 
   async updateApiKeyLastUsed(id: string): Promise<void> {
-    await this.db?.run('UPDATE api_keys SET last_used_at = ? WHERE id = ?', Date.now(), id);
+    await this.apiKeyRepo.updateLastUsed(id);
   }
 }
 

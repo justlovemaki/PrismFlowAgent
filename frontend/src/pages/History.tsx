@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { getCommitHistory, deleteCommitHistory, republishCommitHistory, type CommitRecord } from '../services/historyService';
 import ContentRenderer from '../components/UI/ContentRenderer';
 import { useToast } from '../context/ToastContext.js';
+import { copyToClipboard } from '../utils/clipboardUtils';
 
 const History: React.FC = () => {
   const { success: toastSuccess, error: toastError } = useToast();
@@ -84,6 +85,16 @@ const History: React.FC = () => {
       toastError('重新发布失败，请重试');
     } finally {
       setRepublishing(null);
+    }
+  };
+
+  const handleCopyPreview = async () => {
+    if (!previewContent) return;
+    const copied = await copyToClipboard(previewContent);
+    if (copied) {
+      toastSuccess('原始内容已复制');
+    } else {
+      toastError('原始内容复制失败');
     }
   };
 
@@ -299,12 +310,22 @@ const History: React.FC = () => {
           <div className="bg-white dark:bg-surface-dark rounded-xl shadow-xl w-full max-w-4xl max-h-[80vh] flex flex-col overflow-hidden border border-slate-200 dark:border-border-dark">
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-surface-dark-lighter">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white">原始内容预览</h3>
-              <button 
-                onClick={() => setPreviewContent(null)}
-                className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all"
-              >
-                <span className="material-symbols-outlined">close</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={handleCopyPreview}
+                  className="inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-sm text-slate-500 hover:bg-slate-100 hover:text-primary dark:text-text-secondary dark:hover:bg-white/5 transition-all"
+                  title="复制原始内容"
+                >
+                  <span className="material-symbols-outlined text-[18px]">content_copy</span>
+                  复制
+                </button>
+                <button 
+                  onClick={() => setPreviewContent(null)}
+                  className="w-9 h-9 inline-flex items-center justify-center text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 rounded-full transition-all"
+                >
+                  <span className="material-symbols-outlined">close</span>
+                </button>
+              </div>
             </div>
             <div className="flex-1 overflow-auto p-6 bg-slate-50 dark:bg-black/20">
               <ContentRenderer 

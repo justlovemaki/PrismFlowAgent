@@ -359,9 +359,11 @@ export class TaskService {
 
     const data: Record<string, UnifiedData[]> = {};
     
-    // 1. 获取指定日期范围内的数据
+    // 1. 获取指定日期范围内的数据（slim 去掉大 HTML，includeTotal 关掉多余 COUNT）
     const queryOptions: any = {
-      limit: fetchDays > 1 ? 3000 : 2000
+      limit: fetchDays > 1 ? 3000 : 2000,
+      slim: true,
+      includeTotal: false
     };
 
     if (queryField === 'published_date') {
@@ -370,42 +372,38 @@ export class TaskService {
       queryOptions.ingestionDates = dates;
     }
 
-    const { items: allItems } = await this.store.listSourceData(queryOptions);
+    // 列表 + 历史并行；slim 去掉大 HTML / full_content
+    const [listResult, historyResult] = await Promise.all([
+      this.store.listSourceData(queryOptions),
+      this.store.getCommitHistory({ limit: 30, slim: true, includeTotal: false })
+    ]);
 
-    // 2. 按分类归档
-    for (const item of allItems) {
+    // 2. 按分类归档（DB 已 ORDER BY fetched_at DESC）
+    const maxItemsPerCategory = 300;
+    for (const item of listResult.items) {
       const cat = item.category || 'default';
       if (!data[cat]) data[cat] = [];
-      data[cat].push(item);
+      // 防止某一数据源在单次筛选响应中占满 3000 条上限。
+      if (data[cat].length < maxItemsPerCategory) {
+        data[cat].push(item);
+      }
     }
 
-    // 3. 排序：按抓取时间倒序
-    for (const cat in data) {
-      data[cat].sort((a, b) => {
-        const timeA = a.metadata?.fetched_at || 0;
-        const timeB = b.metadata?.fetched_at || 0;
-        return timeB - timeA;
-      });
-    }
-
-    // 加入历史记录作为一种特殊的数据源
-
-    // 这里不按当前 date 过滤，避免“某日无提交”时历史存档页签为空
-    const historyResult = await this.store.getCommitHistory({ limit: 30 });
+    // 加入历史记录（列表不返回 full_content）
     if (historyResult.records.length > 0) {
       data['history'] = historyResult.records.map(record => ({
         id: `history-${record.id}`,
         title: record.commitMessage || `Archive: ${record.date}`,
-        url: '', // 可以在这里构造 GitHub URL，但后端拿不到完整的 settings
-        description: (record.fullContent || '').substring(0, 500), // 缩略图只显示前 500 字
+        url: '',
+        description: (record.fullContent || '').substring(0, 500),
         published_date: new Date(record.commitTime).toISOString(),
         ingestion_date: record.date,
         source: record.platform,
         category: 'history',
         metadata: {
-          full_content: record.fullContent,
           archive_date: record.date,
-          file_path: record.filePath
+          file_path: record.filePath,
+          _has_full_body: true
         }
       }));
     }

@@ -13,5 +13,5 @@ export const clearAdapterData = (name: string, date?: string) =>
     body: JSON.stringify({ date }) 
   });
 export const getLogs = () => request('/api/dashboard/logs');
-export const triggerIngestion = () => request('/writeData', { method: 'POST', body: JSON.stringify({}) });
+export const triggerIngestion = () => request('/api/dashboard/ingest', { method: 'POST', body: JSON.stringify({}) });
 export const testAI = () => request('/api/dashboard/test-ai', { method: 'POST', body: JSON.stringify({}) });

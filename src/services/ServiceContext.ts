@@ -2,6 +2,7 @@ import { LocalStore } from './LocalStore.js';
 import { initServices, AppServices } from './initServices.js';
 import { SystemSettings } from '../types/config.js';
 import { AIProvider } from './AIProvider.js';
+import { LogService } from './LogService.js';
 
 export class ServiceContext {
   private static instance: ServiceContext;
@@ -21,8 +22,8 @@ export class ServiceContext {
   }
 
   public async reload() {
-    console.log('Reloading services with latest configuration...');
-    
+    LogService.info('Reloading services with latest configuration...');
+
     // Stop existing scheduler if it exists
     if (this.services?.schedulerService) {
       this.services.schedulerService.stopAll();

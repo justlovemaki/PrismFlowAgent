@@ -13,7 +13,7 @@
     "build:all": "npm run build && npm run build:frontend",
     "serve": "node dist/index.js",
     "prod": "npm run build:all && npm run serve",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "tsx --test \"src/tests/**/*.test.ts\""
   },
   "keywords": [],
   "author": "",
@@ -53,10 +53,7 @@
     "sharp": "^0.34.5",
     "sqlite": "^5.1.1",
     "sqlite3": "^5.1.7",
-    "ts-node": "^10.9.2",
-    "tsx": "^4.21.0",
     "typeid-js": "^1.2.0",
-    "typescript": "^5.9.3",
     "undici": "^7.22.0",
     "xlsx": "^0.18.5",
     "yaml": "^2.8.2"
@@ -72,6 +69,9 @@
     "@types/rss": "^0.0.32",
     "@types/sqlite3": "^3.1.11",
     "concurrently": "^9.2.1",
-    "glob": "^13.0.0"
+    "glob": "^13.0.0",
+    "ts-node": "^10.9.2",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }

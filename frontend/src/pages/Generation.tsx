@@ -53,6 +53,7 @@ const Generation: React.FC = () => {
   const [mobileTab, setMobileTab] = useState<'source' | 'preview'>('preview');
 
   const channelRef = useRef<BroadcastChannel | null>(null);
+  const aiResourcesLoadedRef = useRef(false);
 
   // 初始化同步通道
   useEffect(() => {
@@ -325,6 +326,12 @@ const Generation: React.FC = () => {
     }
     setShowAIPicker(true);
     setAiPickerTab(loadRecent().length > 0 ? 'recent' : 'workflow');
+
+    // Agent、工作流和工具在当前生成页内通常不会变化，避免每次打开弹窗重复查询。
+    if (aiResourcesLoadedRef.current) {
+      return;
+    }
+
     setAiPickerLoading(true);
     try {
       const [wfs, ags, tls] = await Promise.all([
@@ -335,11 +342,87 @@ const Generation: React.FC = () => {
       setWorkflows(wfs || []);
       setAgents(ags || []);
       setTools(tls || []);
+      aiResourcesLoadedRef.current = true;
     } catch (e) {
       console.error('Failed to load AI resources:', e);
     } finally {
       setAiPickerLoading(false);
     }
+  };
+
+  /**
+   * 仅保留媒体和换行标签；其它 HTML 降级为文本，块级元素转为换行。
+   */
+  const sanitizeContentHtmlForAi = (html: string): string => {
+    const document = new DOMParser().parseFromString(html, 'text/html');
+
+    // video/audio 常以 <source> 指定媒体地址，提取到父节点后即可移除 source 标签。
+    document.querySelectorAll('video, audio').forEach((media) => {
+      if (!media.getAttribute('src')) {
+        const source = media.querySelector('source[src]');
+        if (source) media.setAttribute('src', source.getAttribute('src') || '');
+      }
+    });
+
+    const allowedTags = new Set(['IMG', 'VIDEO', 'AUDIO', 'BR']);
+    const blockTags = new Set([
+      'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'DIV', 'DL', 'DT', 'DD',
+      'FIGCAPTION', 'FIGURE', 'FOOTER', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6',
+      'HEADER', 'LI', 'MAIN', 'OL', 'P', 'PRE', 'SECTION', 'TABLE', 'TD',
+      'TH', 'TR', 'UL'
+    ]);
+
+    const sanitizeNode = (node: Node): Node[] => {
+      if (node.nodeType === Node.TEXT_NODE) return [node.cloneNode()];
+      if (node.nodeType !== Node.ELEMENT_NODE) return [];
+
+      const element = node as HTMLElement;
+      if (allowedTags.has(element.tagName)) {
+        const allowedAttrs = element.tagName === 'IMG'
+          ? ['src', 'alt', 'title']
+          : element.tagName === 'BR'
+            ? []
+            : ['src', 'poster', 'controls'];
+        Array.from(element.attributes).forEach((attribute) => {
+          if (!allowedAttrs.includes(attribute.name.toLowerCase())) {
+            element.removeAttribute(attribute.name);
+          }
+        });
+        return [element.cloneNode(false)];
+      }
+
+      const children = Array.from(element.childNodes).flatMap(sanitizeNode);
+      return blockTags.has(element.tagName) ? [...children, document.createElement('br')] : children;
+    };
+
+    const sanitizedNodes = Array.from(document.body.childNodes).flatMap(sanitizeNode);
+    document.body.replaceChildren(...sanitizedNodes);
+
+    return document.body.innerHTML;
+  };
+
+  /**
+   * 为 Agent、工作流和工具构造同一份素材输入。
+   * 不传描述；已有 AI 总结的素材不重复传 content_html，否则传入清理后的 HTML 正文。
+   */
+  const getSelectedContentInput = () => {
+    if (selectedItems) {
+      const inputItems = selectedItems.map(({ selected, description, metadata, ...item }: any) => {
+        const inputMetadata = { ...(metadata || {}) };
+        delete inputMetadata.description;
+        delete inputMetadata.translated_description;
+
+        if (typeof inputMetadata.ai_summary === 'string' && inputMetadata.ai_summary.trim()) {
+          delete inputMetadata.content_html;
+        } else if (typeof inputMetadata.content_html === 'string') {
+          inputMetadata.content_html = sanitizeContentHtmlForAi(inputMetadata.content_html);
+        }
+
+        return { ...item, metadata: inputMetadata };
+      });
+      return JSON.stringify(inputItems);
+    }
+    return JSON.stringify(selectedIds || []);
   };
 
   const handleRunTool = async (tool: Tool, input: string | Record<string, any>) => {
@@ -395,15 +478,7 @@ const Generation: React.FC = () => {
     setGenerating(true);
     setStatus(`正在通过工作流 "${wf.name}" 生成内容...`);
     try {
-      const inputPayload = selectedItems
-        ? JSON.stringify(selectedItems.map(({ selected, id, ...rest }: any) => {
-            if (rest.metadata?.ai_summary) {
-              const { content_html, ...restMetadata } = rest.metadata;
-              return { ...rest, metadata: restMetadata };
-            }
-            return rest;
-          }))
-        : JSON.stringify(selectedIds);
+      const inputPayload = getSelectedContentInput();
       const res = await agentService.runWorkflow(wf.id, inputPayload, date);
       const content = res?.content || (typeof res === 'string' ? res : JSON.stringify(res, null, 2));
       setResult({ daily_summary_markdown: content });
@@ -423,15 +498,7 @@ const Generation: React.FC = () => {
     setGenerating(true);
     setStatus(`正在通过 Agent "${agent.name}" 生成内容...`);
     try {
-      const inputText = selectedItems
-        ? JSON.stringify(selectedItems.map(({ selected, id, ...rest }: any) => {
-            if (rest.metadata?.ai_summary) {
-              const { content_html, ...restMetadata } = rest.metadata;
-              return { ...rest, metadata: restMetadata };
-            }
-            return rest;
-          }))
-        : JSON.stringify(selectedIds);
+      const inputText = getSelectedContentInput();
       const res = await agentService.runAgent(agent.id, inputText, date);
       const content = res?.content || (typeof res === 'string' ? res : JSON.stringify(res, null, 2));
       setResult({ daily_summary_markdown: content });
@@ -503,14 +570,7 @@ const Generation: React.FC = () => {
             {selectedItems && selectedItems.length > 0 && (
               <button 
                 onClick={() => {
-                  const cleanedItems = selectedItems.map(({ selected, id, ...rest }: any) => {
-                    if (rest.metadata?.ai_summary) {
-                      const { content_html, ...restMetadata } = rest.metadata;
-                      return { ...rest, metadata: restMetadata };
-                    }
-                    return rest;
-                  });
-                  copyToClipboard(JSON.stringify(cleanedItems, null, 2));
+                  copyToClipboard(getSelectedContentInput());
                 }}
                 className="text-slate-400 hover:text-primary p-1 rounded hover:bg-slate-200 dark:hover:bg-surface-dark transition"
                 title="复制素材 JSON"
@@ -978,8 +1038,7 @@ const Generation: React.FC = () => {
                               const props = tl.parameters?.properties || {};
                               const required = tl.parameters?.required || [];
                               const firstParam = required[0] || Object.keys(props)[0] || 'input';
-                              const defaultInput = result?.daily_summary_markdown || 
-                                                  (selectedItems ? JSON.stringify(selectedItems, null, 2) : '');
+                              const defaultInput = result?.daily_summary_markdown || getSelectedContentInput();
                               setToolArguments({ [firstParam]: defaultInput });
                             }
                             else { toastError(`工具 "${r.name}" 已不存在`); }
@@ -1225,14 +1284,7 @@ const Generation: React.FC = () => {
                             const props = tool.parameters?.properties || {};
                             const required = tool.parameters?.required || [];
                             const firstParam = required[0] || Object.keys(props)[0] || 'input';
-                            const defaultInput = result?.daily_summary_markdown || 
-                                                (selectedItems ? JSON.stringify(selectedItems.map(({ selected, id, description, ...rest }: any) => {
-                                                  if (rest.metadata?.ai_summary) {
-                                                    const { content_html, ...restMetadata } = rest.metadata;
-                                                    return { ...rest, metadata: restMetadata };
-                                                  }
-                                                  return rest;
-                                                }), null, 2) : '');
+                            const defaultInput = result?.daily_summary_markdown || getSelectedContentInput();
                             setToolArguments({ [firstParam]: defaultInput });
                           }}
                           className="w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-border-dark hover:border-amber-400 dark:hover:border-amber-400 hover:bg-amber-50/50 dark:hover:bg-amber-500/5 transition-all group text-left"
