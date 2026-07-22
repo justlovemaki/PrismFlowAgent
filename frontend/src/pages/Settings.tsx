@@ -4,6 +4,7 @@ import { getSettings, saveSettings, getModels, getPluginMetadata, testProvider, 
 import { agentService } from '../services/agentService';
 import IconPicker from '../components/UI/IconPicker';
 import { useToast } from '../context/ToastContext.js';
+import { getAvailableRecentExecutors, getRecentExecutors, groupAgentsByCategory } from '../utils/agentUtils';
 
 const Settings: React.FC = () => {
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
@@ -816,19 +817,33 @@ const Settings: React.FC = () => {
               onChange={(e) => onChange(field.key, e.target.value)}
               className="w-full px-3 py-1.5 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs text-slate-600 dark:text-slate-300 focus:ring-1 focus:ring-primary outline-none transition-all"
             >
-              {fieldOptions?.map((opt: any) => {
+              {field.type === 'executor' ? (
+                <>
+                  <option value="">使用默认</option>
+                  {getAvailableRecentExecutors(getRecentExecutors(), agents, workflows).length > 0 && (
+                    <optgroup label="最近使用">
+                      {getAvailableRecentExecutors(getRecentExecutors(), agents, workflows).map(executor => (
+                        <option key={`recent-${executor.type}-${executor.id}`} value={`${executor.type}:${executor.id}`}>
+                          [{executor.type === 'agent' ? 'Agent' : '工作流'}] {executor.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {groupAgentsByCategory(agents).map(group => (
+                    <optgroup key={group.category} label={`智能体 · ${group.category}`}>
+                      {group.agents.map(agent => (
+                        <option key={`agent:${agent.id}`} value={`agent:${agent.id}`}>[Agent] {agent.name}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                  <optgroup label="工作流">
+                    {workflows.map((workflow: any) => (
+                      <option key={`workflow:${workflow.id}`} value={`workflow:${workflow.id}`}>[工作流] {workflow.name}</option>
+                    ))}
+                  </optgroup>
+                </>
+              ) : fieldOptions?.map((opt: any) => {
                 let displayLabel = opt || '使用默认';
-                if (field.type === 'executor' && opt) {
-                  if (opt.startsWith('agent:')) {
-                    const id = opt.replace('agent:', '');
-                    const agent = agents.find(a => a.id === id);
-                    displayLabel = `[Agent] ${agent ? agent.name : id}`;
-                  } else if (opt.startsWith('workflow:')) {
-                    const id = opt.replace('workflow:', '');
-                    const workflow = workflows.find(w => w.id === id);
-                    displayLabel = `[工作流] ${workflow ? workflow.name : id}`;
-                  }
-                }
                 return <option key={opt} value={opt}>{displayLabel}</option>;
               })}
             </select>

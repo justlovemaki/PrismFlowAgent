@@ -11,6 +11,7 @@ import { useToast } from '../context/ToastContext.js';
 import { copyToClipboard as copyToClipboardUtil } from '../utils/clipboardUtils';
 import { getPublisherPlugin } from '../plugins/publishers';
 import { getTodayShanghai } from '../utils/dateUtils';
+import { getAvailableRecentExecutors, getRecentExecutors, groupAgentsByCategory, recordRecentExecutor } from '../utils/agentUtils';
 
 const Generation: React.FC = () => {
   const { success: toastSuccess, error: toastError, info: toastInfo } = useToast();
@@ -102,18 +103,6 @@ const Generation: React.FC = () => {
     list: any[];
     index: number;
   }>({ list: [], index: -1 });
-
-  // Recent AI selections (persisted in localStorage, max 9 unique)
-  type RecentAISelection = { type: 'workflow' | 'agent'; id: string; name: string };
-  const RECENT_KEY = 'ai_picker_recent';
-  const loadRecent = (): RecentAISelection[] => {
-    try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]'); } catch { return []; }
-  };
-  const saveRecentSelection = (item: RecentAISelection) => {
-    const prev = loadRecent().filter(r => !(r.type === item.type && r.id === item.id));
-    const next = [item, ...prev].slice(0, 9);
-    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
-  };
 
   // 加载缓存数据
   useEffect(() => {
@@ -325,7 +314,7 @@ const Generation: React.FC = () => {
       return;
     }
     setShowAIPicker(true);
-    setAiPickerTab(loadRecent().length > 0 ? 'recent' : 'workflow');
+    setAiPickerTab(getRecentExecutors().length > 0 ? 'recent' : 'workflow');
 
     // Agent、工作流和工具在当前生成页内通常不会变化，避免每次打开弹窗重复查询。
     if (aiResourcesLoadedRef.current) {
@@ -426,7 +415,7 @@ const Generation: React.FC = () => {
   };
 
   const handleRunTool = async (tool: Tool, input: string | Record<string, any>) => {
-    saveRecentSelection({ type: 'tool' as any, id: tool.id, name: tool.name });
+    recordRecentExecutor({ type: 'tool', id: tool.id, name: tool.name });
     setShowAIPicker(false);
     setGenerating(true);
     setStatus(`正在执行工具 "${tool.name}"...`);
@@ -473,7 +462,7 @@ const Generation: React.FC = () => {
   };
 
   const handleRunWithWorkflow = async (wf: Workflow) => {
-    saveRecentSelection({ type: 'workflow', id: wf.id, name: wf.name });
+    recordRecentExecutor({ type: 'workflow', id: wf.id, name: wf.name });
     setShowAIPicker(false);
     setGenerating(true);
     setStatus(`正在通过工作流 "${wf.name}" 生成内容...`);
@@ -493,7 +482,7 @@ const Generation: React.FC = () => {
   };
 
   const handleRunWithAgent = async (agent: Agent) => {
-    saveRecentSelection({ type: 'agent', id: agent.id, name: agent.name });
+    recordRecentExecutor({ type: 'agent', id: agent.id, name: agent.name });
     setShowAIPicker(false);
     setGenerating(true);
     setStatus(`正在通过 Agent "${agent.name}" 生成内容...`);
@@ -1008,7 +997,7 @@ const Generation: React.FC = () => {
                 </div>
               ) : aiPickerTab === 'recent' ? (
                 (() => {
-                  const recents = loadRecent();
+                  const recents = getAvailableRecentExecutors(getRecentExecutors(), agents, workflows, tools);
                   if (recents.length === 0) return (
                     <div className="text-center py-8 sm:py-12 text-slate-400">
                       <span className="material-symbols-outlined text-3xl mb-2 block">history</span>
@@ -1118,22 +1107,27 @@ const Generation: React.FC = () => {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {agents.map(agent => (
-                      <button
-                        key={agent.id}
-                        onClick={() => handleRunWithAgent(agent)}
-                        className="w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-border-dark hover:border-primary dark:hover:border-primary hover:bg-primary/5 transition-all group text-left"
-                      >
-                        <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-                          <span className="material-symbols-outlined text-lg sm:text-xl">smart_toy</span>
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm group-hover:text-primary transition-colors truncate">{agent.name}</div>
-                          {agent.description && <div className="text-[10px] sm:text-xs text-slate-500 dark:text-text-secondary mt-0.5 truncate">{agent.description}</div>}
-                          <div className="text-[9px] sm:text-[10px] text-slate-400 mt-1 font-mono truncate">{agent.model || '默认模型'}</div>
-                        </div>
-                        <span className="material-symbols-outlined text-slate-300 dark:text-white/10 group-hover:text-primary transition-colors text-lg sm:text-xl">play_arrow</span>
-                      </button>
+                    {groupAgentsByCategory(agents).map(group => (
+                      <div key={group.category} className="space-y-2">
+                        <h4 className="px-1 pt-2 text-[10px] font-bold text-slate-400 uppercase tracking-widest">{group.category}</h4>
+                        {group.agents.map(agent => (
+                          <button
+                            key={agent.id}
+                            onClick={() => handleRunWithAgent(agent)}
+                            className="w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border border-slate-200 dark:border-border-dark hover:border-primary dark:hover:border-primary hover:bg-primary/5 transition-all group text-left"
+                          >
+                            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                              <span className="material-symbols-outlined text-lg sm:text-xl">smart_toy</span>
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm group-hover:text-primary transition-colors truncate">{agent.name}</div>
+                              {agent.description && <div className="text-[10px] sm:text-xs text-slate-500 dark:text-text-secondary mt-0.5 truncate">{agent.description}</div>}
+                              <div className="text-[9px] sm:text-[10px] text-slate-400 mt-1 font-mono truncate">{agent.model || '默认模型'}</div>
+                            </div>
+                            <span className="material-symbols-outlined text-slate-300 dark:text-white/10 group-hover:text-primary transition-colors text-lg sm:text-xl">play_arrow</span>
+                          </button>
+                        ))}
+                      </div>
                     ))}
                   </div>
                 )

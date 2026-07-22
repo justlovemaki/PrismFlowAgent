@@ -6,6 +6,7 @@ import type { Agent, Workflow, Tool } from '../../../../services/agentService';
 import { getSettings } from '../../../../services/settingsService';
 import { useToast } from '../../../../context/ToastContext.js';
 import ContentRenderer from '../../../../components/UI/ContentRenderer';
+import { getAvailableRecentExecutors, getRecentExecutors, groupAgentsByCategory, recordRecentExecutor } from '../../../../utils/agentUtils';
 
 interface WechatPublishModalProps {
   date: string;
@@ -78,6 +79,34 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
 
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [tools, setTools] = useState<Tool[]>([]);
+  const coverAspectClass = publishAsImageText ? 'aspect-[3/4]' : 'aspect-video';
+  const recentExecutors = getAvailableRecentExecutors(getRecentExecutors(), agents, workflows, tools);
+
+  const recordExecutorUsage = (executorId: string) => {
+    const [type, id] = executorId.split(':');
+    const executor = type === 'agent'
+      ? agents.find(item => item.id === id)
+      : type === 'workflow'
+        ? workflows.find(item => item.id === id)
+        : tools.find(item => item.id === id);
+
+    if (executor && (type === 'agent' || type === 'workflow' || type === 'tool')) {
+      recordRecentExecutor({ type, id: executor.id, name: executor.name });
+    }
+  };
+
+  const handlePublishModeChange = () => {
+    const nextPublishAsImageText = !publishAsImageText;
+    const nextAspectRatio = nextPublishAsImageText ? '3:4' : '16:9';
+
+    setPublishAsImageText(nextPublishAsImageText);
+    setWechatCoverCustom(previous => {
+      const ratioPattern = /比例:\s*\d+(?:\.\d+)?\s*:\s*\d+(?:\.\d+)?/;
+      return ratioPattern.test(previous)
+        ? previous.replace(ratioPattern, `比例: ${nextAspectRatio}`)
+        : `比例: ${nextAspectRatio}, ${previous}`.trim();
+    });
+  };
 
   // 保存封面生成执行器的选择
   useEffect(() => {
@@ -219,6 +248,7 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
     if (!combinedPrompt) return;
     
     setIsGeneratingCover(true);
+    recordExecutorUsage(selectedCoverAgentId);
     // 开始新生成时，重置旧的 media_id，但保留 URL 直到新 URL 返回
     setWechatThumbMediaId('');
     
@@ -296,10 +326,11 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
     if (selectedContentExecutorId.startsWith('tool:') && !currentContent) return;
     
     setIsProcessingContent(true);
+    recordExecutorUsage(selectedContentExecutorId);
     try {
       const res = await agentService.runExecutor(
         selectedContentExecutorId, 
-        selectedContentExecutorId.startsWith('tool:') ? currentContent : undefined, 
+        currentContent,
         date
       );
       
@@ -519,7 +550,7 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
               </div>
             </div>
             <button 
-              onClick={() => setPublishAsImageText(!publishAsImageText)}
+              onClick={handlePublishModeChange}
               className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${publishAsImageText ? 'bg-primary' : 'bg-slate-200 dark:bg-white/10'}`}
             >
               <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${publishAsImageText ? 'translate-x-5' : 'translate-x-0'}`} />
@@ -573,11 +604,22 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
                       className="flex-1 bg-transparent border-none text-xs text-slate-600 dark:text-slate-300 focus:ring-0 cursor-pointer min-w-0"
                     >
                       <option value="">(不使用 AI 处理)</option>
-                      <optgroup label="智能体 (Agents)">
-                        {agents.map(agent => (
-                          <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>
-                        ))}
-                      </optgroup>
+                      {recentExecutors.length > 0 && (
+                        <optgroup label="最近使用">
+                          {recentExecutors.map(executor => (
+                            <option key={`recent-${executor.type}-${executor.id}`} value={`${executor.type}:${executor.id}`}>
+                              [{executor.type === 'agent' ? '智能体' : executor.type === 'workflow' ? '工作流' : '工具'}] {executor.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
+                      {groupAgentsByCategory(agents).map(group => (
+                        <optgroup key={group.category} label={`智能体 · ${group.category}`}>
+                          {group.agents.map(agent => (
+                            <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>
+                          ))}
+                        </optgroup>
+                      ))}
                       <optgroup label="工作流 (Workflows)">
                         {workflows.map(wf => (
                           <option key={wf.id} value={`workflow:${wf.id}`}>{wf.name}</option>
@@ -761,11 +803,22 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
                     onChange={(e) => setSelectedCoverAgentId(e.target.value)}
                     className="text-[10px] bg-slate-100 dark:bg-white/5 border-none rounded px-2 py-1 text-primary focus:ring-1 focus:ring-primary/30 cursor-pointer max-w-[120px]"
                   >
-                    <optgroup label="智能体 (Agents)">
-                      {agents.map(agent => (
-                        <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>
-                      ))}
-                    </optgroup>
+                    {recentExecutors.length > 0 && (
+                      <optgroup label="最近使用">
+                        {recentExecutors.map(executor => (
+                          <option key={`recent-${executor.type}-${executor.id}`} value={`${executor.type}:${executor.id}`}>
+                            [{executor.type === 'agent' ? '智能体' : executor.type === 'workflow' ? '工作流' : '工具'}] {executor.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {groupAgentsByCategory(agents).map(group => (
+                      <optgroup key={group.category} label={`智能体 · ${group.category}`}>
+                        {group.agents.map(agent => (
+                          <option key={agent.id} value={`agent:${agent.id}`}>{agent.name}</option>
+                        ))}
+                      </optgroup>
+                    ))}
                     <optgroup label="工作流 (Workflows)">
                       {workflows.map(wf => (
                         <option key={wf.id} value={`workflow:${wf.id}`}>{wf.name}</option>
@@ -828,7 +881,7 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
             
             <div className="space-y-3">
               <div className="flex flex-col gap-2">
-                <div className="relative rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-white/10 aspect-[2.35/1] bg-slate-50 dark:bg-black/20 flex items-center justify-center group">
+                <div className={`relative rounded-2xl overflow-hidden border-2 border-dashed border-slate-200 dark:border-white/10 ${coverAspectClass} bg-slate-50 dark:bg-black/20 flex items-center justify-center group`}>
                   {wechatCoverUrl ? (
                     <>
                       <img ref={coverImageRef} src={getImageUrl(wechatCoverUrl)} className="w-full h-full object-cover" alt="Cover" crossOrigin="anonymous" />
@@ -907,7 +960,7 @@ const WechatPublishModal: React.FC<WechatPublishModalProps> = ({ date, content, 
                           }
                         }
                       }}
-                      className={`relative aspect-[2.35/1] rounded-lg overflow-hidden border-2 transition-all cursor-pointer group ${
+                      className={`relative ${coverAspectClass} rounded-lg overflow-hidden border-2 transition-all cursor-pointer group ${
                         wechatCoverUrl === url ? 'border-primary shadow-sm' : 'border-slate-200 dark:border-white/10 hover:border-primary/50'
                       }`}
                     >

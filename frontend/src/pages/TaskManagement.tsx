@@ -12,6 +12,7 @@ import { getAdapters } from '../services/dashboardService';
 import { agentService } from '../services/agentService';
 import type { Agent, Workflow } from '../services/agentService';
 import { useToast } from '../context/ToastContext';
+import { getAvailableRecentExecutors, getRecentExecutors, groupAgentsByCategory } from '../utils/agentUtils';
 
 const TaskManagement: React.FC = () => {
   const { success: toastSuccess, error: toastError } = useToast();
@@ -475,8 +476,21 @@ const TaskManagement: React.FC = () => {
                             className="w-full p-2 bg-slate-50 dark:bg-surface-darker border border-slate-200 dark:border-white/10 rounded-lg text-sm"
                           >
                           <option value="">请选择智能体</option>
-                          {availableAgents.map(agent => (
-                            <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>
+                          {getAvailableRecentExecutors(getRecentExecutors(), availableAgents, availableWorkflows).filter(executor => executor.type === 'agent').length > 0 && (
+                            <optgroup label="最近使用">
+                              {getAvailableRecentExecutors(getRecentExecutors(), availableAgents, availableWorkflows)
+                                .filter(executor => executor.type === 'agent')
+                                .map(executor => (
+                                  <option key={`recent-${executor.id}`} value={executor.id}>{executor.name} ({executor.id})</option>
+                                ))}
+                            </optgroup>
+                          )}
+                          {groupAgentsByCategory(availableAgents).map(group => (
+                            <optgroup key={group.category} label={group.category}>
+                              {group.agents.map(agent => (
+                                <option key={agent.id} value={agent.id}>{agent.name} ({agent.id})</option>
+                              ))}
+                            </optgroup>
                           ))}
                         </select>
                       ) : (

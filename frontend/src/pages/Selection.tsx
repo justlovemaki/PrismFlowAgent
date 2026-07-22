@@ -8,6 +8,7 @@ import { useToast } from '../context/ToastContext';
 import type { Agent } from '../services/agentService';
 import { getTodayShanghai, formatToShanghai } from '../utils/dateUtils';
 import { saveToCache, loadFromCache, CACHE_KEYS, clearExpiredCache, clearCache } from '../utils/cacheUtils';
+import { getAvailableRecentExecutors, getRecentExecutors, groupAgentsByCategory, recordRecentExecutor } from '../utils/agentUtils';
 import ContentRenderer from '../components/UI/ContentRenderer';
 
 interface ContentItem {
@@ -634,6 +635,13 @@ const Selection: React.FC = () => {
     
     setRegenerating(true);
     try {
+      const [type, id] = agentId.split(':');
+      const executor = type === 'agent'
+        ? agents.find(agent => agent.id === id)
+        : workflows.find(workflow => workflow.id === id);
+      if (executor && (type === 'agent' || type === 'workflow')) {
+        recordRecentExecutor({ type, id: executor.id, name: executor.name });
+      }
       const result = await regenerateSummary(targetItem.id, agentId);
       if (result && result.ai_summary) {
         // 更新本地状态
@@ -908,6 +916,31 @@ const Selection: React.FC = () => {
                     </div>
                   ) : (
                     <div className="space-y-6">
+                      {(() => {
+                        const recentExecutors = getAvailableRecentExecutors(getRecentExecutors(), agents, workflows);
+                        return recentExecutors.length > 0 ? (
+                          <div className="space-y-3">
+                            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest px-1 flex items-center gap-2">
+                              <span className="material-symbols-outlined text-sm">history</span>
+                              最近使用
+                            </h4>
+                            {recentExecutors.map(executor => (
+                              <button
+                                key={`recent-${executor.type}-${executor.id}`}
+                                onClick={() => onSelectAgent(`${executor.type}:${executor.id}`)}
+                                className="w-full text-left p-4 rounded-xl border border-slate-100 dark:border-white/5 hover:border-primary hover:bg-primary/5 transition-all group"
+                              >
+                                <div className="flex justify-between items-center mb-1">
+                                  <span className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">{executor.name}</span>
+                                  <span className="text-[10px] bg-slate-100 dark:bg-white/10 px-2 py-0.5 rounded text-slate-500 uppercase">
+                                    {executor.type === 'agent' ? 'Agent' : 'Workflow'}
+                                  </span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        ) : null;
+                      })()}
                       {/* Agents Section */}
                       {agents.length > 0 && (
                         <div className="space-y-3">
@@ -915,24 +948,29 @@ const Selection: React.FC = () => {
                             <span className="material-symbols-outlined text-sm">smart_toy</span>
                             智能体 (Agents)
                           </h4>
-                          {agents.map(agent => (
-                            <button
-                              key={agent.id}
-                              onClick={() => onSelectAgent(`agent:${agent.id}`)}
-                              className="w-full text-left p-4 rounded-xl border border-slate-100 dark:border-white/5 hover:border-primary hover:bg-primary/5 transition-all group"
-                            >
-                              <div className="flex justify-between items-center mb-1">
-                                <span className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">
-                                  {agent.name}
-                                </span>
-                                <span className="text-[10px] bg-slate-100 dark:bg-white/10 px-2 py-0.5 rounded text-slate-500 uppercase">
-                                  {agent.model}
-                                </span>
-                              </div>
-                              <p className="text-xs text-slate-500 line-clamp-2">
-                                {agent.description || '暂无描述'}
-                              </p>
-                            </button>
+                          {groupAgentsByCategory(agents).map(group => (
+                            <div key={group.category} className="space-y-2">
+                              <h5 className="px-1 text-[10px] font-bold text-slate-400 uppercase tracking-widest">{group.category}</h5>
+                              {group.agents.map(agent => (
+                                <button
+                                  key={agent.id}
+                                  onClick={() => onSelectAgent(`agent:${agent.id}`)}
+                                  className="w-full text-left p-4 rounded-xl border border-slate-100 dark:border-white/5 hover:border-primary hover:bg-primary/5 transition-all group"
+                                >
+                                  <div className="flex justify-between items-center mb-1">
+                                    <span className="font-bold text-slate-900 dark:text-white group-hover:text-primary transition-colors">
+                                      {agent.name}
+                                    </span>
+                                    <span className="text-[10px] bg-slate-100 dark:bg-white/10 px-2 py-0.5 rounded text-slate-500 uppercase">
+                                      {agent.model}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 line-clamp-2">
+                                    {agent.description || '暂无描述'}
+                                  </p>
+                                </button>
+                              ))}
+                            </div>
                           ))}
                         </div>
                       )}
