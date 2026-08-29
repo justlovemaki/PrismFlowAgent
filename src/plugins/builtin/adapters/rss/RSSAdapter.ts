@@ -1,8 +1,13 @@
 import { BaseAdapter } from '../../../base/BaseAdapter.js';
 import type { UnifiedData } from '../../../../types/index.js';
 import type { AdapterMetadata } from '../../../../registries/AdapterRegistry.js';
-import { stripHtml, getRandomUserAgent, getISODate } from '../../../../utils/helpers.js';
-import Parser from 'rss-parser';
+import { getRandomUserAgent } from '../../../../utils/helpers.js';
+import {
+  fetchParsedRssFeed,
+  normalizeParsedRssFeed,
+  type ParsedRssFeed,
+  type RssFeedDefinition,
+} from '../../../../core/sources/RssSource.js';
 
 export class RSSAdapter extends BaseAdapter {
   static metadata: AdapterMetadata = {
@@ -16,7 +21,6 @@ export class RSSAdapter extends BaseAdapter {
     ]
   };
 
-  private parser = new Parser();
   configFields = RSSAdapter.metadata.configFields;
 
   private rssUrl?: string;
@@ -32,48 +36,36 @@ export class RSSAdapter extends BaseAdapter {
     this.limit = itemConfig.limit || 20;
   }
 
-  async fetch(config: { rssUrl: string, limit?: number }): Promise<any> {
+  private feedDefinition(config: { rssUrl?: string; limit?: number; category?: string } = {}): RssFeedDefinition {
     const url = config.rssUrl || this.rssUrl;
     if (!url) {
       throw new Error(`[RSSAdapter: ${this.name}] RSS 地址未配置`);
     }
 
-    const headers = {
-      'User-Agent': getRandomUserAgent(),
-      'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
-    };
-
-    const response = await fetch(url, { 
-      headers,
-      dispatcher: this.dispatcher 
-    } as any);
-
-    if (!response.ok) {
-      throw new Error(`抓取 RSS 失败: ${response.status} ${response.statusText}`);
-    }
-
-    const xml = await response.text();
-    const feed = await this.parser.parseString(xml);
-    const limit = config.limit || this.limit;
-    
     return {
-      title: feed.title || this.name,
-      items: (feed.items || []).slice(0, limit)
+      id: this.name,
+      name: this.name,
+      url,
+      category: config.category || this.category || 'rss',
+      limit: config.limit || this.limit,
     };
   }
 
-  transform(rawData: any, config?: any): UnifiedData[] {
-    const items = rawData.items || [];
-    return items.map((item: any) => ({
-      id: item.guid || item.link || item.id || `rss-${Date.now()}-${Math.random()}`,
-      title: item.title || '无标题',
-      url: item.link || '',
-      description: stripHtml(item.contentSnippet || item.content || item.summary || ''),
-      published_date: item.isoDate || item.pubDate || new Date().toISOString(),
-      ingestion_date: getISODate(),
-      source: rawData.title || this.name,
+  async fetch(config: { rssUrl: string; limit?: number }): Promise<ParsedRssFeed> {
+    const feed = this.feedDefinition(config);
+    return fetchParsedRssFeed(feed, {
+      userAgent: getRandomUserAgent(),
+      fetchImpl: this.dispatcher
+        ? (input, init) => fetch(input, { ...init, dispatcher: this.dispatcher } as RequestInit)
+        : fetch,
+    });
+  }
+
+  transform(rawData: ParsedRssFeed, config?: { category?: string }): UnifiedData[] {
+    return normalizeParsedRssFeed(rawData, {
+      feedId: this.name,
+      name: this.name,
       category: config?.category || this.category || 'rss',
-      author: item.creator || item.author || ''
-    }));
+    });
   }
 }

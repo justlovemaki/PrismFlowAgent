@@ -49,6 +49,58 @@ const FileTreeNode: React.FC<{
   </div>
 );
 
+const INITIAL_INPUT_STEP_ID = 'initial_input';
+
+const getNextStepIds = (step: WorkflowStep): string[] => {
+  if (step.nextStepIds && step.nextStepIds.length > 0) return step.nextStepIds;
+  if (step.nextStepId) return [step.nextStepId];
+  return [];
+};
+
+const ensureInitialInputStep = (workflow: Workflow): Workflow => {
+  const steps = Array.isArray(workflow.steps) ? workflow.steps : [];
+  const configuredInitial = steps.find(step => step.id === workflow.initialStepId && step.type === 'input');
+  const inputStep = configuredInitial ?? steps.find(step => step.type === 'input');
+
+  if (inputStep) {
+    return {
+      ...workflow,
+      initialStepId: inputStep.id,
+      steps: [
+        { ...inputStep, type: 'input', agentId: undefined, workflowId: undefined, skillId: undefined, enabled: true },
+        ...steps.filter(step => step.id !== inputStep.id),
+      ],
+    };
+  }
+
+  const existingIds = new Set(steps.map(step => step.id));
+  let inputId = INITIAL_INPUT_STEP_ID;
+  let suffix = 2;
+  while (existingIds.has(inputId)) inputId = `${INITIAL_INPUT_STEP_ID}_${suffix++}`;
+
+  const incoming = new Set<string>();
+  steps.forEach(step => {
+    getNextStepIds(step).forEach(nextId => {
+      if (existingIds.has(nextId)) incoming.add(nextId);
+    });
+    Object.values(step.inputMap ?? {}).forEach(sourceId => {
+      if (existingIds.has(sourceId)) incoming.add(step.id);
+    });
+  });
+
+  let entryIds = steps.filter(step => !incoming.has(step.id)).map(step => step.id);
+  if (entryIds.length === 0 && existingIds.has(workflow.initialStepId)) entryIds = [workflow.initialStepId];
+
+  return {
+    ...workflow,
+    initialStepId: inputId,
+    steps: [
+      { id: inputId, type: 'input', inputMap: {}, nextStepIds: entryIds, enabled: true },
+      ...steps,
+    ],
+  };
+};
+
 const Agents: React.FC = () => {
   const { success: toastSuccess, error: toastError } = useToast();
   const [activeTab, setActiveTab] = useState('agents');
@@ -148,7 +200,7 @@ const Agents: React.FC = () => {
       setAgents(agentsData);
       setSkills(skillsData);
       setTools(toolsData);
-      setWorkflows(workflowsData);
+      setWorkflows((workflowsData as Workflow[]).map(ensureInitialInputStep));
       setSettings(settingsData);
       setMcpConfigs(mcpData);
     } catch (error) {
@@ -1571,21 +1623,17 @@ const Agents: React.FC = () => {
     id: `wf_${Date.now().toString(36)}`,
     name: '',
     description: '',
-    steps: [{ id: 'step_1', type: 'agent', agentId: '', inputMap: {}, nextStepIds: [], condition: '' }],
-    initialStepId: 'step_1',
+    steps: [
+      { id: INITIAL_INPUT_STEP_ID, type: 'input', inputMap: {}, nextStepIds: ['step_1'], enabled: true },
+      { id: 'step_1', type: 'agent', agentId: '', inputMap: {}, nextStepIds: [], condition: '' },
+    ],
+    initialStepId: INITIAL_INPUT_STEP_ID,
   });
-
-  // Normalize step: ensure nextStepIds is always present
-  const getNextStepIds = (step: WorkflowStep): string[] => {
-    if (step.nextStepIds && step.nextStepIds.length > 0) return step.nextStepIds;
-    if (step.nextStepId) return [step.nextStepId];
-    return [];
-  };
 
   const handleSaveWorkflow = async (workflow: Workflow) => {
     try {
       setIsSaving(true);
-      await agentService.saveWorkflow(workflow);
+      await agentService.saveWorkflow(ensureInitialInputStep(workflow));
       await loadData();
       setEditingWorkflow(null);
       toastSuccess('工作流保存成功');
@@ -1667,6 +1715,7 @@ const Agents: React.FC = () => {
 
   const removeWorkflowStep = (stepIdx: number) => {
     if (!editingWorkflow || editingWorkflow.steps.length <= 1) return;
+    if (editingWorkflow.steps[stepIdx].type === 'input') return;
     const removedId = editingWorkflow.steps[stepIdx].id;
     const removedNextIds = getNextStepIds(editingWorkflow.steps[stepIdx]);
     const steps = editingWorkflow.steps.filter((_, i) => i !== stepIdx);
@@ -1679,11 +1728,11 @@ const Agents: React.FC = () => {
       }
       return s;
     });
-    const newInitial = editingWorkflow.initialStepId === removedId ? fixedSteps[0]?.id : editingWorkflow.initialStepId;
-    setEditingWorkflow({ ...editingWorkflow, steps: fixedSteps, initialStepId: newInitial });
+    setEditingWorkflow({ ...editingWorkflow, steps: fixedSteps });
   };
 
   const getStepLabel = (step: WorkflowStep) => {
+    if (step.type === 'input') return '初始数据';
     if (step.agentId) {
       const agent = agents.find(a => a.id === step.agentId);
       return agent ? agent.name : step.agentId;
@@ -1885,7 +1934,9 @@ const Agents: React.FC = () => {
                       ? 'px-2 py-0.5 text-[9px] rounded-lg'
                       : 'px-3 py-1.5 text-[10px] rounded-xl'
                   } ${
-                    step.enabled === false
+                    step.type === 'input'
+                      ? 'bg-violet-50/90 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300 border-violet-200/50 dark:border-violet-500/20'
+                      : step.enabled === false
                       ? 'bg-slate-100/50 dark:bg-white/[0.02] text-slate-300 dark:text-slate-600 border-slate-200/30 dark:border-white/5 opacity-60 grayscale'
                       : step.agentId
                       ? 'bg-blue-50/90 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200/50 dark:border-blue-500/20'
@@ -1894,20 +1945,21 @@ const Agents: React.FC = () => {
                       : 'bg-slate-50/90 dark:bg-white/[0.03] text-slate-400 border-slate-200 dark:border-white/10'
                   } ${
                     step.id === initialStepId
-                      ? 'ring-2 ring-emerald-500/20 dark:ring-emerald-500/40'
+                      ? 'ring-2 ring-violet-500/20 dark:ring-violet-500/40'
                       : ''
                   }`}
                   style={{ left: `${pos.x}px`, top: `${pos.y}px`, width: `${nodeWidth}px`, minHeight: `${nodeHeight}px` }}
                   title={step.id + (step.enabled === false ? ' (已禁用)' : '')}
                 >
                   <div className={`w-4 h-4 rounded flex items-center justify-center shrink-0 ${
+                    step.type === 'input' ? 'bg-violet-500/20 text-violet-500' :
                     step.enabled === false ? 'bg-slate-200/50 dark:bg-white/5 text-slate-400' :
                     step.agentId ? 'bg-blue-500/20 text-blue-500' : 
                     step.workflowId ? 'bg-emerald-500/20 text-emerald-500' : 
                     'bg-slate-500/20 text-slate-500'
                   }`}>
                     <span className="material-symbols-outlined text-[12px]">
-                      {step.enabled === false ? 'visibility_off' : (step.agentId ? 'smart_toy' : step.workflowId ? 'account_tree' : 'help')}
+                      {step.type === 'input' ? 'input' : step.enabled === false ? 'visibility_off' : (step.agentId ? 'smart_toy' : step.workflowId ? 'account_tree' : 'help')}
                     </span>
                   </div>
                   <span className="truncate">{getStepLabel(step)}</span>
@@ -2087,6 +2139,10 @@ const Agents: React.FC = () => {
                         </div>
                         <div className="flex gap-3">
                           <div className="flex items-center gap-1">
+                            <div className="w-1.5 h-1.5 rounded-full bg-violet-500"></div>
+                            <span className="text-[9px] text-slate-400">初始数据</span>
+                          </div>
+                          <div className="flex items-center gap-1">
                             <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div>
                             <span className="text-[9px] text-slate-400">Agent</span>
                           </div>
@@ -2107,36 +2163,43 @@ const Agents: React.FC = () => {
                     {editingWorkflow.steps.map((step, idx) => {
                       const currentNextIds = getNextStepIds(step);
                       const isParallel = currentNextIds.length > 1;
+                      const isInput = step.type === 'input';
                       return (
                         <div key={step.id} className={`p-4 rounded-2xl border space-y-3 transition-all ${
-                          step.enabled === false
+                          isInput
+                            ? 'bg-violet-50/50 dark:bg-violet-500/5 border-violet-200 dark:border-violet-500/20'
+                            : step.enabled === false
                             ? 'bg-slate-50/50 dark:bg-white/[0.01] border-slate-100 dark:border-white/5 opacity-70 grayscale-[0.5]'
-                            : step.id === editingWorkflow.initialStepId
-                            ? 'bg-emerald-50/50 dark:bg-emerald-500/5 border-emerald-200 dark:border-emerald-500/20'
                             : 'bg-slate-50 dark:bg-white/[0.02] border-slate-200 dark:border-white/5'
                         }`}>
                           <div className="flex justify-between items-center">
                             <div className="flex items-center gap-2">
-                              <span className="w-6 h-6 rounded-full bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400 flex items-center justify-center text-[10px] font-bold">{idx + 1}</span>
+                              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                                isInput
+                                  ? 'bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400'
+                                  : 'bg-slate-200 dark:bg-white/10 text-slate-500 dark:text-slate-400'
+                              }`}>{isInput ? 'IN' : idx}</span>
                               <span className="text-xs font-bold text-slate-600 dark:text-slate-300">{step.id}</span>
-                              
-                              <button
-                                type="button"
-                                onClick={() => updateWorkflowStep(idx, { enabled: step.enabled === false })}
-                                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold transition-all border ${
-                                  step.enabled !== false
-                                    ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20'
-                                    : 'bg-slate-200/50 dark:bg-white/10 text-slate-400 dark:text-slate-500 border-slate-300 dark:border-white/10'
-                                }`}
-                              >
-                                <span className="material-symbols-outlined text-[14px]">
-                                  {step.enabled !== false ? 'visibility' : 'visibility_off'}
-                                </span>
-                                {step.enabled !== false ? '已启用' : '已禁用'}
-                              </button>
 
-                              {step.id === editingWorkflow.initialStepId && (
-                                <span className="px-1.5 py-0.5 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 rounded text-[8px] font-bold">入口</span>
+                              {!isInput && (
+                                <button
+                                  type="button"
+                                  onClick={() => updateWorkflowStep(idx, { enabled: step.enabled === false })}
+                                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold transition-all border ${
+                                    step.enabled !== false
+                                      ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20'
+                                      : 'bg-slate-200/50 dark:bg-white/10 text-slate-400 dark:text-slate-500 border-slate-300 dark:border-white/10'
+                                  }`}
+                                >
+                                  <span className="material-symbols-outlined text-[14px]">
+                                    {step.enabled !== false ? 'visibility' : 'visibility_off'}
+                                  </span>
+                                  {step.enabled !== false ? '已启用' : '已禁用'}
+                                </button>
+                              )}
+
+                              {isInput && (
+                                <span className="px-1.5 py-0.5 bg-violet-100 dark:bg-violet-500/20 text-violet-600 dark:text-violet-400 rounded text-[8px] font-bold">初始节点</span>
                               )}
                               {isParallel && (
                                 <span className="px-1.5 py-0.5 bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded text-[8px] font-bold flex items-center gap-0.5">
@@ -2145,19 +2208,11 @@ const Agents: React.FC = () => {
                               )}
                             </div>
                             <div className="flex items-center gap-1">
-                              {step.id !== editingWorkflow.initialStepId && (
-                                <button
-                                  onClick={() => setEditingWorkflow({ ...editingWorkflow, initialStepId: step.id })}
-                                  className="w-7 h-7 inline-flex items-center justify-center text-slate-400 hover:text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-full transition-all"
-                                  title="设为入口步骤"
-                                >
-                                  <span className="material-symbols-outlined text-sm">flag</span>
-                                </button>
-                              )}
-                              {editingWorkflow.steps.length > 1 && (
+                              {!isInput && (
                                 <button
                                   onClick={() => removeWorkflowStep(idx)}
                                   className="w-7 h-7 inline-flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-full transition-all"
+                                  title="删除节点"
                                 >
                                   <span className="material-symbols-outlined text-sm">close</span>
                                 </button>
@@ -2165,61 +2220,73 @@ const Agents: React.FC = () => {
                             </div>
                           </div>
 
-                          {/* Execution Type Selector */}
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">执行类型</label>
-                            <div className="flex gap-2">
-                              {(['agent', 'workflow'] as const).map(t => {
-                                const isSelected = step.type === t || (!step.type && t === 'agent' && step.agentId) || (!step.type && !step.agentId && !step.workflowId && t === 'agent');
-                                return (
-                                  <button
-                                    key={t}
-                                    onClick={() => updateWorkflowStep(idx, { type: t, agentId: '', workflowId: '' })}
-                                    className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all border ${
-                                      isSelected
-                                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
-                                        : 'bg-white dark:bg-white/5 text-slate-500 border-slate-200 dark:border-white/10 hover:border-emerald-300'
-                                    }`}
-                                  >
-                                    {t === 'agent' ? '智能体 (Agent)' : '工作流 (Workflow)'}
-                                  </button>
-                                );
-                              })}
+                          {isInput ? (
+                            <div className="flex items-start gap-2 rounded-xl border border-violet-200/70 dark:border-violet-500/20 bg-white/70 dark:bg-white/[0.02] px-3 py-2.5">
+                              <span className="material-symbols-outlined text-violet-500 text-lg">sync_alt</span>
+                              <div>
+                                <p className="text-[10px] font-bold text-violet-700 dark:text-violet-300">原样传递工作流输入</p>
+                                <p className="text-[9px] text-slate-400 mt-0.5">该节点接收运行工作流时提供的数据，并将同一份数据输出给后续节点。</p>
+                              </div>
                             </div>
-                          </div>
+                          ) : (
+                            <>
+                              {/* Execution Type Selector */}
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">执行类型</label>
+                                <div className="flex gap-2">
+                                  {(['agent', 'workflow'] as const).map(t => {
+                                    const isSelected = step.type === t || (!step.type && t === 'agent' && step.agentId) || (!step.type && !step.agentId && !step.workflowId && t === 'agent');
+                                    return (
+                                      <button
+                                        key={t}
+                                        onClick={() => updateWorkflowStep(idx, { type: t, agentId: '', workflowId: '' })}
+                                        className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all border ${
+                                          isSelected
+                                            ? 'bg-emerald-600 text-white border-emerald-600 shadow-sm'
+                                            : 'bg-white dark:bg-white/5 text-slate-500 border-slate-200 dark:border-white/10 hover:border-emerald-300'
+                                        }`}
+                                      >
+                                        {t === 'agent' ? '智能体 (Agent)' : '工作流 (Workflow)'}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
 
-                          {/* Execution ID Selector */}
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                              {step.type === 'workflow' ? '选择工作流' : '执行 Agent'}
-                            </label>
-                            <div className="relative">
-                              {step.type === 'workflow' ? (
-                                <select
-                                  value={step.workflowId || ''}
-                                  onChange={e => updateWorkflowStep(idx, { workflowId: e.target.value })}
-                                  className="w-full appearance-none px-3 py-2 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer dark:text-white"
-                                >
-                                  <option value="">选择工作流</option>
-                                  {workflows.filter(w => w.id !== editingWorkflow.id).map(w => (
-                                    <option key={w.id} value={w.id}>{w.name}</option>
-                                  ))}
-                                </select>
-                              ) : (
-                                <select
-                                  value={step.agentId || ''}
-                                  onChange={e => updateWorkflowStep(idx, { agentId: e.target.value })}
-                                  className="w-full appearance-none px-3 py-2 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer dark:text-white"
-                                >
-                                  <option value="">选择 Agent</option>
-                                  {agents.map(a => (
-                                    <option key={a.id} value={a.id}>{a.name}</option>
-                                  ))}
-                                </select>
-                              )}
-                              <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-sm">expand_more</span>
-                            </div>
-                          </div>
+                              {/* Execution ID Selector */}
+                              <div className="space-y-1">
+                                <label className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                                  {step.type === 'workflow' ? '选择工作流' : '执行 Agent'}
+                                </label>
+                                <div className="relative">
+                                  {step.type === 'workflow' ? (
+                                    <select
+                                      value={step.workflowId || ''}
+                                      onChange={e => updateWorkflowStep(idx, { workflowId: e.target.value })}
+                                      className="w-full appearance-none px-3 py-2 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer dark:text-white"
+                                    >
+                                      <option value="">选择工作流</option>
+                                      {workflows.filter(w => w.id !== editingWorkflow.id).map(w => (
+                                        <option key={w.id} value={w.id}>{w.name}</option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <select
+                                      value={step.agentId || ''}
+                                      onChange={e => updateWorkflowStep(idx, { agentId: e.target.value })}
+                                      className="w-full appearance-none px-3 py-2 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg text-xs outline-none focus:ring-2 focus:ring-emerald-500/20 cursor-pointer dark:text-white"
+                                    >
+                                      <option value="">选择 Agent</option>
+                                      {agents.map(a => (
+                                        <option key={a.id} value={a.id}>{a.name}</option>
+                                      ))}
+                                    </select>
+                                  )}
+                                  <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-sm">expand_more</span>
+                                </div>
+                              </div>
+                            </>
+                          )}
 
                           {/* Next Steps (multi-select for parallel branching) */}
                           <div className="space-y-1">
@@ -2228,7 +2295,7 @@ const Agents: React.FC = () => {
                               <span className="text-slate-300 dark:text-white/20 ml-1 normal-case">（可多选，多选 = 并行执行）</span>
                             </label>
                             <div className="flex flex-wrap gap-1.5 p-2 bg-white dark:bg-surface-dark border border-slate-200 dark:border-white/5 rounded-lg min-h-[36px]">
-                              {editingWorkflow.steps.filter(s => s.id !== step.id).map(s => {
+                              {editingWorkflow.steps.filter(s => s.id !== step.id && s.type !== 'input').map(s => {
                                 const isSelected = currentNextIds.includes(s.id);
                                 return (
                                   <button
@@ -2252,7 +2319,7 @@ const Agents: React.FC = () => {
                                   </button>
                                 );
                               })}
-                              {editingWorkflow.steps.length <= 1 && (
+                              {editingWorkflow.steps.filter(s => s.id !== step.id && s.type !== 'input').length === 0 && (
                                 <span className="text-[10px] text-slate-400 py-1">添加更多步骤后可选择后续节点</span>
                               )}
                             </div>

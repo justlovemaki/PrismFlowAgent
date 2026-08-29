@@ -70,7 +70,9 @@ export class WorkflowEngine {
           stepResults[stepId] = result.value;
           finalOutput = result.value;
           
-          if (this.isResponseEmpty(result.value)) {
+          // Empty data is valid for the pass-through input node; only an
+          // empty executor response should interrupt downstream execution.
+          if (stepMap.get(stepId)?.type !== 'input' && this.isResponseEmpty(result.value)) {
             const succs = successors.get(stepId) || [];
             if (succs.length > 0) {
               LogService.warn(`Workflow ${workflowId} interrupted at step ${stepId}: Empty response received.`);
@@ -246,9 +248,12 @@ export class WorkflowEngine {
       return stepInput;
     }
 
-    // Execute based on step type or configured ID
+    // Execute based on step type or configured ID. The dedicated input
+    // node is a true pass-through so downstream nodes receive the exact data.
     let output: any = null;
-    if (step.agentId) {
+    if (step.type === 'input') {
+      output = stepInput;
+    } else if (step.agentId) {
       const agentResult = await this.agentService.runAgent(step.agentId, inputText, date, { silent: true });
       output = agentResult.content;
     } else if (step.workflowId) {

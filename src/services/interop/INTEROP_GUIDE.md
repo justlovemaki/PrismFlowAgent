@@ -77,15 +77,18 @@ interface WorkflowDefinition {
   name: string;
   description: string;
   steps: WorkflowStep[];
+  initialStepId: string;  // 固定指向 type="input" 的初始节点
 }
 
 interface WorkflowStep {
   id: string;             // 步骤 ID
+  type?: 'input' | 'agent' | 'workflow';
   agentId?: string;       // 要运行的 Agent ID
   workflowId?: string;    // 要运行的嵌套 Workflow ID
   inputMap: Record<string, string>; // 参数映射
 }
 ```
+*   **初始节点**: `type: "input"` 的节点接收工作流初始输入并原样输出，系统会为旧工作流自动补充该节点。
 *   **inputMap**: 用于将前置步骤的输出或起始输入映射到当前步骤。`"start"` 代表工作流的初始输入。例如：`{"target_field": "previous_step_id"}`。
 
 ### 3.4 定时任务 (`POST /api/ai/v1/schedules`)

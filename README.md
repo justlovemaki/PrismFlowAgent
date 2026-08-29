@@ -133,10 +133,23 @@ npm run dev:all
 
 ---
 
+## 🧩 DeepSeek Harness 原生集成
+
+`@prismflow/dsh` 在 DSH/Cordis 进程内原生运行，不依赖 PrismFlow HTTP 服务或 API Key。其职责边界为：
+
+- PrismFlow 工作台按原项目的 Adapter + Items 模型配置 GitHub Trending、Follow API (Folo)、AI 搜索和 RSS 订阅；预定义凭证槽位可显示配置状态，并按部署策略安全写入或轮换 Follow Cookie；
+- 工作流生成器统一管理 Persona 与串行步骤；元数据会显示未保存/已保存状态，保存与放弃操作位于画布后的自然流页脚（支持受保护的 Ctrl/Cmd+S CAS 保存，不自动保存），归档/重新启用则在独立的“生成器状态”区确认执行；旧版投影会标记“旧版生成器 · 尚未迁移”，并通过精确版本/hash CAS 迁移，不再提供 Dashboard 兼容提示词编辑入口；旧提示词存储仅供旧 Request 解析与迁移使用；
+- 工作台还负责待审核/已拒绝草稿的并发安全 Markdown 修订、源文与安全 React 节点渲染预览、显示版本/hash 的并发冲突刷新后再次确认审核、已批准 Artifact 发布和发布审计；
+- 数据抓取、持久化查询、素材选择排序、Generation Request 创建和 AI 生成全部由 DSH Chat 工具执行；内置 `daily-brief` 旧版生成器保留两个串行、无工具的兼容阶段，只有最终终审结果会持久化为草稿；
+- 已批准草稿既可从工作台发布，也可由 Chat 调用受限发布工具；浏览器和模型都不能提供发布正文或部署目标参数。
+
+详细工具顺序和 Profile 配置见 [`integrations/dsh/README.md`](./integrations/dsh/README.md)。
+
 ## 📖 相关文档
 - 🛠️ [AGENTS.md](./AGENTS.md) - 规范、开发准则与最佳实践。
 - 🔌 [PLUGINS.md](./PLUGINS.md) - 如何编写自己的适配器与分发器。
 - 🛰️ [AI_INTEROP.md](./AI_INTEROP.md) - **AI 接入必读**: 让你的 Agent 开启上帝视角。
+- 🧩 [integrations/dsh/README.md](./integrations/dsh/README.md) - DeepSeek Harness 插件 Bundle 的本地打包与接入说明。
 
 ---
 

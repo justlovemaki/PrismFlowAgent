@@ -138,7 +138,7 @@ export const defaultSettings: SystemSettings = {
       name: 'Follow API (Folo)',
       adapterType: 'FollowApiAdapter',
       enabled: true,
-      apiUrl: 'https://api.follow.is/entries',
+      apiUrl: 'https://api.folo.is/entries',
       fetchDays: 3,
       foloCookie: '',
       items: [

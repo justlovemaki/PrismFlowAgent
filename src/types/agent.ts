@@ -42,7 +42,7 @@ export interface AgentDefinition {
 
 export interface WorkflowStep {
   id: string;
-  type?: 'agent' | 'workflow';
+  type?: 'input' | 'agent' | 'workflow';
   agentId?: string;
   workflowId?: string;
   skillId?: string;

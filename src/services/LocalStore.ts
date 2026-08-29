@@ -8,6 +8,8 @@ import { LogService } from './LogService.js';
 import { KvRepository } from './store/KvRepository.js';
 import { EntityJsonRepository } from './store/EntityJsonRepository.js';
 import { ApiKeyRepository } from './store/ApiKeyRepository.js';
+import type { WorkflowDefinition } from '../types/agent.js';
+import { ensureInitialInputStep } from '../utils/workflow.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -887,15 +889,24 @@ export class LocalStore {
   }
 
   async saveWorkflow(workflow: any): Promise<void> {
-    await this.workflowRepo.save(workflow);
+    const normalized = Array.isArray(workflow?.steps)
+      ? ensureInitialInputStep(workflow as WorkflowDefinition)
+      : workflow;
+    await this.workflowRepo.save(normalized);
   }
 
   async getWorkflow(id: string): Promise<any> {
-    return this.workflowRepo.get(id);
+    const workflow = await this.workflowRepo.get(id);
+    return Array.isArray(workflow?.steps)
+      ? ensureInitialInputStep(workflow as WorkflowDefinition)
+      : workflow;
   }
 
   async listWorkflows(): Promise<any[]> {
-    return this.workflowRepo.list();
+    const workflows = await this.workflowRepo.list();
+    return workflows.map(workflow => Array.isArray(workflow?.steps)
+      ? ensureInitialInputStep(workflow as WorkflowDefinition)
+      : workflow);
   }
 
   async deleteWorkflow(id: string): Promise<void> {

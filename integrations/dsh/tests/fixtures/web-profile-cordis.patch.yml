@@ -1,0 +1,29 @@
+# Profile-local rows are applied after installed bundle rows.
+- insert:
+    - id: prismflow-dashboard
+      name: '@prismflow/dsh-dashboard'
+    - id: storage-sqlite
+      name: '@deepseek-ai/dsh-storage-sqlite'
+      config:
+        path: __SQLITE_PATH__
+        journalMode: wal
+
+# Keep an unrelated override and its position/comment intact.
+- id: storage-domain
+  config:
+    backend: sqlite
+
+# This is the managed form: override the publisher row inserted by the bundle.
+- id: prismflow-publisher-local-markdown
+  disabled: false
+  config:
+    destinations:
+      - id: existing-local
+        name: Existing Local Archive
+        root: __LOCAL_ROOT__
+        artifactFileNamePattern: prismflow-brief-{date}.md
+        overwrite: if-changed
+        maxBytes: 1000000
+
+- id: prismflow-store-publication-receipts
+  disabled: false

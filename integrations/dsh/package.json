@@ -1,0 +1,149 @@
+{
+  "name": "@prismflow/dsh",
+  "version": "0.19.23",
+  "description": "Native PrismFlow plugins and one-stop dashboard for DeepSeek Harness",
+  "type": "module",
+  "main": "./lib/core.js",
+  "exports": {
+    ".": "./lib/core.js",
+    "./client": "./lib/client.js",
+    "./ui": "./lib/ui.js",
+    "./core": "./lib/core.js",
+    "./source-rss": "./lib/source-rss.js",
+    "./source-github-trending": "./lib/source-github-trending.js",
+    "./source-follow": "./lib/source-follow.js",
+    "./source-ai-search": "./lib/source-ai-search.js",
+    "./store-source-settings": "./lib/store-source-settings.js",
+    "./store-content": "./lib/store-content.js",
+    "./store-content-relevance": "./lib/store-content-relevance.js",
+    "./store-content-selection": "./lib/store-content-selection.js",
+    "./store-generator-prompts": "./lib/store-generator-prompts.js",
+    "./store-generator-workflows": "./lib/store-generator-workflows.js",
+    "./store-prismflow-toolsets": "./lib/store-prismflow-toolsets.js",
+    "./store-image-generation-settings": "./lib/store-image-generation-settings.js",
+    "./prismflow-skill-provider": "./lib/prismflow-skill-provider.js",
+    "./reviewer-ai-relevance-subagent": "./lib/reviewer-ai-relevance-subagent.js",
+    "./store-publication-receipts": "./lib/store-publication-receipts.js",
+    "./store-production": "./lib/store-production.js",
+    "./store-production-media": "./lib/store-production-media.js",
+    "./store-rss-outputs": "./lib/store-rss-outputs.js",
+    "./generator-subagent": "./lib/generator-subagent.js",
+    "./publisher-core": "./lib/publisher-core.js",
+    "./publisher-local-markdown": "./lib/publisher-local-markdown.js",
+    "./publisher-github-markdown": "./lib/publisher-github-markdown.js",
+    "./publisher-r2-markdown": "./lib/publisher-r2-markdown.js",
+    "./publisher-wechat-draft": "./lib/publisher-wechat-draft.js",
+    "./publisher-profile-cli": "./lib/publisher-profile-cli.js",
+    "./tool-source": "./lib/tool-source.js",
+    "./tool-content": "./lib/tool-content.js",
+    "./tool-content-relevance": "./lib/tool-content-relevance.js",
+    "./tool-content-selection": "./lib/tool-content-selection.js",
+    "./tool-publication-receipts": "./lib/tool-publication-receipts.js",
+    "./tool-production": "./lib/tool-production.js",
+    "./tool-production-media": "./lib/tool-production-media.js",
+    "./tool-legacy-production": "./lib/tool-legacy-production.js",
+    "./storage-sqlite-migration": "./lib/storage-sqlite-migration.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "prismflow-dsh-dashboard": "./scripts/install-dashboard.mjs",
+    "prismflow-dsh-migrate-sqlite": "./scripts/migrate-storage-sqlite.mjs",
+    "prismflow-dsh-profile": "./scripts/publisher-profile.mjs"
+  },
+  "files": [
+    "lib",
+    "skills",
+    "scripts/install-dashboard.mjs",
+    "scripts/migrate-storage-sqlite.mjs",
+    "scripts/publisher-profile.mjs",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-credentials": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-storage-domain": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-storage-sqlite": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-tools": "0.1.0-rc.6"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-client-runtime": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-layout": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-client-ui-sidebar": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-credentials": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-storage-domain": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-storage-sqlite": {
+      "optional": true
+    }
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.990.0",
+    "@deepseek-ai/schemastery": "^3.18.1",
+    "@smithy/node-http-handler": "^4.11.2",
+    "adm-zip": "0.5.16",
+    "marked": "^18.0.11",
+    "rss": "^1.2.2",
+    "rss-parser": "^3.13.0",
+    "sharp": "^0.34.5",
+    "yaml": "^2.8.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-storage-domain": "0.1.0-rc.6",
+    "@deepseek-ai/dsh-storage-sqlite": "0.1.0-rc.6",
+    "typescript": "^5.9.3"
+  },
+  "scripts": {
+    "sync:shared": "node ./scripts/sync-shared.mjs",
+    "check:shared": "node ./scripts/sync-shared.mjs --check",
+    "test": "node --test ./tests/*.test.mjs",
+    "prepack": "npm run sync:shared"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24.0.0"
+  },
+  "license": "GPL-3.0-only",
+  "keywords": [
+    "dsh-plugin",
+    "deepseek-harness",
+    "prismflow",
+    "rss",
+    "github-trending",
+    "follow",
+    "ai-search",
+    "content-store",
+    "source-settings",
+    "publisher",
+    "markdown",
+    "github",
+    "r2",
+    "cloudflare",
+    "receipts",
+    "content-production",
+    "draft-review",
+    "dashboard",
+    "web-ui"
+  ]
+}

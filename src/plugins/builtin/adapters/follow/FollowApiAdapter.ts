@@ -1,9 +1,24 @@
-﻿import { BaseAdapter } from '../../../base/BaseAdapter.js';
+import { BaseAdapter } from '../../../base/BaseAdapter.js';
 import type { UnifiedData } from '../../../../types/index.js';
-import { stripHtml, getRandomUserAgent, sleep, getISODate } from '../../../../utils/helpers.js';
+import { getRandomUserAgent } from '../../../../utils/helpers.js';
 import type { AdapterMetadata } from '../../../../registries/AdapterRegistry.js';
 import { LogService } from '../../../../services/LogService.js';
+import {
+  fetchFollowEntries,
+  normalizeFollowEntries,
+  type FollowRawData,
+  type FollowSourceDefinition,
+} from '../../../../core/sources/FollowSource.js';
 
+interface FollowAdapterConfig {
+  apiUrl?: string;
+  foloCookie?: string;
+  listId?: string;
+  feedId?: string;
+  fetchDays?: number;
+  fetchPages?: number;
+  view?: number;
+}
 
 export class FollowApiAdapter extends BaseAdapter {
   static metadata: AdapterMetadata = {
@@ -19,7 +34,7 @@ export class FollowApiAdapter extends BaseAdapter {
       { key: 'feedId', label: 'Feed ID', type: 'text', scope: 'item' },
       { key: 'fetchPages', label: '抓取页数', type: 'number', default: 1, scope: 'item' },
       { key: 'view', label: '视图模式', type: 'number', default: 0, scope: 'item' },
-    ]
+    ],
   };
 
   public foloCookie?: string;
@@ -27,181 +42,77 @@ export class FollowApiAdapter extends BaseAdapter {
 
   private listId?: string;
   private feedId?: string;
-  private fetchDays: number = 3;
-  private fetchPages: number = 1;
-  private view: number = 0;
-
+  private fetchDays = 3;
+  private fetchPages = 1;
+  private view = 0;
 
   constructor(
     public readonly name: string,
     public readonly category: string,
-    itemConfig: any = {}
+    itemConfig: FollowAdapterConfig = {},
   ) {
     super();
     this.listId = itemConfig.listId;
     this.feedId = itemConfig.feedId;
     this.fetchDays = itemConfig.fetchDays || 3;
     this.fetchPages = itemConfig.fetchPages || 1;
-    this.view = itemConfig.view || 0;
+    this.view = itemConfig.view ?? 0;
 
-    // 校验逻辑：listId 和 feedId 必须填其中一个
     if (!this.listId && !this.feedId) {
       throw new Error(`[FollowApiAdapter: ${this.name}] 必须提供 listId 或 feedId 其中之一`);
     }
   }
 
-  async fetch(config: { apiUrl: string, foloCookie?: string, listId?: string, feedId?: string, fetchPages?: number, view?: number }): Promise<any> {
-    const allData: any[] = [];
-    let publishedAfter: string | null = null;
-    const fetchPages = config.fetchPages || this.fetchPages;
-    const listId = config.listId || this.listId;
-    const feedId = config.feedId || this.feedId;
-    const view =  config.view || this.view;
-
-    LogService.info(`[FollowApiAdapter: ${this.name}] Requesting: ${config.apiUrl}, listId: ${listId || 'none'}, feedId: ${feedId || 'none'}, pages: ${fetchPages}, view: ${view}`);
-
-    for (let i = 0; i < fetchPages; i++) {
-      const body: any = {
-        view: view,
-      };
-      if (view === 1) {
-        body.withContent = true;
-      }
-      if (listId) body.listId = listId;
-      if (feedId) body.feedId = feedId;
-      if (publishedAfter) body.publishedAfter = publishedAfter;
-
-      const headers = this.getHeaders(config.foloCookie, true);
-
-      try {
-        const response = await fetch(config.apiUrl, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify(body),
-          dispatcher: this.dispatcher
-        } as any);
-
-        if (!response.ok) {
-          LogService.error(`[FollowApiAdapter: ${this.name}] Failed to fetch page ${i + 1}: ${response.status} ${response.statusText}`);
-          break;
-        }
-
-        const json: any = await response.json();
-        const pageData = json.data || [];
-        LogService.info(`[FollowApiAdapter: ${this.name}] Page ${i + 1} fetched, found ${pageData.length} entries.`);
-
-        if (pageData.length === 0) {
-          break;
-        }
-
-        allData.push(...pageData);
-        publishedAfter = pageData[pageData.length - 1].entries?.publishedAt;
-
-        if (i < this.fetchPages - 1) {
-          await sleep(Math.random() * 2000 + 1000);
-        }
-      } catch (error: any) {
-        LogService.error(`[FollowApiAdapter: ${this.name}] Error fetching page ${i + 1}: ${error.message}`);
-        break;
-      }
+  private definition(config: FollowAdapterConfig = {}): FollowSourceDefinition {
+    const apiUrl = config.apiUrl || this.apiUrl;
+    if (!apiUrl) {
+      throw new Error(`[FollowApiAdapter: ${this.name}] API 地址未配置`);
     }
 
-    return { data: allData };
-  }
-
-  private getHeaders(foloCookie?: string, isPost: boolean = false): Record<string, string> {
-    const headers: Record<string, string> = {
-      'User-Agent': getRandomUserAgent(),
-      'accept': '*/*',
-      'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7',
-      'cache-control': 'no-store',
-      'origin': 'https://app.folo.is',
-      'priority': 'u=1, i',
-      'sec-ch-ua': '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
-      'sec-ch-ua-mobile': '?0',
-      'sec-ch-ua-platform': '"Windows"',
-      'sec-fetch-dest': 'empty',
-      'sec-fetch-mode': 'cors',
-      'sec-fetch-site': 'same-site',
-      'x-app-name': 'Folo Web',
-      'x-app-platform': 'desktop/web',
-      'x-app-version': '1.4.0',
+    return {
+      id: this.name,
+      name: this.name,
+      apiUrl,
+      category: this.category,
+      listId: config.listId || this.listId,
+      feedId: config.feedId || this.feedId,
+      fetchDays: config.fetchDays || this.fetchDays,
+      fetchPages: config.fetchPages || this.fetchPages,
+      view: config.view ?? this.view,
     };
-
-    if (foloCookie) {
-      headers['Cookie'] = foloCookie;
-    }
-
-    if (isPost) {
-      headers['Content-Type'] = 'application/json';
-    }
-
-    return headers;
   }
 
-  private async fetchEntryDetail(id: string, config: { apiUrl: string, foloCookie?: string }): Promise<string> {
-    const headers = this.getHeaders(config.foloCookie);
-
-    try {
-      const detailUrl = `${config.apiUrl}?id=${id}`;
-      const response = await fetch(detailUrl, {
-        method: 'GET',
-        headers,
-        dispatcher: this.dispatcher
-      } as any);
-
-      if (!response.ok) {
-        LogService.error(`[FollowApiAdapter: ${this.name}] Failed to fetch detail for ${id}: ${response.status}`);
-        return '';
-      }
-
-      const json: any = await response.json();
-      // 根据 Folo API，详情内容在 data.content 或 data.entries.content 中
-      return json.data?.content || json.data?.entries?.content || '';
-    } catch (error: any) {
-      LogService.error(`[FollowApiAdapter: ${this.name}] Error fetching detail for ${id}: ${error.message}`);
-      return '';
-    }
+  private fetchImpl(): typeof fetch {
+    return this.dispatcher
+      ? (input, init) => fetch(input, { ...init, dispatcher: this.dispatcher } as RequestInit)
+      : fetch;
   }
 
-  async transform(rawData: any, config?: any): Promise<UnifiedData[]> {
-    const items = rawData.data || [];
-    const now = Date.now();
-    const fetchDays = config?.fetchDays || this.fetchDays;
-    const msLimit = fetchDays * 24 * 60 * 60 * 1000;
+  async fetch(config: FollowAdapterConfig): Promise<FollowRawData> {
+    const definition = this.definition(config);
+    LogService.info(
+      `[FollowApiAdapter: ${this.name}] Requesting ${definition.apiUrl}, listId: ${definition.listId || 'none'}, feedId: ${definition.feedId || 'none'}, pages: ${definition.fetchPages}, view: ${definition.view}`,
+    );
 
-    const filteredItems = items.filter((entry: any) => {
-      const publishedAt = entry.entries?.publishedAt;
-      if (!publishedAt) return true;
-      const pubTime = new Date(publishedAt).getTime();
-      return (now - pubTime) <= msLimit;
+    const rawData = await fetchFollowEntries(definition, {
+      cookie: config.foloCookie || this.foloCookie,
+      userAgent: getRandomUserAgent(),
+      fetchImpl: this.fetchImpl(),
+      pageDelayMs: 1500,
     });
+    LogService.info(`[FollowApiAdapter: ${this.name}] Successfully fetched ${rawData.data.length} entries.`);
+    return rawData;
+  }
 
-    const results: UnifiedData[] = [];
-    for (const entry of filteredItems) {
-      if (entry.entries?.id && !entry.entries.content) {
-        LogService.info(`[FollowApiAdapter: ${this.name}] Fetching detail for entry: ${entry.entries.id}`);
-        entry.entries.content = await this.fetchEntryDetail(entry.entries.id, config);
-        // 稍微等一下，避免请求过快
-        await sleep(300 + Math.random() * 200);
-      }
-
-      results.push({
-        id: entry.entries.id,
-        title: entry.entries.title,
-        url: entry.entries.url,
-        description: stripHtml(entry.entries.content || ''),
-        published_date: entry.entries.publishedAt,
-        ingestion_date: getISODate(),
-        source: entry.feeds.title,
-        category: this.category,
-        author: entry.entries.author,
-        metadata: { content_html: entry.entries.content }
-      });
-    }
-
+  async transform(rawData: FollowRawData, config: FollowAdapterConfig = {}): Promise<UnifiedData[]> {
+    const definition = this.definition(config);
+    const results = await normalizeFollowEntries(rawData, definition, {
+      cookie: config.foloCookie || this.foloCookie,
+      userAgent: getRandomUserAgent(),
+      fetchImpl: this.fetchImpl(),
+      detailDelayMs: 400,
+    });
+    LogService.info(`[FollowApiAdapter: ${this.name}] Normalized ${results.length} entries.`);
     return results;
   }
 }
-
-

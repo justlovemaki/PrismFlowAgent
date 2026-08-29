@@ -5,7 +5,17 @@ import { LogService } from '../../../../services/LogService.js';
 import type { AgentService } from '../../../../services/agents/AgentService.js';
 import type { WorkflowEngine } from '../../../../services/agents/WorkflowEngine.js';
 import { PromptService } from '../../../../services/PromptService.js';
-import { removeMarkdownCodeBlock, extractJson } from '../../../../utils/helpers.js';
+import {
+  normalizeAISearchItems,
+  parseAISearchItems,
+  type AISearchRawItem,
+} from '../../../../core/sources/AISearchSource.js';
+
+interface AISearchConfig {
+  keyword?: string;
+  executorId?: string;
+  agentId?: string;
+}
 
 export class AISearchAdapter extends BaseAdapter {
   static metadata: AdapterMetadata = {
@@ -15,20 +25,20 @@ export class AISearchAdapter extends BaseAdapter {
     icon: 'manage_search',
     configFields: [
       { key: 'keyword', label: '搜索关键词', type: 'text', required: true, scope: 'item' },
-      { key: 'executorId', label: '执行器 ID', type: 'executor', scope: 'item' }
-    ]
+      { key: 'executorId', label: '执行器 ID', type: 'executor', scope: 'item' },
+    ],
   };
 
   configFields = AISearchAdapter.metadata.configFields;
   private agentService?: AgentService;
   private workflowEngine?: WorkflowEngine;
-  public keyword: string = '';
-  public executorId: string = 'default_summarizer';
+  public keyword = '';
+  public executorId = 'default_summarizer';
 
   constructor(
     public readonly name: string = 'AI Search',
     public readonly category: string = 'aiSearch',
-    private itemConfig: any = {}
+    itemConfig: AISearchConfig = {},
   ) {
     super();
     this.keyword = itemConfig.keyword || '';
@@ -36,81 +46,51 @@ export class AISearchAdapter extends BaseAdapter {
     this.appendDateToId = true;
   }
 
-  setAgentService(service: AgentService) {
+  setAgentService(service: AgentService): void {
     this.agentService = service;
   }
 
-  setWorkflowEngine(engine: WorkflowEngine) {
+  setWorkflowEngine(engine: WorkflowEngine): void {
     this.workflowEngine = engine;
   }
 
-  async fetch(config: any): Promise<any[]> {
+  async fetch(config: AISearchConfig): Promise<AISearchRawItem[]> {
     const keyword = config.keyword || this.keyword;
     const executorId = config.executorId || this.executorId;
-
     if (!keyword) {
       LogService.error(`[AISearchAdapter: ${this.name}] Keyword is missing.`);
       return [];
     }
 
     const input = PromptService.getInstance().getPrompt('ai_search', { keyword });
-
     LogService.info(`[AISearchAdapter: ${this.name}] Requesting ${executorId} for task: ${keyword}`);
-    
-    try {
-      let content = '';
-      
-      if (executorId.startsWith('workflow:')) {
-        if (!this.workflowEngine) throw new Error('WorkflowEngine not initialized');
-        const wfId = executorId.replace('workflow:', '');
-        const result = await this.workflowEngine.runWorkflow(wfId, input);
-        content = typeof result === 'string' ? result : JSON.stringify(result);
-      } else {
-        if (!this.agentService) throw new Error('AgentService not initialized');
-        const agentId = executorId.startsWith('agent:') ? executorId.replace('agent:', '') : executorId;
-        const response = await this.agentService.runAgent(agentId, input);
-        content = response.content.trim();
-      }
 
-      // 使用通用的 extractJson 提取数据，它能处理包含描述性文字的情况
-      const data = extractJson(content);
-      
-      if (Array.isArray(data)) {
-        return data;
-      } else if (data) {
-        LogService.warn(`[AISearchAdapter: ${this.name}] Response is not an array: ${JSON.stringify(data).slice(0, 100)}...`);
-        return [];
-      } else {
-        LogService.error(`[AISearchAdapter: ${this.name}] Failed to parse response as JSON array from: ${content.slice(0, 200)}...`);
-        return [];
-      }
-    } catch (error: any) {
-      LogService.error(`[AISearchAdapter: ${this.name}] Execution error: ${error.message}`);
-      throw error;
+    let content: string;
+    if (executorId.startsWith('workflow:')) {
+      if (!this.workflowEngine) throw new Error('WorkflowEngine not initialized');
+      const workflowId = executorId.replace('workflow:', '');
+      const result = await this.workflowEngine.runWorkflow(workflowId, input);
+      content = typeof result === 'string' ? result : JSON.stringify(result);
+    } else {
+      if (!this.agentService) throw new Error('AgentService not initialized');
+      const agentId = executorId.startsWith('agent:') ? executorId.replace('agent:', '') : executorId;
+      const response = await this.agentService.runAgent(agentId, input);
+      content = response.content.trim();
     }
+
+    const items = parseAISearchItems(content);
+    if (items.length === 0) {
+      LogService.warn(`[AISearchAdapter: ${this.name}] Executor returned no parseable search items.`);
+    }
+    return items;
   }
 
-  transform(rawData: any[], config?: any): UnifiedData[] {
-    const now = new Date().toISOString();
-    return rawData.map((item, index) => ({
-      id: `ai-search-${this.name}-${index}-${Buffer.from(item.title || '').toString('hex').slice(0, 8)}`,
-      title: item.title || '无标题',
-      url: item.url || '#',
-      description: item.description || '',
-      published_date: item.published_date || now,
-      ingestion_date: now.split('T')[0],
-      source: item.author || this.name,
+  transform(rawData: AISearchRawItem[], config: AISearchConfig = {}): UnifiedData[] {
+    return normalizeAISearchItems(rawData, {
+      sourceName: this.name,
       category: this.category,
-      author: item.author,
-      metadata: {
-        ...(item.metadata || {}),
-        content_html: item.content || '',
-        is_ai_generated: true,
-        keyword: config?.keyword || this.keyword,
-        executor_id: config?.executorId || this.executorId
-      }
-    }));
+      keyword: config.keyword || this.keyword,
+      executorId: config.executorId || this.executorId,
+    });
   }
 }
-
-
