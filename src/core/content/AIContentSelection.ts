@@ -1,9 +1,15 @@
 import { createHash } from 'node:crypto';
 import type { RelevanceRecordLike, AIRelevanceAssessment, AIRelevanceTopic } from './AIRelevance.js';
 
-export const AI_CONTENT_SELECTION_STRATEGY_VERSION = 'ai-selection-v2';
+export const AI_CONTENT_SELECTION_STRATEGY_VERSION = 'ai-selection-v4';
 
-export type RelevanceOrigin = 'local-match' | 'reviewed-ambiguous' | 'reviewed-audit';
+export type RelevanceOrigin = 'local-match' | 'reviewed-ambiguous' | 'reviewed-audit' | 'ai-editorial';
+
+export interface AIEditorialResult {
+  aiSummary: string;
+  aiScore: number;
+  reason: string;
+}
 
 export interface SelectionCandidate {
   record: RelevanceRecordLike;
@@ -11,6 +17,7 @@ export interface SelectionCandidate {
   assessment: AIRelevanceAssessment;
   relevanceOrigin: RelevanceOrigin;
   effectiveTimestamp: number;
+  editorial?: AIEditorialResult;
 }
 
 export interface EventCluster {
@@ -25,6 +32,7 @@ export interface EventCluster {
     bodyChars: number;
     topicCount: number;
     localMatch: boolean;
+    aiScore: number;
   };
 }
 
@@ -55,6 +63,9 @@ export interface PackedMaterial {
   author: string;
   publishedDate: string;
   category: string;
+  aiSummary: string;
+  aiScore: number;
+  scoreReason: string;
   excerpts: MaterialExcerpt[];
   media: MaterialMedia[];
   materialChars: number;
@@ -205,8 +216,12 @@ function candidateBodyChars(candidate: SelectionCandidate): number {
     + (typeof item.content === 'string' ? item.content.length : 0);
 }
 
+function candidateAIScore(candidate: SelectionCandidate): number {
+  return Number.isInteger(candidate.editorial?.aiScore) ? candidate.editorial!.aiScore : 0;
+}
+
 function representativeTuple(candidate: SelectionCandidate, sourceCount: number): [number, number, number, number, string] {
-  return [candidate.relevanceOrigin === 'local-match' ? 1 : 0, candidateBodyChars(candidate), sourceCount, candidate.effectiveTimestamp, candidate.record.storeId];
+  return [candidateAIScore(candidate), candidateBodyChars(candidate), sourceCount, candidate.effectiveTimestamp, candidate.record.storeId];
 }
 
 function compareTupleDescending(left: [number, number, number, number, string], right: [number, number, number, number, string]): number {
@@ -264,26 +279,54 @@ export function clusterAIEvents(candidates: SelectionCandidate[], options: Clust
   }
   const groups = new Map<number, SelectionCandidate[]>();
   for (let index = 0; index < sorted.length; index += 1) { const root = dsu.find(index); const values = groups.get(root) ?? []; values.push(sorted[index]); groups.set(root, values); }
-  return [...groups.values()].map(members => {
-    members.sort((a, b) => a.record.storeId.localeCompare(b.record.storeId));
-    const sources = new Set(members.map(item => item.record.sourceId));
-    const representative = [...members].sort((a, b) => compareTupleDescending(representativeTuple(a, sources.size), representativeTuple(b, sources.size)))[0];
-    const topics = [...new Set(members.flatMap(item => item.assessment.topics))].sort() as AIRelevanceTopic[];
-    const claims = members.map(item => `${item.record.storeId}:${item.contentHash}`).sort().join('\n');
-    return {
-      clusterId: createHash('sha256').update(claims, 'utf8').digest('hex'), members, representative, topics,
-      signals: {
-        distinctSourceCount: sources.size, memberCount: members.length,
-        recencyTimestamp: Math.max(...members.map(item => item.effectiveTimestamp)),
-        bodyChars: candidateBodyChars(representative), topicCount: topics.length,
-        localMatch: representative.relevanceOrigin === 'local-match',
-      },
-    };
-  }).sort((a, b) => a.clusterId.localeCompare(b.clusterId));
+  return [...groups.values()].map(buildEventCluster).sort((a, b) => a.clusterId.localeCompare(b.clusterId));
+}
+
+function buildEventCluster(input: SelectionCandidate[]): EventCluster {
+  const members = [...input].sort((a, b) => a.record.storeId.localeCompare(b.record.storeId));
+  if (members.length < 1) throw new Error('AI event cluster cannot be empty');
+  const sources = new Set(members.map(item => item.record.sourceId));
+  const representative = [...members].sort((a, b) => compareTupleDescending(representativeTuple(a, sources.size), representativeTuple(b, sources.size)))[0];
+  const topics = [...new Set(members.flatMap(item => item.assessment.topics))].sort() as AIRelevanceTopic[];
+  const claims = members.map(item => `${item.record.storeId}:${item.contentHash}`).sort().join('\n');
+  return {
+    clusterId: createHash('sha256').update(claims, 'utf8').digest('hex'), members, representative, topics,
+    signals: {
+      distinctSourceCount: sources.size, memberCount: members.length,
+      recencyTimestamp: Math.max(...members.map(item => item.effectiveTimestamp)),
+      bodyChars: candidateBodyChars(representative), topicCount: topics.length,
+      localMatch: representative.relevanceOrigin === 'local-match',
+      aiScore: Math.max(...members.map(candidateAIScore)),
+    },
+  };
+}
+
+/** Build deterministic, hash-bound clusters from semantic groups decided by the AI reviewer. */
+export function clusterAIEventsFromGroups(candidates: SelectionCandidate[], storeIdGroups: string[][]): EventCluster[] {
+  if (!Array.isArray(candidates) || candidates.length < 1 || !Array.isArray(storeIdGroups) || storeIdGroups.length < 1) {
+    throw new Error('AI event grouping input is invalid');
+  }
+  const byId = new Map<string, SelectionCandidate>();
+  for (const candidate of candidates) {
+    const storeId = candidate?.record?.storeId;
+    if (typeof storeId !== 'string' || !storeId || byId.has(storeId)) throw new Error('AI event candidates contain duplicate or invalid ids');
+    byId.set(storeId, candidate);
+  }
+  const seen = new Set<string>();
+  const clusters = storeIdGroups.map(group => {
+    if (!Array.isArray(group) || group.length < 1) throw new Error('AI event grouping contains an empty cluster');
+    const members = group.map(storeId => {
+      if (typeof storeId !== 'string' || seen.has(storeId) || !byId.has(storeId)) throw new Error('AI event grouping contains a duplicate or unknown id');
+      seen.add(storeId); return byId.get(storeId)!;
+    });
+    return buildEventCluster(members);
+  });
+  if (seen.size !== byId.size) throw new Error('AI event grouping omitted candidates');
+  return clusters.sort((a, b) => a.clusterId.localeCompare(b.clusterId));
 }
 
 function clusterPriority(cluster: EventCluster): [number, number, number, number, number, string] {
-  return [Math.min(cluster.signals.distinctSourceCount, 5), cluster.signals.localMatch ? 1 : 0,
+  return [cluster.signals.aiScore, Math.min(cluster.signals.distinctSourceCount, 5),
     cluster.signals.topicCount, Math.min(cluster.signals.bodyChars, 100_000), cluster.signals.recencyTimestamp, cluster.clusterId];
 }
 
@@ -333,7 +376,8 @@ export function rankDiverseEvents(clusters: EventCluster[], options: RankingOpti
     rank: index + 1, cluster,
     reasons: [quota && cluster.representative.record.sourceId === quota.sourceId ? 'source-quota' : undefined,
       cluster.signals.distinctSourceCount > 1 ? 'cross-source-corroboration' : 'long-tail-event',
-      cluster.signals.localMatch ? 'local-ai-match' : 'reviewer-accepted',
+      cluster.representative.relevanceOrigin === 'ai-editorial' ? `ai-editorial-score-${cluster.signals.aiScore}`
+        : cluster.signals.localMatch ? 'local-ai-match' : 'reviewer-accepted',
       cluster.signals.topicCount > 1 ? 'multi-topic-event' : 'topic-representative'].filter((reason): reason is string => Boolean(reason)),
   }));
 }
@@ -633,6 +677,9 @@ export function buildPackedMaterial(candidate: SelectionCandidate, maxChars: num
     author: clean((item as Record<string, unknown>).author, Math.min(512, Math.max(0, Math.floor(maxChars * 0.06)))),
     publishedDate: clean(item.published_date, 64),
     category: clean(item.category, Math.min(256, Math.max(0, Math.floor(maxChars * 0.06)))),
+    aiSummary: clean(candidate.editorial?.aiSummary, Math.min(4_000, Math.max(0, Math.floor(maxChars * 0.4)))),
+    aiScore: candidateAIScore(candidate),
+    scoreReason: clean(candidate.editorial?.reason, Math.min(2_000, Math.max(0, Math.floor(maxChars * 0.25)))),
   };
   while (excerpts.length > 0 && JSON.stringify({ ...base, excerpts, media }).length > maxChars) excerpts.pop();
   let encoded = JSON.stringify({ ...base, excerpts, media });

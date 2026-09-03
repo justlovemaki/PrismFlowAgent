@@ -3,6 +3,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { Service } from '@deepseek-ai/cordis'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { z } from 'zod'
+import { describeFfmpegRuntime } from './ffmpeg-runtime.js'
 
 export const name = 'prismflow-store-image-generation-settings'
 export const inject = ['storageDomain', 'credentials']
@@ -16,17 +17,20 @@ export const Config = Schema.object({
   imageSize: Schema.string().default('1024x1024'),
   avifQuality: Schema.number().step(1).min(1).max(100).default(70),
   avifEffort: Schema.number().step(1).min(0).max(9).default(5),
+  ffmpegPath: Schema.string().default(''),
 })
 
 const SHA = /^[a-f0-9]{64}$/u
 const REF = /^[A-Za-z_][A-Za-z0-9_]{0,127}$/u
-const SETTINGS_FIELDS = ['imageApiUrl', 'imageApiProtocol', 'imageModel', 'imageSize', 'avifQuality', 'avifEffort']
+const LEGACY_SETTINGS_FIELDS = ['imageApiUrl', 'imageApiProtocol', 'imageModel', 'imageSize', 'avifQuality', 'avifEffort']
+const SETTINGS_FIELDS = [...LEGACY_SETTINGS_FIELDS, 'ffmpegPath']
 const recordSchema = z.object({
   id: z.literal('current'), version: z.number().int().min(1).max(1_000_000_000), sha256: z.string().regex(SHA),
   imageApiUrl: z.string().min(1).max(2_048), imageApiProtocol: z.enum(['auto', 'chat-completions', 'images-generations']),
   imageModel: z.string().min(1).max(256), imageSize: z.string().min(1).max(64),
-  avifQuality: z.number().int().min(1).max(100), avifEffort: z.number().int().min(0).max(9), updatedAt: z.string().datetime(),
+  avifQuality: z.number().int().min(1).max(100), avifEffort: z.number().int().min(0).max(9), ffmpegPath: z.string().max(1_024).optional(), updatedAt: z.string().datetime(),
 }).strict()
+const legacyRecordSchema = recordSchema.omit({ ffmpegPath: true }).strict()
 
 export const prismImageGenerationSettingsDomain = defineDomain({
   name: 'prismflow_image_generation_settings', version: 1,
@@ -63,10 +67,11 @@ function normalizeInput(value) {
     imageApiUrl: normalizeUrl(value.imageApiUrl), imageApiProtocol,
     imageModel: cleanText(value.imageModel, 'imageModel', 256), imageSize: cleanText(value.imageSize, 'imageSize', 64),
     avifQuality: value.avifQuality, avifEffort: value.avifEffort,
+    ffmpegPath: typeof value.ffmpegPath === 'string' && value.ffmpegPath.length <= 1_024 && !/[\u0000-\u001f\u007f]/u.test(value.ffmpegPath) ? value.ffmpegPath.trim() : (() => { throw new ImageGenerationSettingsError('ffmpegPath is invalid') })(),
   }
 }
-function settingsHash(value) {
-  return createHash('sha256').update(JSON.stringify(SETTINGS_FIELDS.map(field => [field, value[field]])), 'utf8').digest('hex')
+function settingsHash(value, fields = SETTINGS_FIELDS) {
+  return createHash('sha256').update(JSON.stringify(fields.map(field => [field, value[field]])), 'utf8').digest('hex')
 }
 function makeRecord(settings, version, now = new Date()) {
   const normalized = normalizeInput(settings)
@@ -74,8 +79,10 @@ function makeRecord(settings, version, now = new Date()) {
 }
 function validateRecord(raw) {
   const parsed = recordSchema.safeParse(raw)
-  if (!parsed.success || settingsHash(parsed.data) !== parsed.data.sha256) throw new ImageGenerationSettingsError('Persisted image generation settings are corrupt', 'corrupt')
-  return parsed.data
+  if (parsed.success && settingsHash(parsed.data) === parsed.data.sha256) return parsed.data
+  const legacy = legacyRecordSchema.safeParse(raw)
+  if (legacy.success && settingsHash(legacy.data, LEGACY_SETTINGS_FIELDS) === legacy.data.sha256) return { ...legacy.data, ffmpegPath: '' }
+  throw new ImageGenerationSettingsError('Persisted image generation settings are corrupt', 'corrupt')
 }
 function clone(value) { return structuredClone(value) }
 
@@ -89,7 +96,7 @@ export class PrismImageGenerationSettingsStore extends Service {
     this.bootstrap = normalizeInput({
       imageApiUrl: config.imageApiUrl ?? 'https://api.openai.com/v1/images/generations',
       imageApiProtocol: config.imageApiProtocol ?? 'auto', imageModel: config.imageModel ?? 'gpt-image-1', imageSize: config.imageSize ?? '1024x1024',
-      avifQuality: config.avifQuality ?? 70, avifEffort: config.avifEffort ?? 5,
+      avifQuality: config.avifQuality ?? 70, avifEffort: config.avifEffort ?? 5, ffmpegPath: config.ffmpegPath ?? '',
     })
     this.current = undefined; this.history = undefined; this.tail = Promise.resolve(); this.stopping = false
   }
@@ -109,6 +116,7 @@ export class PrismImageGenerationSettingsStore extends Service {
   requireHistory() { if (!this.history) throw new ImageGenerationSettingsError('Image generation settings history is unavailable', 'unavailable'); return this.history }
   get() { return clone(validateRecord(this.requireCurrent().get('current'))) }
   runtime() { const value = this.get(); return Object.fromEntries(SETTINGS_FIELDS.map(field => [field, value[field]])) }
+  async describeFfmpeg() { return describeFfmpegRuntime(this.runtime().ffmpegPath) }
   update(settings, expected) {
     return this.enqueue(async () => {
       if (!expected || typeof expected !== 'object' || !Number.isInteger(expected.version) || !SHA.test(expected.sha256 ?? '')) throw new ImageGenerationSettingsError('Expected settings revision is invalid')

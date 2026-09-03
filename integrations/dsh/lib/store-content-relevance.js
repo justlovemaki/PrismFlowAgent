@@ -435,6 +435,13 @@ export class PrismContentRelevanceStore extends Service {
     running.finally(() => this.activeReads.delete(running)).catch(() => {})
     return running
   }
+  currentContentClaim(storeId) {
+    const record = this.ctx.prismContentStore.get(storeId)
+    if (!record) return undefined
+    const contentHash = aiRelevanceContentHash(record, this.config.maxHashCharsPerRecord)
+    if (!this.currentAssessment(storeId, contentHash)) return undefined
+    return { contentHash, relevanceProfileFingerprint: this.profileFingerprint }
+  }
   currentAssessment(storeId, contentHash) {
     const value = validAssessment(this.requireAssessments().get(storeId), storeId)
     if (!value || value.contentHash !== contentHash || value.profileFingerprint !== this.profileFingerprint) return undefined

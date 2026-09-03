@@ -1,5 +1,5 @@
 window.__ModuleLoader__.load({
-  id: '@prismflow/dsh-dashboard',
+  id: '@prismflow/dsh/ui',
   factory: (require) => {
     const module = { exports: {} }
     const exports = module.exports
@@ -12,24 +12,25 @@ window.__ModuleLoader__.load({
       .pf-shell{height:100%;min-height:0;overflow:hidden;display:flex;flex-direction:column;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-1)}.pf-shell-top{flex:none;padding:26px 28px 20px;border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);z-index:2}.pf-shell-content{flex:1;min-height:0;overflow:auto;padding:20px 28px 60px;overscroll-behavior:contain}
       .pf-head{display:flex;align-items:flex-start;justify-content:space-between;gap:20px;margin-bottom:22px}.pf-title{margin:0;font-size:26px;line-height:1.2}.pf-sub{margin:7px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px}.pf-version{margin:5px 0 0;color:var(--dsw-alias-label-tertiary);font-size:11px}
       .pf-tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0}.pf-tab,.pf-btn{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);border-radius:8px;padding:8px 13px;font:inherit;font-size:13px;cursor:pointer}.pf-tab:hover,.pf-btn:hover:not(:disabled){border-color:var(--dsw-alias-brand-primary)}.pf-tab-on,.pf-primary{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary);color:white}.pf-btn:disabled{opacity:.5;cursor:not-allowed}.pf-danger{color:var(--dsw-alias-label-error)}
-      .pf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.pf-overview-page{width:min(100%,1180px);margin-inline:auto}.pf-overview-hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:24px;padding:26px 28px;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 34%,var(--dsw-alias-border-l2));border-radius:16px;background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,var(--dsw-alias-bg-layer-2)),var(--dsw-alias-bg-layer-2) 58%,color-mix(in srgb,#159957 7%,var(--dsw-alias-bg-layer-2)));box-shadow:0 14px 38px rgba(0,0,0,.08)}.pf-overview-hero:after{content:"";position:absolute;right:-70px;top:-90px;width:230px;height:230px;border-radius:50%;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 10%,transparent);pointer-events:none}.pf-overview-eyebrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.pf-overview-hero h2{margin:0;font-size:25px;line-height:1.25}.pf-overview-hero p{max-width:760px;margin:9px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.65}.pf-overview-hero-actions{position:relative;z-index:1;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.pf-overview-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:16px}.pf-overview-metric{padding:16px 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-overview-metric span,.pf-overview-metric small{display:block}.pf-overview-metric span{color:var(--dsw-alias-label-secondary);font-size:11px}.pf-overview-metric strong{display:block;margin:5px 0 3px;font-size:26px;line-height:1.1}.pf-overview-metric small{color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-overview-section{margin-top:24px}.pf-overview-section-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-bottom:11px}.pf-overview-section-head h3{margin:0;font-size:16px}.pf-overview-section-head p{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:12px}.pf-overview-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pf-overview-flow-card{display:flex;min-height:168px;flex-direction:column;padding:17px 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-overview-flow-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.pf-overview-step{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 13%,var(--dsw-alias-bg-layer-3));color:var(--dsw-alias-brand-primary);font-size:12px;font-weight:750}.pf-overview-flow-card h4{margin:12px 0 0;font-size:14px}.pf-overview-flow-card p{flex:1;margin:6px 0 13px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.55}.pf-overview-flow-card .pf-btn{align-self:flex-start}.pf-overview-bottom{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:12px;margin-top:16px}.pf-overview-health,.pf-overview-guardrails{padding:18px 20px}.pf-overview-health-list{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px}.pf-overview-health-item{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-3);font-size:11px}.pf-overview-dot{width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-label-tertiary)}.pf-overview-dot-on{background:#159957;box-shadow:0 0 0 3px rgba(21,153,87,.12)}.pf-overview-guardrails ul{margin:10px 0 0;padding-left:19px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.65}.pf-toolset-page{width:min(100%,1180px);margin-inline:auto}.pf-toolset-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:20px;margin-bottom:18px}.pf-toolset-header-copy{max-width:720px}.pf-toolset-header-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.pf-skill-section .pf-toolset-header-actions{flex:none}.pf-toolset-stack{display:flex;flex-direction:column;gap:16px}.pf-toolset-section{padding:0;overflow:hidden}.pf-toolset-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:17px 20px;border-bottom:1px solid var(--dsw-alias-border-l2)}.pf-toolset-section-title{min-width:0}.pf-toolset-section-title h3{margin:0;font-size:15px}.pf-toolset-section-title p{margin:5px 0 0}.pf-toolset-section-head>.pf-badge{flex:none;white-space:nowrap}.pf-toolset-section-body{padding:18px 20px}.pf-toolset-section-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;padding:13px 20px;border-top:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3)}.pf-image-settings-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));align-items:start;gap:14px 16px}.pf-image-settings-grid>.pf-field{min-width:0;margin:0;grid-column:span 6}.pf-image-settings-grid>.pf-image-endpoint{grid-column:span 8}.pf-image-settings-grid>.pf-image-protocol{grid-column:span 4}.pf-image-settings-grid>.pf-image-number,.pf-image-settings-grid>.pf-image-compact{grid-column:span 2}.pf-image-settings-grid .pf-input,.pf-image-settings-grid .pf-select{width:100%}.pf-image-credentials{margin:0;border:0;border-top:1px solid var(--dsw-alias-border-l2);border-radius:0;padding:18px 20px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 4%,var(--dsw-alias-bg-layer-2))}.pf-image-credential-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:16px;margin-bottom:14px}.pf-image-credential-copy strong{display:block;font-size:13px}.pf-image-credential-copy span{display:block;max-width:720px;margin-top:4px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.5}.pf-image-credential-state{text-align:right;white-space:nowrap}.pf-image-credential-state .pf-badge{margin-bottom:5px}.pf-image-credential-state span:last-child{display:block;font-size:11px}.pf-image-credential-row{display:grid;grid-template-columns:minmax(260px,1fr) auto;align-items:end;gap:12px}.pf-image-credential-row>.pf-field{min-width:0}.pf-image-credential-row .pf-input{width:100%}.pf-image-credential-actions{display:flex;gap:8px;align-items:center}.pf-toolset-mode{max-width:360px;margin:0 0 18px}.pf-toolset-mode .pf-select{width:100%}.pf-toolset-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.pf-tool-option{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:10px;min-width:0;min-height:44px;box-sizing:border-box;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-3);font-size:13px;cursor:pointer}.pf-tool-option:hover{border-color:var(--dsw-alias-brand-primary)}.pf-tool-option input{margin:2px 0 0}.pf-tool-option .pf-code{min-width:0;line-height:1.45;overflow-wrap:anywhere}.pf-tool-option .pf-badge{margin-left:0;align-self:start}.pf-origin-badge{white-space:nowrap;line-height:1.35}.pf-origin-system{color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,var(--dsw-alias-bg-layer-2))}.pf-origin-custom{color:#a66300;background:rgba(210,135,0,.13)}.pf-skill-card{display:flex;min-width:0;min-height:154px;flex-direction:column;padding:14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-3)}.pf-skill-card-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:10px}.pf-skill-card-head strong{min-width:0;line-height:1.45;overflow-wrap:anywhere;font-size:13px}.pf-skill-card-badges{display:grid;justify-items:end;gap:5px}.pf-skill-card-description{flex:1;margin:9px 0 13px!important}.pf-skill-card-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:11px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-skill-card-actions .pf-check{padding:0}.pf-skill-card-actions .pf-btn{flex:none}.pf-skill-editor{margin:0}.pf-skill-editor .pf-preview{max-height:320px;white-space:pre-wrap}.pf-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:12px;padding:16px;min-width:0}.pf-card h3{margin:0 0 8px;font-size:15px}.pf-card p{margin:5px 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.5}.pf-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.pf-space{justify-content:space-between}.pf-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
+      .pf-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.pf-overview-page{width:min(100%,1180px);margin-inline:auto}.pf-overview-hero{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:end;gap:24px;padding:26px 28px;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 34%,var(--dsw-alias-border-l2));border-radius:16px;background:linear-gradient(135deg,color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,var(--dsw-alias-bg-layer-2)),var(--dsw-alias-bg-layer-2) 58%,color-mix(in srgb,#159957 7%,var(--dsw-alias-bg-layer-2)));box-shadow:0 14px 38px rgba(0,0,0,.08)}.pf-overview-hero:after{content:"";position:absolute;right:-70px;top:-90px;width:230px;height:230px;border-radius:50%;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 10%,transparent);pointer-events:none}.pf-overview-eyebrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:12px}.pf-overview-hero h2{margin:0;font-size:25px;line-height:1.25}.pf-overview-hero p{max-width:760px;margin:9px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.65}.pf-overview-hero-actions{position:relative;z-index:1;display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.pf-overview-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:16px}.pf-overview-metric{padding:16px 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-overview-metric span,.pf-overview-metric small{display:block}.pf-overview-metric span{color:var(--dsw-alias-label-secondary);font-size:11px}.pf-overview-metric strong{display:block;margin:5px 0 3px;font-size:26px;line-height:1.1}.pf-overview-metric small{color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-overview-section{margin-top:24px}.pf-overview-section-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-bottom:11px}.pf-overview-section-head h3{margin:0;font-size:16px}.pf-overview-section-head p{margin:4px 0 0;color:var(--dsw-alias-label-secondary);font-size:12px}.pf-overview-flow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}.pf-overview-flow-card{display:flex;min-height:168px;flex-direction:column;padding:17px 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-overview-flow-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}.pf-overview-step{display:grid;place-items:center;width:28px;height:28px;border-radius:9px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 13%,var(--dsw-alias-bg-layer-3));color:var(--dsw-alias-brand-primary);font-size:12px;font-weight:750}.pf-overview-flow-card h4{margin:12px 0 0;font-size:14px}.pf-overview-flow-card p{flex:1;margin:6px 0 13px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.55}.pf-overview-flow-card .pf-btn{align-self:flex-start}.pf-overview-bottom{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(280px,.65fr);gap:12px;margin-top:16px}.pf-overview-health,.pf-overview-guardrails{padding:18px 20px}.pf-overview-health-list{display:flex;gap:7px;flex-wrap:wrap;margin-top:13px}.pf-overview-health-item{display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-3);font-size:11px}.pf-overview-dot{width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-label-tertiary)}.pf-overview-dot-on{background:#159957;box-shadow:0 0 0 3px rgba(21,153,87,.12)}.pf-overview-guardrails ul{margin:10px 0 0;padding-left:19px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.65}.pf-toolset-page{width:min(100%,1180px);margin-inline:auto}.pf-toolset-header{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:20px;margin-bottom:18px}.pf-toolset-header-copy{max-width:720px}.pf-toolset-header-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.pf-skill-section .pf-toolset-header-actions{flex:none}.pf-toolset-stack{display:flex;flex-direction:column;gap:16px}.pf-toolset-section{padding:0;overflow:hidden}.pf-toolset-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;padding:17px 20px;border-bottom:1px solid var(--dsw-alias-border-l2)}.pf-toolset-section-title{min-width:0}.pf-toolset-section-title h3{margin:0;font-size:15px}.pf-toolset-section-title p{margin:5px 0 0}.pf-toolset-section-head>.pf-badge{flex:none;white-space:nowrap}.pf-toolset-section-body{padding:18px 20px}.pf-toolset-section-actions{display:flex;align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;padding:13px 20px;border-top:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3)}.pf-image-settings-grid{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));align-items:start;gap:14px 16px}.pf-image-settings-grid>.pf-field{min-width:0;margin:0;grid-column:span 6}.pf-image-settings-grid>.pf-image-endpoint{grid-column:span 8}.pf-image-settings-grid>.pf-image-protocol{grid-column:span 4}.pf-image-settings-grid>.pf-image-number,.pf-image-settings-grid>.pf-image-compact{grid-column:span 2}.pf-image-settings-grid .pf-input,.pf-image-settings-grid .pf-select{width:100%}.pf-image-credentials{margin:0;border:0;border-top:1px solid var(--dsw-alias-border-l2);border-radius:0;padding:18px 20px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 4%,var(--dsw-alias-bg-layer-2))}.pf-image-credential-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:16px;margin-bottom:14px}.pf-image-credential-copy strong{display:block;font-size:13px}.pf-image-credential-copy span{display:block;max-width:720px;margin-top:4px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.5}.pf-image-credential-state{text-align:right;white-space:nowrap}.pf-image-credential-state .pf-badge{margin-bottom:5px}.pf-image-credential-state span:last-child{display:block;font-size:11px}.pf-image-credential-row{display:grid;grid-template-columns:minmax(260px,1fr) auto;align-items:end;gap:12px}.pf-image-credential-row>.pf-field{min-width:0}.pf-image-credential-row .pf-input{width:100%}.pf-image-credential-actions{display:flex;gap:8px;align-items:center}.pf-toolset-mode{max-width:360px;margin:0 0 18px}.pf-toolset-mode .pf-select{width:100%}.pf-toolset-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.pf-plugin-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px}.pf-plugin-card{display:flex;min-width:0;flex-direction:column;padding:15px;border:1px solid var(--dsw-alias-border-l2);border-radius:11px;background:var(--dsw-alias-bg-layer-3);transition:border-color .16s ease,box-shadow .16s ease}.pf-plugin-card-enabled{border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 38%,var(--dsw-alias-border-l2));box-shadow:inset 3px 0 0 color-mix(in srgb,var(--dsw-alias-brand-primary) 70%,transparent)}.pf-plugin-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.pf-plugin-card-head strong{display:block;font-size:14px}.pf-plugin-id{display:block;margin-top:4px;color:var(--dsw-alias-label-tertiary);font-size:10px;overflow-wrap:anywhere}.pf-plugin-description{flex:1;margin:10px 0!important;font-size:12px!important}.pf-plugin-summary{display:flex;gap:6px 12px;flex-wrap:wrap;color:var(--dsw-alias-label-tertiary);font-size:10px}.pf-plugin-toggle{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--dsw-alias-border-l2);font-size:12px;font-weight:650}.pf-plugin-tools{margin-top:11px}.pf-plugin-tools summary{cursor:pointer;color:var(--dsw-alias-brand-primary);font-size:11px}.pf-plugin-management{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:11px;border-top:1px solid color-mix(in srgb,var(--dsw-alias-label-error) 24%,var(--dsw-alias-border-l2))}.pf-plugin-management span{color:var(--dsw-alias-label-tertiary);font-size:10px}.pf-plugin-management .pf-btn{flex:none}.pf-plugin-tool-list{display:grid;gap:6px;margin-top:9px}.pf-tool-option{display:grid;grid-template-columns:auto minmax(0,1fr);align-items:start;gap:8px;min-width:0;min-height:34px;box-sizing:border-box;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:7px;background:var(--dsw-alias-bg-layer-2);font-size:11px;cursor:pointer}.pf-tool-option:hover{border-color:var(--dsw-alias-brand-primary)}.pf-tool-option input{margin:2px 0 0}.pf-tool-option .pf-code{min-width:0;line-height:1.45;overflow-wrap:anywhere}.pf-origin-badge{white-space:nowrap;line-height:1.35}.pf-origin-system{color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,var(--dsw-alias-bg-layer-2))}.pf-origin-custom{color:#a66300;background:rgba(210,135,0,.13)}.pf-skill-card{display:flex;min-width:0;min-height:154px;flex-direction:column;padding:14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-3)}.pf-skill-card-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:10px}.pf-skill-card-head strong{min-width:0;line-height:1.45;overflow-wrap:anywhere;font-size:13px}.pf-skill-card-badges{display:grid;justify-items:end;gap:5px}.pf-skill-card-description{flex:1;margin:9px 0 13px!important}.pf-skill-card-actions{display:flex;align-items:center;justify-content:space-between;gap:10px;padding-top:11px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-skill-card-actions .pf-check{padding:0}.pf-skill-card-actions .pf-btn{flex:none}.pf-skill-editor{margin:0}.pf-skill-editor .pf-preview{max-height:320px;white-space:pre-wrap}.pf-skill-save-actions{padding-top:4px}.pf-skill-danger{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-top:22px;padding:15px 16px;border:1px solid color-mix(in srgb,var(--dsw-alias-label-error) 38%,var(--dsw-alias-border-l2));border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-label-error) 6%,var(--dsw-alias-bg-layer-2))}.pf-skill-danger-copy{min-width:0}.pf-skill-danger-copy strong,.pf-skill-danger-copy span{display:block}.pf-skill-danger-copy strong{color:var(--dsw-alias-label-error);font-size:13px}.pf-skill-danger-copy span{margin-top:4px;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}.pf-skill-danger .pf-btn{flex:none}.pf-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:12px;padding:16px;min-width:0}.pf-card h3{margin:0 0 8px;font-size:15px}.pf-card p{margin:5px 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.5}.pf-row{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.pf-space{justify-content:space-between}.pf-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:13px}
       .pf-badge{display:inline-flex;align-items:center;border-radius:999px;padding:3px 9px;font-size:11px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary)}.pf-ok{color:#159957;background:rgba(21,153,87,.12)}.pf-off{color:var(--dsw-alias-label-tertiary)}
-      .pf-review-page{width:min(100%,1180px);margin-inline:auto}.pf-review-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin:18px 0 14px}.pf-review-toolbar .pf-actions{margin:0}.pf-review-summary{display:grid;grid-template-columns:repeat(5,minmax(110px,1fr));gap:10px;margin-bottom:18px}.pf-review-stat{min-width:0;padding:12px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-review-stat strong{display:block;font-size:21px;line-height:1.15}.pf-review-stat span{display:block;margin-top:4px;color:var(--dsw-alias-label-secondary);font-size:11px}.pf-review-list{display:flex;flex-direction:column;gap:14px}.pf-draft-card{padding:0;overflow:hidden;border-left:4px solid var(--dsw-alias-border-l2);transition:border-color .16s ease,box-shadow .16s ease}.pf-draft-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.08)}.pf-draft-card.pf-draft-status-draft{border-left-color:#d58b08}.pf-draft-card.pf-draft-status-rejected{border-left-color:var(--dsw-alias-label-error)}.pf-draft-card.pf-draft-status-approved{border-left-color:#3478d4}.pf-draft-card.pf-draft-status-publishing{border-left-color:#8b5cf6}.pf-draft-card.pf-draft-status-published{border-left-color:#159957}.pf-draft-card-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:center;padding:18px 20px 12px}.pf-draft-heading{min-width:0}.pf-draft-state-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:7px}.pf-draft-status{font-weight:650}.pf-draft-status-draft-badge{color:#9a6200;background:rgba(213,139,8,.14)}.pf-draft-status-rejected-badge{color:var(--dsw-alias-label-error);background:rgba(220,50,47,.1)}.pf-draft-status-approved-badge{color:#3478d4;background:rgba(52,120,212,.13)}.pf-draft-status-publishing-badge{color:#7c3aed;background:rgba(139,92,246,.13)}.pf-draft-status-published-badge{color:#159957;background:rgba(21,153,87,.12)}.pf-draft-dirty{color:var(--dsw-alias-label-error);background:rgba(220,50,47,.1)}.pf-draft-title{margin:0!important;font-size:18px!important;line-height:1.35;overflow-wrap:anywhere}.pf-draft-meta{display:flex;gap:8px 18px;flex-wrap:wrap;padding:0 20px 12px;color:var(--dsw-alias-label-secondary);font-size:12px}.pf-draft-meta-item strong{color:var(--dsw-alias-label-primary);font-weight:600}.pf-draft-technical{margin:0!important;padding:10px 20px;border-top:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-tertiary)!important}.pf-draft-body{padding:18px 20px 20px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-draft-section-head{margin:18px 0 10px}.pf-draft-section-head:first-child{margin-top:0}.pf-draft-section-head strong{display:block;font-size:14px}.pf-draft-section-head span{display:block;margin-top:3px;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-draft-decision{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-top:18px;padding:16px;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 30%,var(--dsw-alias-border-l2));border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 6%,var(--dsw-alias-bg-layer-2))}.pf-draft-decision-copy{max-width:520px}.pf-draft-decision-copy strong{display:block;font-size:14px}.pf-draft-decision-copy span{display:block;margin-top:4px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.5}.pf-draft-decision>.pf-actions{margin:0;justify-content:flex-end}.pf-publish-section{flex:1 0 100%;min-width:0;padding-top:16px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-publish-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:11px}.pf-publish-section-head strong{font-size:14px}.pf-publish-section-head span{color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-published-list{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:12px}.pf-published-label{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:650}.pf-published-chip{color:#159957;background:rgba(21,153,87,.12)}.pf-publish-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.pf-publish-target{display:flex;min-width:0;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-publish-target-used{border-color:color-mix(in srgb,#159957 48%,var(--dsw-alias-border-l2))}.pf-publish-target-blocked{border-color:color-mix(in srgb,var(--dsw-alias-label-error) 44%,var(--dsw-alias-border-l2))}.pf-publish-target-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.pf-publish-channel{font-weight:700;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-module-platform)}.pf-publish-target-name{overflow-wrap:anywhere;font-size:13px}.pf-publish-target-meta{min-height:17px;color:var(--dsw-alias-label-tertiary);font-size:11px;overflow-wrap:anywhere}.pf-publish-warning{margin:0;color:var(--dsw-alias-label-error);font-size:11px;line-height:1.45}.pf-publication-feedback{flex:1 0 100%;margin:0}.pf-publish-target .pf-btn{width:100%;margin-top:auto}.pf-draft-attempts{margin-top:18px;padding-top:16px;border-top:1px solid var(--dsw-alias-border-l2)}
+      .pf-review-page{width:min(100%,1240px);margin-inline:auto}.pf-review-header{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}.pf-review-header .pf-section-help{max-width:760px;margin-bottom:0}.pf-review-filter-panel{margin-bottom:16px;padding:14px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-review-filter-form{display:grid;grid-template-columns:minmax(260px,1fr) 180px 110px auto;align-items:end;gap:10px}.pf-review-filter-form .pf-field{min-width:0}.pf-review-filter-actions{display:flex;gap:8px}.pf-review-status-chips{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-top:12px;padding-top:12px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-review-status-chip{display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;cursor:pointer}.pf-review-status-chip strong{min-width:18px;text-align:center;color:var(--dsw-alias-label-primary)}.pf-review-status-chip-on{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 9%,var(--dsw-alias-bg-layer-3))}.pf-review-toolbar{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:11px}.pf-review-toolbar .pf-actions{margin:0}.pf-review-list{display:flex;flex-direction:column;gap:10px}.pf-review-pagination{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:16px;padding:12px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-review-pagination .pf-actions{margin:0}.pf-draft-card{padding:0;overflow:hidden;border-left:4px solid var(--dsw-alias-border-l2);transition:border-color .16s ease,box-shadow .16s ease}.pf-draft-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.08)}.pf-draft-card.pf-draft-status-draft{border-left-color:#d58b08}.pf-draft-card.pf-draft-status-rejected{border-left-color:var(--dsw-alias-label-error)}.pf-draft-card.pf-draft-status-approved{border-left-color:#3478d4}.pf-draft-card.pf-draft-status-publishing{border-left-color:#8b5cf6}.pf-draft-card.pf-draft-status-published{border-left-color:#159957}.pf-draft-card-head{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:14px;align-items:center;padding:13px 16px 8px}.pf-draft-heading{min-width:0}.pf-draft-state-row{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:7px}.pf-draft-status{font-weight:650}.pf-draft-status-draft-badge{color:#9a6200;background:rgba(213,139,8,.14)}.pf-draft-status-rejected-badge{color:var(--dsw-alias-label-error);background:rgba(220,50,47,.1)}.pf-draft-status-approved-badge{color:#3478d4;background:rgba(52,120,212,.13)}.pf-draft-status-publishing-badge{color:#7c3aed;background:rgba(139,92,246,.13)}.pf-draft-status-published-badge{color:#159957;background:rgba(21,153,87,.12)}.pf-draft-dirty{color:var(--dsw-alias-label-error);background:rgba(220,50,47,.1)}.pf-draft-title{margin:0!important;font-size:15px!important;line-height:1.35;overflow-wrap:anywhere}.pf-draft-meta{display:flex;gap:6px 16px;flex-wrap:wrap;padding:0 16px 11px;color:var(--dsw-alias-label-secondary);font-size:11px}.pf-draft-meta-item strong{color:var(--dsw-alias-label-primary);font-weight:600}.pf-draft-technical{margin:0!important;padding:10px 20px;border-top:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-tertiary)!important}.pf-draft-card-expanded{box-shadow:0 10px 30px rgba(0,0,0,.1)}.pf-draft-body{padding:18px 20px 20px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-draft-section-head{margin:18px 0 10px}.pf-draft-section-head:first-child{margin-top:0}.pf-draft-section-head strong{display:block;font-size:14px}.pf-draft-section-head span{display:block;margin-top:3px;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-draft-decision{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;flex-wrap:wrap;margin-top:18px;padding:16px;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 30%,var(--dsw-alias-border-l2));border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 6%,var(--dsw-alias-bg-layer-2))}.pf-draft-decision-copy{max-width:520px}.pf-draft-decision-copy strong{display:block;font-size:14px}.pf-draft-decision-copy span{display:block;margin-top:4px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.5}.pf-draft-decision>.pf-actions{margin:0;justify-content:flex-end}.pf-publish-section{flex:1 0 100%;min-width:0;padding-top:16px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-publish-section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:11px}.pf-publish-section-head strong{font-size:14px}.pf-publish-section-head span{color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-published-list{display:flex;align-items:center;gap:7px;flex-wrap:wrap;margin-bottom:12px}.pf-published-label{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:650}.pf-published-chip{color:#159957;background:rgba(21,153,87,.12)}.pf-publish-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}.pf-publish-target{display:flex;min-width:0;flex-direction:column;gap:8px;padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-publish-target-used{border-color:color-mix(in srgb,#159957 48%,var(--dsw-alias-border-l2))}.pf-publish-target-blocked{border-color:color-mix(in srgb,var(--dsw-alias-label-error) 44%,var(--dsw-alias-border-l2))}.pf-publish-target-head{display:flex;align-items:center;justify-content:space-between;gap:8px}.pf-publish-channel{font-weight:700;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-module-platform)}.pf-publish-target-name{overflow-wrap:anywhere;font-size:13px}.pf-publish-target-meta{min-height:17px;color:var(--dsw-alias-label-tertiary);font-size:11px;overflow-wrap:anywhere}.pf-publish-warning{margin:0;color:var(--dsw-alias-label-error);font-size:11px;line-height:1.45}.pf-publication-feedback{flex:1 0 100%;margin:0}.pf-publish-target .pf-btn{width:100%;margin-top:auto}.pf-draft-attempts{margin-top:18px;padding-top:16px;border-top:1px solid var(--dsw-alias-border-l2)}
       .pf-form{display:flex;align-items:end;gap:10px;flex-wrap:wrap;margin-bottom:16px}.pf-field{display:flex;flex-direction:column;gap:5px;min-width:130px;flex:1}.pf-field label{font-size:12px;color:var(--dsw-alias-label-secondary)}.pf-input,.pf-select,.pf-textarea{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);border-radius:8px;padding:0 10px;font:inherit;font-size:13px;box-sizing:border-box}.pf-input,.pf-select{height:36px}.pf-textarea{width:100%;min-height:150px;padding:10px;resize:vertical;line-height:1.5}.pf-draft-markdown{min-height:360px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.pf-input:focus,.pf-select:focus,.pf-textarea:focus{outline:none;border-color:var(--dsw-alias-brand-primary)}.pf-counter{text-align:right;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-preview{padding:16px;border-radius:8px;background:var(--dsw-alias-bg-layer-3);overflow:auto;line-height:1.65}.pf-preview h1,.pf-preview h2,.pf-preview h3,.pf-preview h4,.pf-preview h5,.pf-preview h6{margin:1em 0 .45em}.pf-preview p{color:inherit;margin:.6em 0}.pf-preview img,.pf-preview video{display:block;max-width:100%;height:auto;margin:10px 0}.pf-preview video.pf-preview-video{width:100%;max-width:960px;min-height:180px;background:#000}.pf-link.pf-preview-link{color:var(--dsw-alias-brand-primary);text-decoration:underline;text-decoration-thickness:.12em;text-underline-offset:.16em;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 12%,transparent);font-weight:600;border-radius:3px;padding:0 2px}.pf-link.pf-preview-link:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary) 22%,transparent);text-decoration-thickness:.16em}.pf-link.pf-preview-link:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}.pf-preview-media{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border:1px dashed var(--dsw-alias-border-l2);border-radius:8px}.pf-preview ol{padding-left:28px}
+      .pf-content-page{width:min(100%,1240px);margin-inline:auto}.pf-content-toolbar{display:grid;grid-template-columns:minmax(240px,1fr) minmax(150px,220px) minmax(140px,190px) minmax(100px,140px) auto;align-items:end;gap:10px;margin:14px 0 16px;padding:14px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-content-toolbar .pf-field{min-width:0}.pf-content-table-wrap{overflow:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:12px}.pf-content-table{width:100%;min-width:940px;border-collapse:collapse}.pf-content-table th{position:sticky;top:0;z-index:1;padding:10px 12px;text-align:left;white-space:nowrap;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:11px}.pf-content-table td{padding:11px 12px;border-top:1px solid var(--dsw-alias-border-l2);vertical-align:top;font-size:12px}.pf-content-title{display:block;max-width:430px;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:650;line-height:1.4;overflow-wrap:anywhere}.pf-content-title-link{text-decoration:none}.pf-content-title-link:hover{color:var(--dsw-alias-brand-primary);text-decoration:underline}.pf-content-summary{display:-webkit-box;max-width:430px;margin-top:5px;color:var(--dsw-alias-label-tertiary);line-height:1.45;overflow:hidden;-webkit-box-orient:vertical;-webkit-line-clamp:2}.pf-content-source strong,.pf-content-source span{display:block;max-width:190px;overflow-wrap:anywhere}.pf-content-source span{margin-top:4px;color:var(--dsw-alias-label-tertiary);font-size:10px}.pf-content-date{white-space:nowrap;color:var(--dsw-alias-label-secondary);font-size:11px}.pf-content-details{max-width:430px;margin-top:7px}.pf-content-details summary{cursor:pointer;color:var(--dsw-alias-brand-primary);font-size:11px}.pf-content-details-body{margin-top:8px;padding:9px;border-radius:8px;background:var(--dsw-alias-bg-layer-3);white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.5}.pf-content-details-body strong{display:block;margin-top:7px}.pf-content-details-body strong:first-child{margin-top:0}.pf-content-pagination{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:14px;padding:10px 12px}.pf-content-pagination .pf-actions{margin:0}
       .pf-workflow-page{--pf-workflow-rail-width:clamp(260px,25vw,320px);--pf-workflow-editor-height:clamp(300px,45vh,580px);width:min(100%,1240px);margin-inline:auto}.pf-sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}.pf-workflow-topbar{display:grid;grid-template-columns:minmax(240px,1fr) auto;gap:12px;align-items:end;margin-bottom:18px}.pf-workflow-topbar .pf-actions{margin:0;justify-content:flex-end}.pf-workflow-meta{margin-bottom:18px;padding:18px 20px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-workflow-meta-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}.pf-workflow-meta-head h3{margin:0;font-size:14px}.pf-workflow-state-badge{white-space:nowrap}.pf-workflow-meta-grid{display:grid;grid-template-columns:minmax(190px,.75fr) minmax(240px,1fr) minmax(280px,1.4fr);gap:14px}.pf-workflow-id .pf-input{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-weight:650}.pf-workflow-policy{margin-top:13px;color:var(--dsw-alias-label-secondary);font-size:12px}.pf-workflow-policy summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none}.pf-workflow-policy summary::-webkit-details-marker{display:none}.pf-workflow-policy pre{margin:10px 0 0;padding:10px;border-radius:8px;background:var(--dsw-alias-bg-layer-3);white-space:pre-wrap}.pf-workflow-canvas{display:grid;grid-template-columns:var(--pf-workflow-rail-width) minmax(0,1fr);gap:22px;align-items:start}.pf-workflow-rail{min-width:0}.pf-workflow-rail-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.pf-workflow-rail-head h3{margin:0;font-size:14px}.pf-step-list{display:flex;flex-direction:column;gap:0}.pf-step-tab{position:relative;width:100%;display:grid;grid-template-columns:30px minmax(0,1fr) auto;align-items:center;gap:10px;padding:11px 10px;text-align:left;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;cursor:pointer}.pf-step-tab:hover{border-color:var(--dsw-alias-brand-primary)}.pf-step-tab:focus-visible,.pf-step-tab-on:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:3px solid var(--dsw-alias-label-primary);outline-offset:3px}.pf-step-tab-on{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-3);box-shadow:inset 3px 0 0 var(--dsw-alias-brand-primary)}.pf-step-number{display:grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:650}.pf-step-tab-on .pf-step-number{background:var(--dsw-alias-brand-primary);color:white}.pf-step-summary{min-width:0}.pf-step-summary strong,.pf-step-summary small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pf-step-summary strong{font-size:13px}.pf-step-summary small{margin-top:3px;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-step-prompt-state{font-size:10px;white-space:nowrap;color:var(--dsw-alias-label-tertiary)}.pf-step-connector{height:18px;display:grid;place-items:center;color:var(--dsw-alias-label-tertiary);font-size:14px;line-height:1}.pf-workflow-add{width:100%;margin-top:10px}.pf-workflow-editor{min-width:0;padding:2px 2px 0}.pf-workflow-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:18px}.pf-workflow-editor-title{min-width:0}.pf-workflow-editor-title p{margin:5px 0 0;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-workflow-toolbar{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}.pf-workflow-toolbar .pf-btn{padding:6px 9px;font-size:12px}.pf-workflow-step-name{max-width:540px;margin-bottom:18px}.pf-workflow-textarea{min-height:var(--pf-workflow-editor-height);font-family:ui-monospace,SFMono-Regular,Consolas,monospace}.pf-workflow-process{min-height:190px}.pf-field-foot{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;min-height:18px}.pf-field-help{margin:0;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.45}.pf-field-error{margin:0;color:var(--dsw-alias-label-error);font-size:11px}.pf-workflow-actions{display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;margin-top:24px;padding-top:18px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-workflow-actions-preview{justify-content:flex-end}.pf-workflow-actions .pf-actions{margin:0}.pf-workflow-status{color:var(--dsw-alias-label-secondary);font-size:12px}.pf-workflow-history{margin-top:22px;padding-top:18px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-workflow-history-toggle{width:100%;display:flex;justify-content:space-between;align-items:center}.pf-workflow-history-panel{margin-top:10px;padding:12px;border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-workflow-history-row{padding:8px 0;border-bottom:1px solid var(--dsw-alias-border-l2)}.pf-workflow-history-row:last-child{border-bottom:0}.pf-workflow-management{margin-top:18px;padding-top:16px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-workflow-management h3{margin:0 0 4px;font-size:14px}.pf-workflow-management p{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px}
       @media(forced-colors:active){.pf-step-tab:focus-visible,.pf-step-tab-on:focus-visible{border-color:Highlight;outline-color:Highlight}}
       .pf-table-wrap{overflow:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:10px}.pf-table{width:100%;border-collapse:collapse;font-size:12px}.pf-table th,.pf-table td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--dsw-alias-border-l2);vertical-align:top}.pf-table th{position:sticky;top:0;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-weight:500}.pf-table tr:last-child td{border-bottom:0}.pf-link{color:var(--dsw-alias-brand-primary);text-decoration:none}.pf-link:hover{text-decoration:underline}.pf-muted{color:var(--dsw-alias-label-tertiary)}.pf-empty{padding:28px;text-align:center;color:var(--dsw-alias-label-tertiary)}
-      .pf-destructive-overlay{position:fixed;inset:0;z-index:1100;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.62)}.pf-destructive-dialog{width:min(640px,100%);max-height:calc(100vh - 40px);overflow:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;padding:22px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 24px 80px rgba(0,0,0,.45)}.pf-destructive-dialog h2{margin:0 0 10px;color:var(--dsw-alias-label-error)}.pf-destructive-dialog ul{padding-left:22px;font-size:13px;line-height:1.55}.pf-destructive-dialog .pf-actions{justify-content:flex-end}.pf-draft-head-actions{margin:0;justify-content:flex-end}.pf-cover-thumb-button{display:inline-grid;width:68px;height:68px;padding:2px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);cursor:pointer;overflow:hidden}.pf-cover-thumb-button:hover{border-color:var(--dsw-alias-brand-primary)}.pf-cover-thumb{width:100%;height:100%;object-fit:cover;border-radius:5px}.pf-cover-dialog{position:relative;z-index:1;width:min(960px,100%);max-height:calc(100vh - 40px);overflow:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;padding:22px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 24px 80px rgba(0,0,0,.45)}.pf-cover-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}.pf-cover-dialog-head h2{margin:0;font-size:18px}.pf-cover-dialog-head p{margin:5px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px}.pf-cover-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}.pf-cover-figure{min-width:0;margin:0;padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-cover-image{display:block;width:100%;max-height:68vh;object-fit:contain;border-radius:8px;background:var(--dsw-alias-bg-layer-3)}.pf-cover-figure figcaption{margin-top:10px}.pf-cover-figure figcaption strong,.pf-cover-figure figcaption span{display:block}.pf-cover-figure figcaption span{margin-top:5px}.pf-cover-dialog>.pf-actions{justify-content:flex-end}
-      .pf-notice{margin-bottom:16px;border-radius:9px;padding:10px 13px;font-size:13px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary)}.pf-notice-error{color:var(--dsw-alias-label-error);background:rgba(220,50,47,.1)}.pf-kpi{font-size:26px;font-weight:650;margin:5px 0}.pf-code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;word-break:break-all}.pf-section-title{font-size:17px;margin:0 0 7px}.pf-section-help{margin:0 0 16px;color:var(--dsw-alias-label-secondary);font-size:13px}.pf-check{display:flex;align-items:center;gap:7px;font-size:13px;padding-bottom:8px}.pf-publisher-group{margin-top:22px}.pf-publisher-group-title{font-size:16px;margin:0 0 10px}.pf-publisher-group-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px}.pf-publisher-group-grid>.pf-card{margin-top:0!important}.pf-native-note{padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-module-platform)}.pf-publisher-credentials{margin-top:14px;padding:14px;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 28%,var(--dsw-alias-border-l2));border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 5%,var(--dsw-alias-bg-layer-3))}.pf-publisher-credentials-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.pf-publisher-credentials-head strong{font-size:13px}.pf-publisher-credentials-head span{color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-publisher-credential-row+.pf-publisher-credential-row{margin-top:12px;padding-top:12px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-publisher-credential-row .pf-form{margin:8px 0 0}.pf-publisher-secret-field{min-width:min(300px,100%)}.pf-deployment-details{margin-top:12px;border-top:1px solid var(--dsw-alias-border-l2);padding-top:10px}.pf-deployment-details>summary,.pf-publisher-tool-details>summary,.pf-runtime-details>summary{cursor:pointer;font-weight:650;font-size:13px}.pf-deployment-details>.pf-form,.pf-runtime-details>.pf-grid{margin-top:12px}.pf-publisher-save-footer{margin-top:20px;padding:18px 20px;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 38%,var(--dsw-alias-border-l2));border-radius:12px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,var(--dsw-alias-bg-layer-2));box-shadow:inset 3px 0 0 var(--dsw-alias-brand-primary)}.pf-publisher-state-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.pf-publisher-state-head h3{margin:0;font-size:16px}.pf-publisher-state-badge{flex:none;white-space:nowrap}.pf-publisher-state-dirty{color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,var(--dsw-alias-bg-layer-2))}.pf-publisher-state-restart{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-module-platform)}.pf-publisher-save-copy{max-width:820px;margin:8px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.pf-publisher-save-footer>.pf-actions{margin-top:14px}.pf-compact-callout{margin-top:14px;padding:11px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.5}.pf-compact-callout strong{display:block;margin-bottom:3px;color:var(--dsw-alias-label-primary)}.pf-compact-callout>.pf-actions{margin-top:9px}.pf-compact-steps{margin:5px 0 0;padding-left:20px}.pf-compact-steps li+li{margin-top:3px}.pf-publisher-tool-details,.pf-runtime-details{margin-top:14px;padding:14px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-tool-details>p,.pf-runtime-details>p{color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.5}.pf-publisher-tool-details>.pf-input{margin-top:8px;max-width:100%}.pf-switch-field{justify-content:flex-end}.pf-switch-field .pf-check{padding-bottom:0}.pf-json{white-space:pre-wrap;max-height:260px;overflow:auto;font-size:11px;margin-top:12px;padding:12px;border-radius:8px;background:var(--dsw-alias-bg-layer-3)}.pf-result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:14px}.pf-result{background:var(--dsw-alias-bg-layer-3);border-radius:9px;padding:11px}.pf-result strong{display:block;font-size:20px;margin-top:4px}.pf-result span{color:var(--dsw-alias-label-tertiary);font-size:11px}
-      .pf-publisher-page{width:min(100%,1240px);margin-inline:auto}.pf-publisher-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}.pf-publisher-toolbar-copy{max-width:780px}.pf-publisher-toolbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.pf-publisher-toolbar-actions .pf-actions{margin:0}.pf-publisher-overflow{position:relative}.pf-publisher-overflow>summary{list-style:none}.pf-publisher-overflow>summary::-webkit-details-marker{display:none}.pf-publisher-overflow-panel{position:absolute;right:0;z-index:20;width:min(520px,80vw);max-height:70vh;overflow:auto;margin-top:8px;padding:14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);box-shadow:0 14px 42px rgba(0,0,0,.22)}.pf-publisher-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:18px;align-items:start}.pf-publisher-rail{position:sticky;top:0;padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-rail-group+.pf-publisher-rail-group{margin-top:16px;padding-top:14px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-publisher-rail-title{margin:0 6px 8px;color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.pf-publisher-rail-item{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin-top:5px;padding:10px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}.pf-publisher-rail-item:hover{background:var(--dsw-alias-bg-module-platform)}.pf-publisher-rail-item-on{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-3);box-shadow:inset 3px 0 0 var(--dsw-alias-brand-primary)}.pf-publisher-rail-name{display:block;font-size:13px;font-weight:650}.pf-publisher-rail-meta{display:block;margin-top:3px;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-publisher-create{width:100%;margin-top:14px}.pf-publisher-workspace{min-width:0}.pf-publisher-workspace-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-workspace-head h3{margin:0;font-size:18px}.pf-publisher-workspace-head p{margin:5px 0 0;color:var(--dsw-alias-label-secondary);font-size:12px}.pf-publisher-targetbar{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-top:12px;padding:12px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-target-select{max-width:440px;margin:0}.pf-publisher-target-select .pf-select{width:100%}.pf-publisher-editor{margin-top:12px;padding:18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--dsw-alias-border-l2)}.pf-publisher-editor-head h4{margin:0;font-size:15px}.pf-publisher-editor-head p{margin:4px 0 0;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-publisher-section{margin-top:18px}.pf-publisher-section:first-of-type{margin-top:0}.pf-publisher-section-title{margin:0 0 11px;font-size:13px}.pf-publisher-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px}.pf-publisher-field-grid>.pf-field{min-width:0}.pf-publisher-disclosure{margin-top:16px;padding:13px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-3)}.pf-publisher-disclosure>summary{cursor:pointer;font-size:13px;font-weight:650}.pf-publisher-disclosure-body{margin-top:14px}.pf-publisher-disclosure .pf-publisher-credentials{margin:0}.pf-publisher-danger{border-color:color-mix(in srgb,var(--dsw-alias-label-error) 30%,var(--dsw-alias-border-l2))}.pf-publisher-empty{padding:42px 20px;text-align:center;border:1px dashed var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-empty h3{margin:0 0 8px}.pf-publisher-empty p{margin:0 auto 15px;max-width:520px;color:var(--dsw-alias-label-secondary);font-size:13px}.pf-publisher-save-footer.pf-publisher-changebar{position:static;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;padding:13px 16px;box-shadow:inset 3px 0 0 var(--dsw-alias-brand-primary)}.pf-publisher-change-copy strong,.pf-publisher-change-copy span{display:block}.pf-publisher-change-copy span{margin-top:3px;color:var(--dsw-alias-label-secondary);font-size:11px}.pf-publisher-changebar>.pf-actions{margin:0;justify-content:flex-end}.pf-publisher-create-overlay{position:fixed;inset:0;z-index:1150;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.6)}.pf-publisher-create-dialog{width:min(620px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:22px;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 24px 80px rgba(0,0,0,.4)}.pf-publisher-create-dialog h2{margin:0 0 7px}.pf-publisher-create-dialog>p{margin:0 0 16px;color:var(--dsw-alias-label-secondary);font-size:13px}.pf-publisher-create-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pf-publisher-create-option{padding:14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}.pf-publisher-create-option:hover{border-color:var(--dsw-alias-brand-primary)}.pf-publisher-create-option strong,.pf-publisher-create-option span{display:block}.pf-publisher-create-option span{margin-top:4px;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-publisher-create-dialog>.pf-actions{justify-content:flex-end}.pf-sidebar-action{flex:none;display:flex;align-items:center;box-sizing:border-box;border:0;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px;cursor:pointer;overflow:hidden}.pf-sidebar-action-wide{width:calc(100% + 8px);height:34px;margin:4px -4px 4px;padding:6px 2px 6px 10px;justify-content:flex-start;gap:8px;border-radius:12px}.pf-sidebar-action-rail{width:36px;height:36px;margin:8px 0 10px;padding:0;justify-content:center;gap:0;border-radius:50%}.pf-sidebar-action:hover{background:var(--dsw-alias-interactive-bg-hover)}.pf-sidebar-icon{display:flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px}.pf-sidebar-action-rail .pf-sidebar-icon{width:18px;height:18px}.pf-sidebar-label{overflow:hidden;white-space:nowrap}.pf-overlay{position:fixed;inset:0;z-index:1000;pointer-events:auto;display:flex;align-items:center;justify-content:center;padding:24px}.pf-backdrop{position:absolute;inset:0;border:0;background:rgba(0,0,0,.52);cursor:default}.pf-panel{position:relative;width:min(1440px,calc(100vw - 48px));height:min(920px,calc(100vh - 48px));border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.35);overflow:hidden;display:flex;flex-direction:column}.pf-panel-head{height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2)}.pf-panel-head strong{font-size:14px}.pf-close{width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:22px;cursor:pointer}.pf-close:hover{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary)}.pf-panel-body{flex:1;min-height:0}.pf-panel-body .pf-shell{height:100%;box-sizing:border-box}
-      @media(max-width:1000px){.pf-overview-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.pf-overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.pf-workflow-meta-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pf-workflow-meta-grid .pf-field:last-child{grid-column:1/-1}.pf-workflow-canvas{gap:16px}}
+      .pf-destructive-overlay{position:fixed;inset:0;z-index:1100;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.62)}.pf-destructive-dialog{width:min(640px,100%);max-height:calc(100vh - 40px);overflow:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;padding:22px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 24px 80px rgba(0,0,0,.45)}.pf-destructive-dialog h2{margin:0 0 10px;color:var(--dsw-alias-label-error)}.pf-destructive-dialog ul{padding-left:22px;font-size:13px;line-height:1.55}.pf-destructive-dialog .pf-actions{justify-content:flex-end}.pf-draft-head-actions{margin:0;justify-content:flex-end}.pf-cover-thumb-button{display:inline-grid;width:68px;height:68px;padding:2px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);cursor:pointer;overflow:hidden}.pf-cover-thumb-button:hover{border-color:var(--dsw-alias-brand-primary)}.pf-cover-thumb{width:100%;height:100%;object-fit:cover;border-radius:5px}.pf-cover-dialog{position:relative;z-index:1;width:min(960px,100%);max-height:calc(100vh - 40px);overflow:auto;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;padding:22px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 24px 80px rgba(0,0,0,.45)}.pf-cover-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:18px}.pf-cover-dialog-head h2{margin:0;font-size:18px}.pf-cover-dialog-head p{margin:5px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px}.pf-cover-grid{display:grid;grid-template-columns:repeat(auto-fill,240px);justify-content:center;align-items:start;gap:16px}.pf-cover-figure{width:240px;min-width:0;margin:0;padding:12px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-cover-image-button{display:grid;place-items:center;width:216px;height:288px;padding:0;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);overflow:hidden;cursor:zoom-in}.pf-cover-image-button:hover{border-color:var(--dsw-alias-brand-primary);box-shadow:0 0 0 2px color-mix(in srgb,var(--dsw-alias-brand-primary) 18%,transparent)}.pf-cover-image-button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}.pf-cover-image{display:block;width:216px;height:288px;object-fit:contain;background:var(--dsw-alias-bg-layer-3)}.pf-original-overlay{z-index:1200;background:rgba(0,0,0,.82)}.pf-original-dialog{position:relative;z-index:1;display:flex;flex-direction:column;width:min(1200px,calc(100vw - 40px));height:min(900px,calc(100vh - 40px));padding:16px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 24px 90px rgba(0,0,0,.6)}.pf-original-dialog-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:12px}.pf-original-dialog-head h2{margin:0;font-size:18px}.pf-original-dialog-head p{margin:5px 0 0;color:var(--dsw-alias-label-secondary);font-size:12px}.pf-original-stage{display:grid;place-items:center;min-height:0;flex:1;overflow:auto;border-radius:10px;background:#101114}.pf-original-image{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}.pf-original-dialog>.pf-actions{margin-top:12px;justify-content:flex-end}.pf-cover-figure figcaption{margin-top:10px}.pf-cover-figure figcaption strong,.pf-cover-figure figcaption span{display:block}.pf-cover-figure figcaption span{margin-top:5px}.pf-cover-dialog>.pf-actions{justify-content:flex-end}
+      .pf-prompt-dock{display:flex;align-items:center;gap:7px;width:50%;max-width:50%;min-width:0;box-sizing:border-box;margin:0 auto;padding:1px 0 3px;border:0;background:transparent;box-shadow:none}.pf-prompt-dock-list{display:flex;min-width:0;width:100%;gap:6px;overflow-x:auto;overflow-y:hidden;padding:1px 2px 4px;scrollbar-width:none;-ms-overflow-style:none;overscroll-behavior-x:contain;scroll-snap-type:x proximity;cursor:grab;user-select:none}.pf-prompt-dock-list::-webkit-scrollbar{display:none;width:0;height:0}.pf-prompt-dock-list.pf-prompt-dragging,.pf-prompt-dock-list.pf-prompt-dragging *{cursor:grabbing!important;scroll-snap-type:none}.pf-prompt-item{display:flex;flex:0 0 auto;align-items:stretch;min-width:0;max-height:40px;box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:transparent;overflow:hidden;scroll-snap-align:start;transition:border-color .14s ease,color .14s ease}.pf-prompt-item:hover{border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 65%,var(--dsw-alias-border-l2))}.pf-prompt-chip{display:-webkit-box;flex:0 0 auto;width:max-content;min-width:0;max-width:260px;max-height:38px;box-sizing:border-box;padding:5px 9px;border:0;border-radius:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:10.5px;font-weight:500;line-height:1.35;text-align:left;white-space:pre-line;overflow:hidden;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-clamp:2;cursor:pointer;transition:color .14s ease}.pf-prompt-chip:hover:not(:disabled){color:var(--dsw-alias-label-primary)}.pf-prompt-chip:focus-visible,.pf-prompt-copy:focus-visible{position:relative;z-index:1;outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}.pf-prompt-chip:disabled{opacity:.48;cursor:not-allowed}.pf-prompt-copy{flex:0 0 auto;width:34px;height:38px;box-sizing:border-box;padding:0 4px;border:0;border-left:1px solid var(--dsw-alias-border-l2);border-radius:0;background:color-mix(in srgb,var(--dsw-alias-bg-layer-2) 55%,transparent);color:var(--dsw-alias-label-tertiary);font:inherit;font-size:9px;line-height:1;cursor:pointer}.pf-prompt-copy:hover{border-color:var(--dsw-alias-brand-primary);color:var(--dsw-alias-brand-primary)}.pf-prompt-copy-copied{color:#159957;border-color:color-mix(in srgb,#159957 55%,var(--dsw-alias-border-l2))}.pf-prompt-editor-list{display:flex;flex-direction:column;gap:10px}.pf-prompt-editor-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:start;gap:10px;padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-3)}.pf-prompt-editor-order{display:flex;flex-direction:column;gap:5px}.pf-prompt-editor-order .pf-btn{padding:4px 8px}.pf-prompt-editor-row .pf-textarea{min-height:74px}.pf-prompt-editor-controls{display:flex;flex-direction:column;align-items:flex-end;gap:7px}.pf-prompt-editor-controls .pf-check{padding:0}.pf-notice{margin-bottom:16px;border-radius:9px;padding:10px 13px;font-size:13px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary)}.pf-notice-error{color:var(--dsw-alias-label-error);background:rgba(220,50,47,.1)}.pf-kpi{font-size:26px;font-weight:650;margin:5px 0}.pf-code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:11px;word-break:break-all}.pf-section-title{font-size:17px;margin:0 0 7px}.pf-section-help{margin:0 0 16px;color:var(--dsw-alias-label-secondary);font-size:13px}.pf-check{display:flex;align-items:center;gap:7px;font-size:13px;padding-bottom:8px}.pf-publisher-group{margin-top:22px}.pf-publisher-group-title{font-size:16px;margin:0 0 10px}.pf-publisher-group-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px}.pf-publisher-group-grid>.pf-card{margin-top:0!important}.pf-native-note{padding:8px 10px;border-radius:8px;background:var(--dsw-alias-bg-module-platform)}.pf-publisher-credentials{margin-top:14px;padding:14px;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 28%,var(--dsw-alias-border-l2));border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 5%,var(--dsw-alias-bg-layer-3))}.pf-publisher-credentials-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.pf-publisher-credentials-head strong{font-size:13px}.pf-publisher-credentials-head span{color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-publisher-credential-row+.pf-publisher-credential-row{margin-top:12px;padding-top:12px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-publisher-credential-row .pf-form{margin:8px 0 0}.pf-publisher-secret-field{min-width:min(300px,100%)}.pf-deployment-details{margin-top:12px;border-top:1px solid var(--dsw-alias-border-l2);padding-top:10px}.pf-deployment-details>summary,.pf-publisher-tool-details>summary,.pf-runtime-details>summary{cursor:pointer;font-weight:650;font-size:13px}.pf-deployment-details>.pf-form,.pf-runtime-details>.pf-grid{margin-top:12px}.pf-publisher-save-footer{margin-top:20px;padding:18px 20px;border:1px solid color-mix(in srgb,var(--dsw-alias-brand-primary) 38%,var(--dsw-alias-border-l2));border-radius:12px;background:color-mix(in srgb,var(--dsw-alias-brand-primary) 8%,var(--dsw-alias-bg-layer-2));box-shadow:inset 3px 0 0 var(--dsw-alias-brand-primary)}.pf-publisher-state-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.pf-publisher-state-head h3{margin:0;font-size:16px}.pf-publisher-state-badge{flex:none;white-space:nowrap}.pf-publisher-state-dirty{color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,var(--dsw-alias-bg-layer-2))}.pf-publisher-state-restart{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-module-platform)}.pf-publisher-save-copy{max-width:820px;margin:8px 0 0;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.6}.pf-publisher-save-footer>.pf-actions{margin-top:14px}.pf-compact-callout{margin-top:14px;padding:11px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.5}.pf-compact-callout strong{display:block;margin-bottom:3px;color:var(--dsw-alias-label-primary)}.pf-compact-callout>.pf-actions{margin-top:9px}.pf-compact-steps{margin:5px 0 0;padding-left:20px}.pf-compact-steps li+li{margin-top:3px}.pf-publisher-tool-details,.pf-runtime-details{margin-top:14px;padding:14px 16px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-tool-details>p,.pf-runtime-details>p{color:var(--dsw-alias-label-secondary);font-size:13px;line-height:1.5}.pf-publisher-tool-details>.pf-input{margin-top:8px;max-width:100%}.pf-switch-field{justify-content:flex-end}.pf-switch-field .pf-check{padding-bottom:0}.pf-json{white-space:pre-wrap;max-height:260px;overflow:auto;font-size:11px;margin-top:12px;padding:12px;border-radius:8px;background:var(--dsw-alias-bg-layer-3)}.pf-result-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-top:14px}.pf-result{background:var(--dsw-alias-bg-layer-3);border-radius:9px;padding:11px}.pf-result strong{display:block;font-size:20px;margin-top:4px}.pf-result span{color:var(--dsw-alias-label-tertiary);font-size:11px}
+      .pf-publisher-page{width:min(100%,1240px);margin-inline:auto}.pf-publisher-toolbar{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;margin-bottom:16px}.pf-publisher-toolbar-copy{max-width:780px}.pf-publisher-toolbar-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}.pf-publisher-toolbar-actions .pf-actions{margin:0}.pf-publisher-overflow{position:relative}.pf-publisher-overflow>summary{list-style:none}.pf-publisher-overflow>summary::-webkit-details-marker{display:none}.pf-publisher-overflow-panel{position:absolute;right:0;z-index:20;width:min(520px,80vw);max-height:70vh;overflow:auto;margin-top:8px;padding:14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);box-shadow:0 14px 42px rgba(0,0,0,.22)}.pf-publisher-layout{display:grid;grid-template-columns:260px minmax(0,1fr);gap:18px;align-items:start}.pf-publisher-rail{position:sticky;top:0;padding:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-rail-group+.pf-publisher-rail-group{margin-top:16px;padding-top:14px;border-top:1px solid var(--dsw-alias-border-l2)}.pf-publisher-rail-title{margin:0 6px 8px;color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}.pf-publisher-rail-item{width:100%;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin-top:5px;padding:10px;border:1px solid transparent;border-radius:9px;background:transparent;color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}.pf-publisher-rail-item:hover{background:var(--dsw-alias-bg-module-platform)}.pf-publisher-rail-item-on{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-layer-3);box-shadow:inset 3px 0 0 var(--dsw-alias-brand-primary)}.pf-publisher-rail-name{display:block;font-size:13px;font-weight:650}.pf-publisher-rail-meta{display:block;margin-top:3px;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-publisher-create{width:100%;margin-top:14px}.pf-publisher-workspace{min-width:0}.pf-publisher-workspace-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;padding:16px 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-workspace-head h3{margin:0;font-size:18px}.pf-publisher-workspace-head p{margin:5px 0 0;color:var(--dsw-alias-label-secondary);font-size:12px}.pf-publisher-targetbar{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-top:12px;padding:12px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-target-select{max-width:440px;margin:0}.pf-publisher-target-select .pf-select{width:100%}.pf-publisher-editor{margin-top:12px;padding:18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-editor-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--dsw-alias-border-l2)}.pf-publisher-editor-head h4{margin:0;font-size:15px}.pf-publisher-editor-head p{margin:4px 0 0;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-publisher-section{margin-top:18px}.pf-publisher-section:first-of-type{margin-top:0}.pf-publisher-section-title{margin:0 0 11px;font-size:13px}.pf-publisher-field-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px}.pf-publisher-field-grid>.pf-field{min-width:0}.pf-publisher-disclosure{margin-top:16px;padding:13px 14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-3)}.pf-publisher-disclosure>summary{cursor:pointer;font-size:13px;font-weight:650}.pf-publisher-disclosure-body{margin-top:14px}.pf-publisher-disclosure .pf-publisher-credentials{margin:0}.pf-publisher-danger{border-color:color-mix(in srgb,var(--dsw-alias-label-error) 30%,var(--dsw-alias-border-l2))}.pf-publisher-empty{padding:42px 20px;text-align:center;border:1px dashed var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-2)}.pf-publisher-empty h3{margin:0 0 8px}.pf-publisher-empty p{margin:0 auto 15px;max-width:520px;color:var(--dsw-alias-label-secondary);font-size:13px}.pf-publisher-save-footer.pf-publisher-changebar{position:static;display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:18px;padding:13px 16px;box-shadow:inset 3px 0 0 var(--dsw-alias-brand-primary)}.pf-publisher-change-copy strong,.pf-publisher-change-copy span{display:block}.pf-publisher-change-copy span{margin-top:3px;color:var(--dsw-alias-label-secondary);font-size:11px}.pf-publisher-changebar>.pf-actions{margin:0;justify-content:flex-end}.pf-publisher-create-overlay{position:fixed;inset:0;z-index:1150;display:grid;place-items:center;padding:20px;background:rgba(0,0,0,.6)}.pf-publisher-create-dialog{width:min(620px,100%);max-height:calc(100vh - 40px);overflow:auto;padding:22px;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-1);box-shadow:0 24px 80px rgba(0,0,0,.4)}.pf-publisher-create-dialog h2{margin:0 0 7px}.pf-publisher-create-dialog>p{margin:0 0 16px;color:var(--dsw-alias-label-secondary);font-size:13px}.pf-publisher-create-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.pf-publisher-create-option{padding:14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font:inherit;text-align:left;cursor:pointer}.pf-publisher-create-option:hover{border-color:var(--dsw-alias-brand-primary)}.pf-publisher-create-option strong,.pf-publisher-create-option span{display:block}.pf-publisher-create-option span{margin-top:4px;color:var(--dsw-alias-label-tertiary);font-size:11px}.pf-publisher-create-dialog>.pf-actions{justify-content:flex-end}.pf-sidebar-action{flex:none;display:flex;align-items:center;box-sizing:border-box;border:0;background:transparent;color:var(--dsw-alias-label-primary);font-family:inherit;font-size:14px;line-height:22px;cursor:pointer;overflow:hidden}.pf-sidebar-footer-stack{flex-direction:column;align-items:stretch}.pf-sidebar-action-wide{width:calc(100% + 8px);height:34px;margin:4px -4px 4px;padding:6px 2px 6px 10px;justify-content:flex-start;gap:8px;border-radius:12px}.pf-sidebar-action-rail{width:36px;height:36px;margin:8px 0 10px;padding:0;justify-content:center;align-self:center;gap:0;border-radius:50%}.pf-sidebar-action:hover{background:var(--dsw-alias-interactive-bg-hover)}.pf-sidebar-icon{display:flex;align-items:center;justify-content:center;flex:none;width:16px;height:16px}.pf-sidebar-action-rail .pf-sidebar-icon{width:18px;height:18px}.pf-sidebar-label{overflow:hidden;white-space:nowrap}.pf-overlay{position:fixed;inset:0;z-index:1000;pointer-events:auto;display:flex;align-items:center;justify-content:center;padding:24px}.pf-backdrop{position:absolute;inset:0;border:0;background:rgba(0,0,0,.52);cursor:default}.pf-panel{position:relative;width:min(1440px,calc(100vw - 48px));height:min(920px,calc(100vh - 48px));border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-1);border-radius:16px;box-shadow:0 24px 80px rgba(0,0,0,.35);overflow:hidden;display:flex;flex-direction:column}.pf-panel-head{height:48px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 16px;border-bottom:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2)}.pf-panel-head strong{font-size:14px}.pf-close{width:32px;height:32px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font-size:22px;cursor:pointer}.pf-close:hover{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary)}.pf-panel-body{flex:1;min-height:0}.pf-panel-body .pf-shell{height:100%;box-sizing:border-box}
+      @media(max-width:1000px){.pf-content-toolbar{grid-template-columns:repeat(2,minmax(0,1fr))}.pf-content-toolbar>.pf-actions{grid-column:1/-1}.pf-overview-flow{grid-template-columns:repeat(2,minmax(0,1fr))}.pf-overview-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.pf-workflow-meta-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pf-workflow-meta-grid .pf-field:last-child{grid-column:1/-1}.pf-workflow-canvas{gap:16px}.pf-review-filter-form{grid-template-columns:minmax(240px,1fr) 160px 100px}.pf-review-filter-actions{grid-column:1/-1;justify-content:flex-end}}
       @media(max-width:820px){.pf-overview-hero{grid-template-columns:1fr}.pf-overview-hero-actions{justify-content:flex-start}.pf-overview-bottom{grid-template-columns:1fr}.pf-toolset-header{grid-template-columns:1fr}.pf-toolset-header-actions{justify-content:flex-start}.pf-skill-section .pf-toolset-section-head{flex-direction:column}.pf-skill-section .pf-toolset-header-actions{width:100%}.pf-image-settings-grid>.pf-image-endpoint,.pf-image-settings-grid>.pf-image-protocol{grid-column:1/-1}.pf-image-settings-grid>.pf-image-number,.pf-image-settings-grid>.pf-image-compact{grid-column:span 6}.pf-workflow-topbar{grid-template-columns:1fr}.pf-publisher-toolbar{flex-direction:column}.pf-publisher-toolbar-actions{justify-content:flex-start}.pf-publisher-layout{grid-template-columns:1fr}.pf-publisher-rail{position:static}.pf-publisher-rail-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}.pf-publisher-rail-group+.pf-publisher-rail-group{margin-top:12px}.pf-publisher-rail-title{grid-column:1/-1}.pf-publisher-create{width:auto}.pf-workflow-topbar .pf-actions{justify-content:flex-start}.pf-workflow-meta-grid{grid-template-columns:1fr}.pf-workflow-meta-grid .pf-field:last-child{grid-column:auto}.pf-workflow-canvas{grid-template-columns:1fr;gap:24px}.pf-step-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:8px}.pf-step-connector{display:none}.pf-workflow-editor{padding-top:18px;border-top:1px solid var(--dsw-alias-border-l2)}}
-      @media(max-width:700px){.pf-overview-hero{padding:21px 18px}.pf-overview-hero h2{font-size:21px}.pf-overview-hero-actions{width:100%}.pf-overview-hero-actions .pf-btn{flex:1}.pf-overview-metrics,.pf-overview-flow{grid-template-columns:1fr}.pf-overview-flow-card{min-height:0}.pf-overview-section-head{align-items:flex-start;flex-direction:column}.pf-toolset-section-head,.pf-image-credential-head{grid-template-columns:1fr;display:grid}.pf-toolset-section-head{padding:15px 14px}.pf-toolset-section-body,.pf-image-credentials{padding:15px 14px}.pf-toolset-section-actions{padding:12px 14px;justify-content:stretch}.pf-toolset-section-actions .pf-btn{flex:1 1 150px}.pf-image-settings-grid>.pf-field{grid-column:1/-1}.pf-image-credential-state{text-align:left}.pf-image-credential-row{grid-template-columns:1fr}.pf-image-credential-actions{flex-wrap:wrap}.pf-image-credential-actions .pf-btn{flex:1 1 140px}.pf-toolset-grid{grid-template-columns:1fr}.pf-shell-top{padding:18px 14px 14px}.pf-shell-content{padding:16px 14px 50px}.pf-publisher-field-grid,.pf-publisher-create-grid{grid-template-columns:1fr}.pf-publisher-workspace-head,.pf-publisher-targetbar,.pf-publisher-editor-head,.pf-publisher-save-footer.pf-publisher-changebar{align-items:stretch;flex-direction:column}.pf-publisher-target-select{max-width:none}.pf-publisher-changebar>.pf-actions{width:100%}.pf-publisher-changebar>.pf-actions .pf-btn{flex:1 1 160px}.pf-publisher-overflow-panel{position:fixed;inset:70px 14px auto;width:auto}.pf-overlay{padding:0}.pf-panel{width:100vw;height:100vh;border:0;border-radius:0}.pf-head{flex-direction:column}.pf-field{min-width:100%}.pf-table th,.pf-table td{padding:8px}.pf-workflow-meta{padding:14px}.pf-workflow-editor-head{flex-direction:column}.pf-workflow-toolbar{justify-content:flex-start}.pf-workflow-actions{align-items:stretch;flex-direction:column}.pf-workflow-actions-preview{align-items:flex-end}.pf-workflow-actions .pf-actions{width:100%}.pf-workflow-actions .pf-btn{flex:1 1 150px}.pf-workflow-management>.pf-row{align-items:flex-start;flex-direction:column}.pf-workflow-textarea{min-height:42vh}.pf-workflow-process{min-height:170px}.pf-publisher-group-grid{grid-template-columns:minmax(0,1fr)}.pf-publisher-save-footer{padding:15px 14px}.pf-publisher-state-head{align-items:flex-start;flex-direction:column}.pf-publisher-save-footer>.pf-actions{align-items:stretch;flex-direction:column}.pf-publisher-save-footer>.pf-actions .pf-btn{width:100%}.pf-publisher-tool-details,.pf-runtime-details{padding:12px}.pf-review-summary{grid-template-columns:repeat(2,minmax(0,1fr))}.pf-review-stat:last-child{grid-column:1/-1}.pf-draft-card-head{padding:15px 14px 10px;grid-template-columns:1fr}.pf-draft-head-actions{width:100%;justify-content:stretch}.pf-draft-head-actions .pf-btn{flex:1}.pf-cover-dialog{padding:16px}.pf-cover-grid{grid-template-columns:1fr}.pf-draft-meta,.pf-draft-technical{padding-left:14px;padding-right:14px}.pf-draft-body{padding:16px 14px}.pf-draft-decision{padding:14px}.pf-draft-decision>.pf-actions{width:100%;justify-content:flex-start}.pf-draft-decision>.pf-actions .pf-btn{flex:1 1 180px}.pf-publish-section-head{flex-direction:column}.pf-publish-grid{grid-template-columns:1fr}}
+      @media(max-width:700px){.pf-content-toolbar{grid-template-columns:1fr}.pf-content-toolbar>.pf-actions{grid-column:auto}.pf-content-pagination{align-items:stretch;flex-direction:column}.pf-content-pagination>.pf-actions{width:100%}.pf-content-pagination .pf-btn{flex:1}.pf-prompt-dock{gap:5px}.pf-prompt-dock-list{width:100%}.pf-prompt-chip{max-width:min(230px,72vw)}.pf-prompt-editor-row{grid-template-columns:1fr}.pf-prompt-editor-order,.pf-prompt-editor-controls{flex-direction:row;align-items:center}.pf-prompt-editor-controls{justify-content:space-between}.pf-overview-hero{padding:21px 18px}.pf-overview-hero h2{font-size:21px}.pf-overview-hero-actions{width:100%}.pf-overview-hero-actions .pf-btn{flex:1}.pf-overview-metrics,.pf-overview-flow{grid-template-columns:1fr}.pf-overview-flow-card{min-height:0}.pf-overview-section-head{align-items:flex-start;flex-direction:column}.pf-toolset-section-head,.pf-image-credential-head{grid-template-columns:1fr;display:grid}.pf-toolset-section-head{padding:15px 14px}.pf-toolset-section-body,.pf-image-credentials{padding:15px 14px}.pf-toolset-section-actions{padding:12px 14px;justify-content:stretch}.pf-toolset-section-actions .pf-btn{flex:1 1 150px}.pf-image-settings-grid>.pf-field{grid-column:1/-1}.pf-image-credential-state{text-align:left}.pf-image-credential-row{grid-template-columns:1fr}.pf-image-credential-actions{flex-wrap:wrap}.pf-image-credential-actions .pf-btn{flex:1 1 140px}.pf-toolset-grid,.pf-plugin-grid{grid-template-columns:1fr}.pf-skill-danger{align-items:stretch;flex-direction:column}.pf-skill-danger .pf-btn{width:100%}.pf-shell-top{padding:18px 14px 14px}.pf-shell-content{padding:16px 14px 50px}.pf-publisher-field-grid,.pf-publisher-create-grid{grid-template-columns:1fr}.pf-publisher-workspace-head,.pf-publisher-targetbar,.pf-publisher-editor-head,.pf-publisher-save-footer.pf-publisher-changebar{align-items:stretch;flex-direction:column}.pf-publisher-target-select{max-width:none}.pf-publisher-changebar>.pf-actions{width:100%}.pf-publisher-changebar>.pf-actions .pf-btn{flex:1 1 160px}.pf-publisher-overflow-panel{position:fixed;inset:70px 14px auto;width:auto}.pf-overlay{padding:0}.pf-panel{width:100vw;height:100vh;border:0;border-radius:0}.pf-head{flex-direction:column}.pf-field{min-width:100%}.pf-table th,.pf-table td{padding:8px}.pf-workflow-meta{padding:14px}.pf-workflow-editor-head{flex-direction:column}.pf-workflow-toolbar{justify-content:flex-start}.pf-workflow-actions{align-items:stretch;flex-direction:column}.pf-workflow-actions-preview{align-items:flex-end}.pf-workflow-actions .pf-actions{width:100%}.pf-workflow-actions .pf-btn{flex:1 1 150px}.pf-workflow-management>.pf-row{align-items:flex-start;flex-direction:column}.pf-workflow-textarea{min-height:42vh}.pf-workflow-process{min-height:170px}.pf-publisher-group-grid{grid-template-columns:minmax(0,1fr)}.pf-publisher-save-footer{padding:15px 14px}.pf-publisher-state-head{align-items:flex-start;flex-direction:column}.pf-publisher-save-footer>.pf-actions{align-items:stretch;flex-direction:column}.pf-publisher-save-footer>.pf-actions .pf-btn{width:100%}.pf-publisher-tool-details,.pf-runtime-details{padding:12px}.pf-review-header,.pf-review-pagination{align-items:stretch;flex-direction:column}.pf-review-filter-form{grid-template-columns:1fr}.pf-review-filter-actions{grid-column:auto}.pf-review-filter-actions .pf-btn{flex:1}.pf-review-pagination>.pf-actions{width:100%}.pf-review-pagination>.pf-actions .pf-btn{flex:1 1 100px}.pf-draft-card-head{padding:15px 14px 10px;grid-template-columns:1fr}.pf-draft-head-actions{width:100%;justify-content:stretch}.pf-draft-head-actions .pf-btn{flex:1}.pf-cover-dialog{padding:16px}.pf-cover-grid{grid-template-columns:1fr;justify-items:center}.pf-original-overlay{padding:0}.pf-original-dialog{width:100vw;height:100vh;border:0;border-radius:0;padding:12px}.pf-draft-meta,.pf-draft-technical{padding-left:14px;padding-right:14px}.pf-draft-body{padding:16px 14px}.pf-draft-decision{padding:14px}.pf-draft-decision>.pf-actions{width:100%;justify-content:flex-start}.pf-draft-decision>.pf-actions .pf-btn{flex:1 1 180px}.pf-publish-section-head{flex-direction:column}.pf-publish-grid{grid-template-columns:1fr}}
     `
-    if (typeof document !== 'undefined' && document.querySelector('style[data-plugin-css="@prismflow/dsh-dashboard/dashboard"]') === null) {
+    if (typeof document !== 'undefined' && document.querySelector('style[data-plugin-css="@prismflow/dsh/ui/dashboard"]') === null) {
       const tag = document.createElement('style')
-      tag.dataset.plugin = '@prismflow/dsh-dashboard'
-      tag.dataset.pluginCss = '@prismflow/dsh-dashboard/dashboard'
+      tag.dataset.plugin = '@prismflow/dsh/ui'
+      tag.dataset.pluginCss = '@prismflow/dsh/ui/dashboard'
       tag.textContent = css
       document.head.appendChild(tag)
     }
@@ -49,6 +50,17 @@ window.__ModuleLoader__.load({
       try { value = await response.json() } catch { value = {} }
       if (!response.ok) throw new ApiError(response.status, value.error || `Request failed (${response.status})`, value)
       return value
+    }
+
+    function downloadBlob(blob, fileName) {
+      const href = URL.createObjectURL(blob)
+      try {
+        const link = document.createElement('a'); link.href = href; link.download = fileName; link.click()
+      } finally { URL.revokeObjectURL(href) }
+    }
+
+    function downloadJson(value, fileName) {
+      downloadBlob(new Blob([`${JSON.stringify(value, null, 2)}\n`], { type: 'application/json' }), fileName)
     }
 
     function safeLinkUrl(value) {
@@ -276,7 +288,8 @@ window.__ModuleLoader__.load({
       const item = publisherPresentation(publisher)
       if (item.kind !== 'wechat-draft') return { ready: true, reason: '' }
       const presentation = draft.destinationPresentations?.find(value => value.publisherId === publisher.id)
-      const approvedCover = presentation?.cover?.assetId && draft.mediaAssets?.some(asset => asset.assetId === presentation.cover.assetId)
+      const effectiveCoverId = presentation?.cover?.assetId ?? presentation?.imageOrder?.[0]
+      const approvedCover = effectiveCoverId && draft.mediaAssets?.some(asset => asset.assetId === effectiveCoverId)
       const markdownImage = /!\[[^\]]*\]\((?:https?:\/\/|prismflow-media:)|<img\s[^>]*src=["'](?:https?:\/\/|prismflow-media:)/iu.test(draft.markdown ?? '')
       const deploymentCover = publisher.hasDeploymentDefaultCover === true
       if (publisher.articleType === 'news' && !approvedCover && !markdownImage && !deploymentCover) {
@@ -332,8 +345,88 @@ window.__ModuleLoader__.load({
       }
     }
 
+    const PROMPT_SUGGESTIONS_EVENT = 'prismflow:prompt-suggestions-updated'
+    function PromptSuggestionsDock({ input, inputActions }) {
+      const [items, setItems] = React.useState([])
+      const [copiedId, setCopiedId] = React.useState('')
+      const dragRef = React.useRef({ active: false, captured: false, pointerId: null, startX: 0, startLeft: 0, suppressClick: false })
+      React.useEffect(() => {
+        let active = true
+        const load = () => api('/prompt-suggestions').then(value => { if (active) setItems(value.suggestions?.items ?? []) }).catch(() => {})
+        const refresh = event => {
+          if (Array.isArray(event?.detail?.items)) setItems(event.detail.items)
+          else void load()
+        }
+        window.addEventListener(PROMPT_SUGGESTIONS_EVENT, refresh)
+        void load()
+        return () => { active = false; window.removeEventListener(PROMPT_SUGGESTIONS_EVENT, refresh) }
+      }, [])
+      const enabled = items.filter(item => item.enabled && item.text)
+      if (!enabled.length || !inputActions) return null
+      const locked = input?.phase !== 'plain'
+      const select = item => {
+        if (dragRef.current.suppressClick) { dragRef.current.suppressClick = false; return }
+        if (input?.draft && input.draft !== item.text && !window.confirm('当前输入框已有内容，是否使用候选文案替换？')) return
+        inputActions.setDraft(item.text)
+      }
+      const copy = async (event, item) => {
+        event.stopPropagation()
+        if (dragRef.current.suppressClick) { dragRef.current.suppressClick = false; return }
+        try {
+          await window.navigator.clipboard.writeText(item.text)
+          setCopiedId(item.id)
+        } catch {
+          setCopiedId('')
+        }
+      }
+      const beginDrag = event => {
+        if (event.button !== 0 || (event.pointerType && event.pointerType !== 'mouse')) return
+        const target = event.currentTarget
+        dragRef.current = { active: true, captured: false, pointerId: event.pointerId, startX: event.clientX, startLeft: target.scrollLeft, suppressClick: false }
+      }
+      const moveDrag = event => {
+        const state = dragRef.current
+        if (!state.active || state.pointerId !== event.pointerId) return
+        const delta = event.clientX - state.startX
+        if (Math.abs(delta) < 4 && !state.suppressClick) return
+        state.suppressClick = true
+        if (!state.captured) { event.currentTarget.setPointerCapture?.(event.pointerId); state.captured = true }
+        event.currentTarget.classList?.add('pf-prompt-dragging')
+        event.currentTarget.scrollLeft = state.startLeft - delta
+        event.preventDefault()
+      }
+      const endDrag = event => {
+        const state = dragRef.current
+        if (!state.active || state.pointerId !== event.pointerId) return
+        state.active = false
+        event.currentTarget.classList?.remove('pf-prompt-dragging')
+        if (state.captured && event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture?.(event.pointerId)
+        if (state.suppressClick) setTimeout(() => { if (!state.active) state.suppressClick = false }, 0)
+      }
+      return h('section', { className: 'pf-prompt-dock', 'aria-label': 'PrismFlow 候选输入文案' },
+        h('div', { className: 'pf-prompt-dock-list', onPointerDown: beginDrag, onPointerMove: moveDrag, onPointerUp: endDrag, onPointerCancel: endDrag, onLostPointerCapture: endDrag, onWheel: event => {
+          if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return
+          event.currentTarget.scrollLeft += event.deltaY
+          event.preventDefault()
+        } }, ...enabled.map(item => h('div', { className: 'pf-prompt-item', key: item.id },
+          h('button', { type: 'button', className: 'pf-prompt-chip', draggable: false,
+            title: item.text.replace(/\s+/gu, ' ').trim(), disabled: locked, onClick: () => select(item) }, item.text),
+          h('button', { type: 'button', className: `pf-prompt-copy${copiedId === item.id ? ' pf-prompt-copy-copied' : ''}`, draggable: false,
+            title: copiedId === item.id ? '已复制完整文案' : '复制完整文案', 'aria-label': copiedId === item.id ? `已复制候选文案：${item.id}` : `复制候选文案：${item.id}`,
+            onClick: event => copy(event, item) }, copiedId === item.id ? '✓' : '复制')))))
+    }
+
     function SidebarAction({ wide, controller }) {
+      const actionRef = React.useRef(null)
+      React.useEffect(() => {
+        let footer = actionRef.current?.parentElement
+        while (footer && typeof getComputedStyle === 'function' && getComputedStyle(footer).display === 'contents') footer = footer.parentElement
+        if (!footer) return undefined
+        footer.classList.add('pf-sidebar-footer-stack')
+        return () => footer.classList.remove('pf-sidebar-footer-stack')
+      }, [])
       return h('button', {
+        ref: actionRef,
         type: 'button',
         className: `pf-sidebar-action ${wide ? 'pf-sidebar-action-wide' : 'pf-sidebar-action-rail'}`,
         onClick: event => controller.open(event?.currentTarget),
@@ -469,7 +562,7 @@ window.__ModuleLoader__.load({
         ['needOpenComment', '开放评论', 'switch'], ['onlyFansCanComment', '仅粉丝可评论', 'switch'], ['defaultCoverAssetRef', '备用封面', 'text', { help: '与原程序一致：可填写无凭证、无 fragment 的 HTTPS 图片 URL；也可填写 Production Media Store 中预配置的资产别名。正文没有图片时使用。' }],
         ['allowInsecureHttp', '允许不安全 HTTP', 'switch', { advanced: true, help: '危险：启用后 App Secret、Access Token、文章和媒体会通过明文 HTTP 传输。仅用于必须使用 HTTP 的兼容网关。' }],
         ['apiOrigin', 'API Base URL', 'text', { advanced: true, help: '必须是无用户名、密码、查询参数或片段的 HTTP(S) Base URL。HTTP 地址还必须显式启用“允许不安全 HTTP”。' }],
-        ['ffmpegPath', 'FFmpeg 可执行文件', 'text', { advanced: true, help: '普通图文中的视频将使用该部署受控路径截取前 5 秒并转换为 GIF。' }],
+        ['ffmpegPath', 'FFmpeg 覆盖路径', 'text', { advanced: true, help: '仅覆盖此微信目标；留空时使用“工具集 → 媒体处理与图片生成”中的全局路径与跨系统自动识别。' }],
         ['limits.titleChars', '标题上限（字符）', 'number', { advanced: true, min: 1, max: 32 }], ['limits.authorChars', '作者上限（字符）', 'number', { advanced: true, min: 1, max: 16 }],
         ['limits.digestChars', '摘要上限（字符）', 'number', { advanced: true, min: 1, max: 120 }], ['limits.contentChars', '正文上限（字符）', 'number', { advanced: true, min: 1000, max: 1000000 }],
         ['limits.contentBytes', '正文上限（Bytes）', 'number', { advanced: true, min: 2048, max: 1000000 }], ['limits.maxImages', '图片上限（张）', 'number', { advanced: true, min: 1, max: 20 }],
@@ -514,7 +607,7 @@ window.__ModuleLoader__.load({
       if (kind === 'local-markdown') return { ...common, root: '', artifactFileNamePattern: 'prismflow-draft-{date}.md', overwrite: 'if-changed', maxBytes: 1000000 }
       if (kind === 'github-markdown') return { ...common, repository: '', branch: 'main', pathPrefix: 'daily', artifactFileNamePattern: 'draft-{date}.md', overwrite: 'if-changed', artifactCommitMessage: 'chore: publish approved PrismFlow draft {date}', apiBaseUrl: 'https://api.github.com', ...newPublisherCredentialRefs(kind), maxBytes: 900000 }
       if (kind === 'r2-markdown') return { ...common, accountId: '', bucket: '', pathPrefix: 'daily', artifactFileNamePattern: 'draft-{date}.md', overwrite: 'if-changed', publicUrlPrefix: '', ...newPublisherCredentialRefs(kind), maxBytes: 900000 }
-      return { ...common, appId: '', ...newPublisherCredentialRefs(kind), apiOrigin: 'https://api.weixin.qq.com', ffmpegPath: 'ffmpeg', allowInsecureHttp: 0, articleType: 'news', defaultAuthor: '', digestPolicy: 'artifact-or-omit', needOpenComment: 1, onlyFansCanComment: 0, defaultCoverAssetRef: 'https://source.hex2077.dev/logo/hex2077.ai.png', limits: { titleChars: 32, authorChars: 16, digestChars: 120, contentChars: 20000, contentBytes: 1000000, maxImages: 20, bodyImageBytes: 999999, permanentImageBytes: 10485760, maxPixels: 25000000, maxSourceBytes: 10485760, fetchTimeoutMs: 15000, requestTimeoutMs: 30000, concurrency: 1 } }
+      return { ...common, appId: '', ...newPublisherCredentialRefs(kind), apiOrigin: 'https://api.weixin.qq.com', allowInsecureHttp: 0, articleType: 'news', defaultAuthor: '', digestPolicy: 'artifact-or-omit', needOpenComment: 1, onlyFansCanComment: 0, defaultCoverAssetRef: 'https://source.hex2077.dev/logo/hex2077.ai.png', limits: { titleChars: 32, authorChars: 16, digestChars: 120, contentChars: 20000, contentBytes: 1000000, maxImages: 20, bodyImageBytes: 999999, permanentImageBytes: 10485760, maxPixels: 25000000, maxSourceBytes: 10485760, fetchTimeoutMs: 15000, requestTimeoutMs: 30000, concurrency: 1 } }
     }
     function browserProfileFail(message) { throw new Error(message) }
     function browserExact(value, allowed, field) {
@@ -661,7 +754,7 @@ window.__ModuleLoader__.load({
           const allowedProtocol = parsedOrigin.protocol === 'https:' || (parsedOrigin.protocol === 'http:' && allowInsecureHttp === 1)
           if (!allowedProtocol || parsedOrigin.username || parsedOrigin.password || parsedOrigin.search || parsedOrigin.hash) browserProfileFail(`${field}.apiOrigin 必须是无凭证、查询参数或片段的 HTTP(S) Base URL；HTTP 必须启用“允许不安全 HTTP”`)
           const apiBaseUrl = `${parsedOrigin.origin}${parsedOrigin.pathname.replace(/\/+$/u, '')}`
-          const ffmpegPath = value.ffmpegPath === undefined ? undefined : browserString(value.ffmpegPath, `${field}.ffmpegPath`, { max: 1024 })
+          const ffmpegPath = value.ffmpegPath === undefined || value.ffmpegPath === '' ? undefined : browserString(value.ffmpegPath, `${field}.ffmpegPath`, { max: 1024 })
           result = { ...browserIdentity(value, field), appId, appSecretCredential: browserCredential(value.appSecretCredential, `${field}.appSecretCredential`),
             apiOrigin: apiBaseUrl, ...(allowInsecureHttp === 1 ? { allowInsecureHttp: 1 } : {}), articleType: browserChoice(value.articleType, `${field}.articleType`, ['news', 'newspic']),
             defaultAuthor: browserString(value.defaultAuthor ?? '', `${field}.defaultAuthor`, { required: false, max: limits.authorChars }),
@@ -737,7 +830,7 @@ window.__ModuleLoader__.load({
       const [publishingTargetId, setPublishingTargetId] = React.useState('')
       const [publicationFeedback, setPublicationFeedback] = React.useState(null)
       const [prismToolset, setPrismToolset] = React.useState(null)
-      const [prismTools, setPrismTools] = React.useState([])
+      const [prismPlugins, setPrismPlugins] = React.useState([])
       const [prismSkills, setPrismSkills] = React.useState([])
       const [prismSkillEditor, setPrismSkillEditor] = React.useState(null)
       const [prismSkillHistory, setPrismSkillHistory] = React.useState([])
@@ -746,7 +839,13 @@ window.__ModuleLoader__.load({
       const [imageGenerationSettings, setImageGenerationSettings] = React.useState(null)
       const [imageGenerationCredential, setImageGenerationCredential] = React.useState(null)
       const [imageGenerationCredentialValue, setImageGenerationCredentialValue] = React.useState('')
-      const [coverPreview, setCoverPreview] = React.useState(null)
+      const [presentationMediaPreview, setPresentationMediaPreview] = React.useState(null)
+      const [draftQuery, setDraftQuery] = React.useState({ status: '', query: '', page: 1, pageSize: 10 })
+      const [draftPage, setDraftPage] = React.useState({ total: 0, statusCounts: {} })
+      const [promptSuggestions, setPromptSuggestions] = React.useState(null)
+      const [contentQuery, setContentQuery] = React.useState({ search: '', category: '', status: '', sortBy: 'publishedAt', sortOrder: 'desc', page: 1, pageSize: 20 })
+      const [contentPage, setContentPage] = React.useState({ records: [], total: 0, categories: [] })
+      const [ffmpegStatus, setFfmpegStatus] = React.useState(null)
       const publisherApplyRequest = React.useRef(null)
       const publisherCompletedOperation = React.useRef(null)
       const editingSourceRevision = React.useRef('')
@@ -828,22 +927,33 @@ window.__ModuleLoader__.load({
         const value = await run('source-settings', signal => api('/source-settings', { signal }), '数据源配置已刷新')
         if (value) { setSourceSettings(value.sources); setCredentialSlots(value.credentialSlots); setAdapterStates(value.adapters) }
       }, [run])
-      const loadReview = React.useCallback(async ({ resetEditors = false } = {}) => {
+      const loadReview = React.useCallback(async ({ resetEditors = false, queryState = draftQuery } = {}) => {
         const value = await run('review', async signal => {
           const [draftRows, publisherRows, rssRows] = await Promise.all([
-            api('/production/drafts', { body: { limit: 50 }, signal }),
+            api('/production/drafts', { body: { status: queryState.status || undefined, query: queryState.query.trim() || undefined, offset: (queryState.page - 1) * queryState.pageSize, limit: queryState.pageSize }, signal }),
             api('/publishers', { signal }),
             status?.services.rssOutputs ? api('/production/rss-outputs', { body: { limit: 100 }, signal }) : Promise.resolve({ records: [] }),
           ])
           return { draftRows, publisherRows, rssRows }
         }, '草稿、RSS 生成内容与发布目标已刷新')
         if (value) {
-          setDrafts(value.draftRows.records); setPublishers(value.publisherRows); setRssOutputs(value.rssRows.records)
+          setDrafts(value.draftRows.records); setDraftPage({ total: value.draftRows.total ?? value.draftRows.records.length, statusCounts: value.draftRows.statusCounts ?? {} }); setPublishers(value.publisherRows); setRssOutputs(value.rssRows.records)
           setRssOutputDetails(current => Object.fromEntries(Object.entries(current).filter(([outputId]) => value.rssRows.records.some(record => record.outputId === outputId))))
           const serverEditors = Object.fromEntries(value.draftRows.records.map(draft => [draft.draftId, { title: draft.title, markdown: draft.markdown }]))
           setDraftEditors(current => resetEditors ? serverEditors : { ...serverEditors, ...current })
         }
-      }, [run, status?.services.rssOutputs])
+      }, [run, status?.services.rssOutputs, draftQuery])
+      const loadContent = React.useCallback(async queryState => {
+        const query = queryState ?? contentQuery
+        const params = new URLSearchParams({
+          limit: String(query.pageSize), offset: String((query.page - 1) * query.pageSize), sortBy: query.sortBy, sortOrder: query.sortOrder,
+        })
+        if (query.search.trim()) params.set('search', query.search.trim())
+        if (query.category) params.set('category', query.category)
+        if (query.status) params.set('status', query.status)
+        const value = await run('content', signal => api(`/content?${params.toString()}`, { signal }), '已抓取数据已刷新')
+        if (value) setContentPage({ records: value.records ?? [], total: value.total ?? 0, categories: value.categories ?? [] })
+      }, [run, contentQuery])
       const refreshReceipts = React.useCallback(async () => {
         const value = await run('receipts', signal => api('/receipts/query', { body: { limit: 50 }, signal }), '发布记录已刷新')
         if (value) setReceipts(value.records)
@@ -894,19 +1004,20 @@ window.__ModuleLoader__.load({
           return
         }
         if (tab === 'source-settings' && status?.services.sourceSettings) void loadSourceSettings()
+        else if (tab === 'content' && status?.services.contentStore) void loadContent(contentQuery)
         else if (tab === 'review' && status?.services.production) void loadReview()
         else if (tab === 'receipts' && status?.services.receipts) void refreshReceipts()
         else if (tab === 'workflows' && status?.services.generatorWorkflows) void loadWorkflows()
         else if (tab === 'publisher-profile' && status?.services.publishers) void loadPublisherChannels()
         else if (tab === 'toolsets' && status?.services.toolsets) void loadPrismToolset()
-      }, [tab, status?.services.sourceSettings, status?.services.production, status?.services.receipts, status?.services.generatorWorkflows, status?.services.publishers, status?.services.toolsets, status?.services.imageGenerationSettings])
+      }, [tab, status?.services.sourceSettings, status?.services.contentStore, status?.services.production, status?.services.receipts, status?.services.generatorWorkflows, status?.services.publishers, status?.services.toolsets, status?.services.imageGenerationSettings])
 
       const tabs = [
-        ['overview', '总览'], ['toolsets', '工具集'], ['source-settings', '数据源配置'], ['publisher-profile', '发布与存储'], ['workflows', '工作流生成器'], ['review', '草稿审核与发布'], ['receipts', '发布审计'],
+        ['overview', '总览'], ['toolsets', '工具集'], ['source-settings', '数据源配置'], ['content', '已抓取数据'], ['publisher-profile', '发布与存储'], ['workflows', '工作流生成器'], ['review', '草稿审核与发布'], ['receipts', '发布审计'],
       ]
       const serviceCards = status ? [
         ['数据源配置', status.services.sourceSettings, status.services.sourceSettings ? `${status.counts.sourceSettings} 项` : '未启用'],
-        ['Chat 数据工具', status.services.sources && status.services.contentStore, status.services.sources && status.services.contentStore ? `${status.counts.sources} 个数据源` : '未启用'],
+        ['Chat 数据工具', status.services.sources && status.services.contentStore, status.services.sources && status.services.contentStore ? `${status.counts.sources} 个数据源 · ${status.counts.contents ?? 0} 条数据` : '未启用'],
         ['PrismFlow 工具集', status.services.toolsets, status.services.toolsets ? '工具与 Skill 可配置' : '未启用'],
         ['图片生成配置', status.services.imageGenerationSettings, status.services.imageGenerationSettings ? '接口、模型与凭证可配置' : '未启用'],
         ['工作流生成器', status.services.generatorWorkflows, status.services.generatorWorkflows ? `${status.counts.generatorWorkflows} 个定义（含待迁移旧版）` : '未启用'],
@@ -918,20 +1029,21 @@ window.__ModuleLoader__.load({
 
       async function loadPrismToolset() {
         const value = await run('toolsets:load', async signal => {
-          const [toolsets, image] = await Promise.all([
+          const [toolsets, image, prompts] = await Promise.all([
             api('/toolsets', { signal }),
             status?.services.imageGenerationSettings ? api('/image-generation/settings', { signal }) : Promise.resolve(null),
+            api('/prompt-suggestions', { signal }),
           ])
-          return { toolsets, image }
+          return { toolsets, image, prompts }
         })
         if (value) {
           setPrismToolset(value.toolsets.toolset)
-          const coreTools = new Set(value.toolsets.toolPresets?.core || [])
-          setPrismTools((value.toolsets.tools || []).map(tool => ({ name: tool, origin: value.toolsets.toolOrigins?.[tool] === 'personal-custom' ? 'personal-custom' : 'system-default', core: coreTools.has(tool) })))
+          setPrismPlugins(value.toolsets.plugins || [])
           setPrismSkills(value.toolsets.skills || [])
+          setPromptSuggestions(value.prompts?.suggestions ?? null)
           if (value.image) {
             setImageGenerationSettings({ ...value.image.settings, avifQuality: String(value.image.settings.avifQuality), avifEffort: String(value.image.settings.avifEffort) })
-            setImageGenerationCredential(value.image.credential); setImageGenerationCredentialValue('')
+            setImageGenerationCredential(value.image.credential); setImageGenerationCredentialValue(''); setFfmpegStatus(value.image.ffmpeg ?? null)
           }
         }
       }
@@ -940,10 +1052,10 @@ window.__ModuleLoader__.load({
         const current = imageGenerationSettings
         if (/^http:\/\//iu.test(current.imageApiUrl.trim()) && !window.confirm('当前图片生成接口使用明文 HTTP。API Key、提示词和生成结果可能被网络中的第三方读取或篡改。确认仍要保存？')) return
         const value = await run('image-generation:save', signal => api('/image-generation/settings', { body: {
-          settings: { imageApiUrl: current.imageApiUrl.trim(), imageApiProtocol: current.imageApiProtocol, imageModel: current.imageModel.trim(), imageSize: current.imageSize.trim(), avifQuality: Number(current.avifQuality), avifEffort: Number(current.avifEffort) },
+          settings: { imageApiUrl: current.imageApiUrl.trim(), imageApiProtocol: current.imageApiProtocol, imageModel: current.imageModel.trim(), imageSize: current.imageSize.trim(), avifQuality: Number(current.avifQuality), avifEffort: Number(current.avifEffort), ffmpegPath: current.ffmpegPath.trim() },
           expected: { version: current.version, sha256: current.sha256 },
         }, signal }), '图片生成配置已保存，下一次 Chat 调用立即使用。')
-        if (value) { setImageGenerationSettings({ ...value.settings, avifQuality: String(value.settings.avifQuality), avifEffort: String(value.settings.avifEffort) }); setImageGenerationCredential(value.credential) }
+        if (value) { setImageGenerationSettings({ ...value.settings, avifQuality: String(value.settings.avifQuality), avifEffort: String(value.settings.avifEffort) }); setImageGenerationCredential(value.credential); setFfmpegStatus(value.ffmpeg ?? null) }
       }
       async function saveImageGenerationCredential() {
         if (!imageGenerationCredentialValue) { setNotice({ type: 'error', text: '请输入非空 API Key。' }); return }
@@ -955,11 +1067,39 @@ window.__ModuleLoader__.load({
         const value = await run('image-generation:credential:unset', signal => api('/image-generation/credential/unset', { body: {}, signal }), '图片 API Key 已移除。')
         if (value) { setImageGenerationCredential(value.credential); setImageGenerationCredentialValue('') }
       }
-      function toggleTool(name) { setPrismToolset(current => ({ ...current, mode: 'custom', enabledTools: current.enabledTools.includes(name) ? current.enabledTools.filter(item => item !== name) : [...current.enabledTools, name] })) }
+      function togglePlugin(plugin) { setPrismToolset(current => {
+        const enabled = current.enabledPlugins.includes(plugin.pluginId)
+        return { ...current, mode: 'custom', enabledPlugins: enabled ? current.enabledPlugins.filter(id => id !== plugin.pluginId) : [...current.enabledPlugins, plugin.pluginId],
+          enabledTools: enabled ? current.enabledTools.filter(tool => !plugin.tools.includes(tool)) : [...new Set([...current.enabledTools, ...plugin.tools])] }
+      }) }
+      function togglePluginTool(plugin, name) { setPrismToolset(current => {
+        if (!current.enabledPlugins.includes(plugin.pluginId)) return current
+        return { ...current, mode: 'custom', enabledTools: current.enabledTools.includes(name) ? current.enabledTools.filter(item => item !== name) : [...current.enabledTools, name] }
+      }) }
       function toggleSkill(name) { setPrismToolset(current => ({ ...current, enabledSkills: current.enabledSkills.includes(name) ? current.enabledSkills.filter(item => item !== name) : [...current.enabledSkills, name] })) }
       async function savePrismToolset() {
-        const value = await run('toolsets:save', signal => api('/toolsets', { method: 'POST', body: { mode: prismToolset.mode, enabledTools: prismToolset.enabledTools, enabledSkills: prismToolset.enabledSkills, expected: { version: prismToolset.version, sha256: prismToolset.sha256 } }, signal }), '工具集已保存；重启 DSH 后工具变更生效。')
+        const value = await run('toolsets:save', signal => api('/toolsets', { method: 'POST', body: { mode: prismToolset.mode, enabledPlugins: prismToolset.enabledPlugins, enabledTools: prismToolset.enabledTools, enabledSkills: prismToolset.enabledSkills, expected: { version: prismToolset.version, sha256: prismToolset.sha256 } }, signal }), '插件与 Skill 配置已保存；Skill 选择立即生效，插件与工具变更在重启 DSH 后完整生效。')
         if (value) { setPrismToolset(value.toolset); await loadPrismToolset() }
+      }
+      function updatePromptSuggestion(id, patch) { setPromptSuggestions(current => ({ ...current, items: current.items.map(item => item.id === id ? { ...item, ...patch } : item) })) }
+      function addPromptSuggestion() { setPromptSuggestions(current => ({ ...current, items: [...current.items, { id: `prompt-${window.crypto.randomUUID().toLowerCase()}`, text: '', enabled: true }] })) }
+      function deletePromptSuggestion(id) { setPromptSuggestions(current => ({ ...current, items: current.items.filter(item => item.id !== id) })) }
+      function movePromptSuggestion(index, offset) { setPromptSuggestions(current => {
+        const target = index + offset
+        if (target < 0 || target >= current.items.length) return current
+        const items = [...current.items]; const [item] = items.splice(index, 1); items.splice(target, 0, item)
+        return { ...current, items }
+      }) }
+      async function savePromptSuggestions() {
+        if (!promptSuggestions.items.length || promptSuggestions.items.some(item => !item.text.trim())) { setNotice({ type: 'error', text: '候选文案不能为空。' }); return }
+        const value = await run('prompt-suggestions:save', signal => api('/prompt-suggestions', { method: 'POST', body: {
+          items: promptSuggestions.items.map(item => ({ id: item.id, text: item.text, enabled: item.enabled })),
+          expected: { version: promptSuggestions.version, sha256: promptSuggestions.sha256 },
+        }, signal }), 'Chat 候选输入文案已保存并立即刷新。')
+        if (value) {
+          setPromptSuggestions(value.suggestions)
+          window.dispatchEvent(new window.CustomEvent(PROMPT_SUGGESTIONS_EVENT, { detail: { items: value.suggestions.items } }))
+        }
       }
       async function editPrismSkill(skillId) {
         const value = await run('skill:load', signal => Promise.all([api(`/toolsets/skill?skillId=${encodeURIComponent(skillId)}`, { signal }), api(`/toolsets/skill/history?skillId=${encodeURIComponent(skillId)}`, { signal })]))
@@ -968,6 +1108,70 @@ window.__ModuleLoader__.load({
         setPrismSkillEditor({ ...detail.skill, isNew: false }); setPrismSkillHistory(history.records || [])
       }
       function newPrismSkill() { setPrismSkillEditor({ skillId: 'prismflow-', name: '', description: '', whenToUse: '', content: '# ', enabled: true, isNew: true }); setPrismSkillHistory([]) }
+      async function exportPrismFlowData() {
+        const password = window.prompt('请输入备份加密密码（至少 12 个字符）。此密码不会保存，导入时必须使用同一密码。', '')
+        if (password === null) return
+        const confirmation = window.prompt('请再次输入备份密码。', '')
+        if (password !== confirmation) { setNotice({ type: 'error', text: '两次输入的备份密码不一致。' }); return }
+        if (password.length < 12 || password.length > 256) { setNotice({ type: 'error', text: '备份密码必须为 12 到 256 个字符。' }); return }
+        const value = await run('data-backup:export', async signal => {
+          const response = await fetch(`${API_PREFIX}/configuration-backup/export`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ password }), signal })
+          if (!response.ok) {
+            let value; try { value = await response.json() } catch { value = {} }
+            throw new ApiError(response.status, value.error || `Request failed (${response.status})`, value)
+          }
+          const workflowHistoryCount = Number(response.headers?.get?.('x-prismflow-workflow-history-count') ?? '0')
+          const workflowIdCount = Number(response.headers?.get?.('x-prismflow-workflow-id-count') ?? '0')
+          const deletedWorkflowIdCount = Number(response.headers?.get?.('x-prismflow-deleted-workflow-id-count') ?? '0')
+          const blob = await response.blob()
+          const date = new Date().toISOString().slice(0, 10)
+          downloadBlob(blob, `prismflow-configuration-backup-${date}.pfbackup`)
+          return { size: blob.size, workflowHistoryCount, workflowIdCount, deletedWorkflowIdCount }
+        }, '加密配置备份已导出。')
+        if (value) setNotice({ type: 'success', text: `加密配置备份已导出：包含 ${value.workflowIdCount} 个当前工作流及其完整历史（共 ${value.workflowHistoryCount} 条记录）${value.deletedWorkflowIdCount ? `，另保留 ${value.deletedWorkflowIdCount} 个已删除工作流的 tombstone 审计历史` : ''}；同时包含数据源、发布/存储目标和 Credential，不包含已抓取内容。` })
+      }
+      function importPrismFlowData() {
+        const input = document.createElement('input'); input.type = 'file'; input.accept = '.pfbackup,application/vnd.prismflow.configuration-backup+json,application/json'
+        input.onchange = async () => {
+          const file = input.files?.[0]; if (!file) return
+          if (file.size > 16 * 1024 * 1024) { setNotice({ type: 'error', text: '加密配置备份超过 16 MiB 请求上限。' }); return }
+          let documentValue; try { documentValue = JSON.parse(await file.text()) } catch { throw new Error('备份文件不是有效的加密 PrismFlow 配置文件') }
+          const password = window.prompt('请输入该备份文件的解密密码。', '')
+          if (password === null) return
+          if (!window.confirm('配置恢复会替换数据源、发布与存储目标、工作流、图片设置、工具集、候选文案和 Skill 配置，并恢复备份中的 Cookie、API Key 等 PrismFlow Credential；不会导入或删除已抓取内容、草稿、媒体和发布记录。完成后必须立即重启 DSH。继续吗？')) return
+          const value = await run('data-backup:import', signal => api('/configuration-backup/import', { method: 'POST', body: { password, document: documentValue }, signal }), '配置和 Credential 已恢复；已抓取内容保持不变。请立即重启 DSH，并新建 Chat。')
+          if (value) {
+            const mappedPaths = value.publisherPathMappings?.length ? ` 已将 ${value.publisherPathMappings.length} 个外平台本地路径安全映射到当前 DSH Home。` : ''
+            setNotice({ type: 'success', text: `已恢复 ${value.recordCount} 条配置记录，其中包含 ${value.workflowIdCount} 个当前工作流及其完整历史（共 ${value.workflowHistoryCount} 条记录）${value.deletedWorkflowIdCount ? `，另保留 ${value.deletedWorkflowIdCount} 个已删除工作流的 tombstone 审计历史` : ''}；另含 ${value.publisherDestinationCount} 个发布/存储目标、${value.credentialSlotCount} 个数据源 Credential 槽位和 ${value.credentialCount} 个 Credential。${mappedPaths}必须立即重启 DSH。` })
+          }
+        }
+        input.click()
+      }
+      function importPersonalPluginZip() {
+        if (!window.confirm('个人插件包含可执行 JavaScript，将获得与 DSH 进程相同的本机权限。仅上传你已审查并完全信任的代码。是否继续？')) return
+        const input = document.createElement('input'); input.type = 'file'; input.accept = '.zip,application/zip'
+        input.onchange = async () => {
+          const file = input.files?.[0]; if (!file) return
+          if (file.size > 600 * 1024) { setNotice({ type: 'error', text: '个人插件 ZIP 超过 600 KiB 请求上限。' }); return }
+          const value = await run('plugin:zip', signal => api('/toolsets/plugin/import-zip', { method: 'POST', rawBody: file, contentType: 'application/zip', signal }), '个人插件已安装；重启 DSH 后“全部启用”模式会自动启用，其他模式需手动启用并再次重启。')
+          if (value) await loadPrismToolset()
+        }
+        input.click()
+      }
+      async function deletePersonalPlugin(plugin) {
+        const enabled = prismToolset.enabledPlugins.includes(plugin.pluginId)
+        if (!window.confirm(`${plugin.uploaded ? '永久删除上传插件及其可执行代码' : '从当前 Profile 永久删除个人插件 Bundle'}？\n\n${plugin.pluginId}\n版本 ${plugin.version}\n\n${enabled ? '系统将自动切换到自定义模式、停用其工具并保存配置，然后立即删除。' : '系统将保存当前停用状态并立即删除。'}`)) return
+        const value = await run('plugin:delete', async signal => {
+          const saved = await api('/toolsets', { method: 'POST', body: {
+            mode: 'custom', enabledPlugins: prismToolset.enabledPlugins.filter(id => id !== plugin.pluginId),
+            enabledTools: prismToolset.enabledTools.filter(tool => !plugin.tools.includes(tool)),
+            enabledSkills: prismToolset.enabledSkills.filter(skill => !(plugin.skills || []).includes(skill)),
+            expected: { version: prismToolset.version, sha256: prismToolset.sha256 },
+          }, signal })
+          return api('/toolsets/plugin/delete', { method: 'POST', body: { pluginId: plugin.pluginId, expected: { version: saved.toolset.version, sha256: saved.toolset.sha256 } }, signal })
+        }, '个人插件已停用并永久删除。')
+        if (value) await loadPrismToolset()
+      }
       function importPrismSkillZip() {
         const input = document.createElement('input'); input.type = 'file'; input.accept = '.zip,application/zip'
         input.onchange = async () => {
@@ -992,34 +1196,47 @@ window.__ModuleLoader__.load({
         const value = await run('skill:rollback', signal => api('/toolsets/skill/rollback', { method: 'POST', body: { skillId: editor.skillId, targetVersion, expected: { version: editor.version, sha256: editor.sha256 } }, signal }), 'Skill 已创建回滚版本。')
         if (value) { await loadPrismToolset(); await editPrismSkill(value.skill.skillId) }
       }
-      async function deletePrismSkill() {
-        const editor = prismSkillEditor
-        if (!window.confirm(`永久删除并保留 tombstone？\n${editor.skillId}\n修订 ${editor.version} · ${editor.sha256}`)) return
-        const value = await run('skill:delete', signal => api('/toolsets/skill/delete', { method: 'POST', body: { skillId: editor.skillId, expected: { version: editor.version, sha256: editor.sha256 } }, signal }), 'Skill 已安全删除。')
-        if (value) { setPrismSkillEditor(null); setPrismSkillHistory([]); await loadPrismToolset() }
+      async function deletePrismSkill(skill = prismSkillEditor) {
+        if (!skill?.removable) return
+        if (!window.confirm(`永久删除个人 Skill 及其 Bundle，并保留审计 tombstone？\n${skill.skillId}\n修订 ${skill.version} · ${skill.sha256}`)) return
+        const value = await run('skill:delete', signal => api('/toolsets/skill/delete', { method: 'POST', body: { skillId: skill.skillId, expected: { version: skill.version, sha256: skill.sha256 } }, signal }), '个人 Skill 已删除。')
+        if (value) { if (prismSkillEditor?.skillId === skill.skillId) { setPrismSkillEditor(null); setPrismSkillHistory([]) } await loadPrismToolset() }
       }
       function toolsetsView() {
         if (!status?.services.toolsets || !prismToolset) return h(Empty, null, 'PrismFlow 工具集服务当前不可用。')
         const updateEditor = (field, value) => setPrismSkillEditor(current => ({ ...current, [field]: value }))
-        const toolCards = prismTools.map(tool => typeof tool === 'string' ? { name: tool, origin: 'system-default' } : tool)
-          .sort((left, right) => {
-            const originOrder = Number(left.origin !== 'system-default') - Number(right.origin !== 'system-default')
-            if (originOrder) return originOrder
-            return left.name < right.name ? -1 : left.name > right.name ? 1 : 0
-          }).map(tool => h('label', { className: 'pf-tool-option', key: tool.name },
-            h('input', { type: 'checkbox', checked: prismToolset.enabledTools.includes(tool.name), disabled: prismToolset.mode !== 'custom', onChange: () => toggleTool(tool.name) }),
-            h('span', { className: 'pf-code' }, tool.name),
-            h('span', { className: `pf-badge pf-origin-badge ${tool.origin === 'personal-custom' ? 'pf-origin-custom' : 'pf-origin-system'}` }, tool.origin === 'personal-custom' ? '个人定制' : '系统默认')))
+        const plugins = [...prismPlugins].sort((left, right) => {
+          const originOrder = Number(left.origin !== 'system') - Number(right.origin !== 'system')
+          if (originOrder) return originOrder
+          return left.pluginId < right.pluginId ? -1 : left.pluginId > right.pluginId ? 1 : 0
+        })
+        const pluginCards = origin => plugins.filter(plugin => plugin.origin === origin).map(plugin => {
+          const enabled = prismToolset.enabledPlugins.includes(plugin.pluginId)
+          const enabledToolCount = plugin.tools.filter(tool => prismToolset.enabledTools.includes(tool)).length
+          return h('article', { className: `pf-plugin-card${enabled ? ' pf-plugin-card-enabled' : ''}`, key: plugin.pluginId },
+            h('div', { className: 'pf-plugin-card-head' },
+              h('div', null, h('strong', null, plugin.name), h('span', { className: 'pf-code pf-plugin-id' }, plugin.pluginId)),
+              h('span', { className: `pf-badge pf-origin-badge ${origin === 'system' ? 'pf-origin-system' : 'pf-origin-custom'}` }, origin === 'system' ? '系统插件' : plugin.uploaded ? '个人上传' : '个人插件')),
+            h('p', { className: 'pf-plugin-description' }, plugin.description),
+            h('div', { className: 'pf-plugin-summary' }, h('span', null, `Manifest ${plugin.version}`), h('span', null, `${enabledToolCount} / ${plugin.tools.length} 个工具`)),
+            h('label', { className: 'pf-plugin-toggle' }, h('input', { type: 'checkbox', checked: enabled, disabled: prismToolset.mode !== 'custom', onChange: () => togglePlugin(plugin) }), enabled ? '插件已启用' : '插件已停用'),
+            h('details', { className: 'pf-plugin-tools' }, h('summary', null, '查看工具'),
+              h('div', { className: 'pf-plugin-tool-list' }, plugin.tools.map(tool => h('label', { className: 'pf-tool-option', key: tool },
+                h('input', { type: 'checkbox', checked: prismToolset.enabledTools.includes(tool), disabled: prismToolset.mode !== 'custom' || !enabled, onChange: () => togglePluginTool(plugin, tool) }), h('span', { className: 'pf-code' }, tool))))),
+            plugin.removable ? h('div', { className: 'pf-plugin-management' },
+              h('span', null, enabled ? '删除时自动停用工具、保存配置并移除 Bundle' : plugin.uploaded ? '删除上传的代码与资源' : '永久删除当前 Profile 中的个人插件 Bundle'),
+              h(Button, { danger: true, onClick: () => deletePersonalPlugin(plugin), disabled: !!busy }, '删除插件')) : null)
+        })
         const skillCards = [...prismSkills].sort((left, right) => {
           const originOrder = Number(left.origin !== 'system-default') - Number(right.origin !== 'system-default')
           if (originOrder) return originOrder
           return left.skillId < right.skillId ? -1 : left.skillId > right.skillId ? 1 : 0
         }).map(skill => h('article', { className: 'pf-skill-card', key: skill.skillId },
           h('div', { className: 'pf-skill-card-head' }, h('strong', { className: 'pf-code' }, skill.skillId),
-            h('div', { className: 'pf-skill-card-badges' }, h('span', { className: `pf-badge pf-origin-badge ${skill.origin === 'system-default' ? 'pf-origin-system' : 'pf-origin-custom'}` }, skill.origin === 'system-default' ? '系统默认' : '个人定制'), h(Badge, { enabled: skill.enabled }, skill.enabled ? '已启用' : '已停用'))),
+            h('div', { className: 'pf-skill-card-badges' }, h('span', { className: `pf-badge pf-origin-badge ${skill.origin === 'system-default' ? 'pf-origin-system' : 'pf-origin-custom'}` }, skill.origin === 'system-default' ? '系统默认' : '个人定制'), h(Badge, { enabled: prismToolset.enabledSkills.includes(skill.skillId) }, prismToolset.enabledSkills.includes(skill.skillId) ? 'Chat 已启用' : 'Chat 未启用'))),
           h('p', { className: 'pf-skill-card-description' }, skill.description || '暂无说明'),
           h('div', { className: 'pf-skill-card-actions' },
-            h('label', { className: 'pf-check' }, h('input', { type: 'checkbox', checked: prismToolset.enabledSkills.includes(skill.skillId), disabled: !skill.enabled, onChange: () => toggleSkill(skill.skillId) }), '允许 Chat 使用'),
+            h('label', { className: 'pf-check' }, h('input', { type: 'checkbox', checked: prismToolset.enabledSkills.includes(skill.skillId), disabled: !skill.enabled || prismToolset.mode !== 'custom', onChange: () => toggleSkill(skill.skillId) }), '允许 Chat 使用'),
             h(Button, { onClick: () => editPrismSkill(skill.skillId) }, '编辑与历史'))))
         let editorPanel = null
         if (prismSkillEditor) editorPanel = h('div', { className: 'pf-card pf-skill-editor' },
@@ -1030,11 +1247,32 @@ window.__ModuleLoader__.load({
           h('label', { className: 'pf-check' }, h('input', { type: 'checkbox', checked: prismSkillEditor.enabled, onChange: event => updateEditor('enabled', event.target.checked) }), 'Skill 已启用'),
           h('div', { className: 'pf-field' }, h('label', null, 'Skill Markdown 指令'), h('textarea', { className: 'pf-textarea pf-workflow-textarea', maxLength: 32000, value: prismSkillEditor.content, onChange: event => updateEditor('content', event.target.value) })),
           h('h4', null, '安全预览'), h('pre', { className: 'pf-preview pf-json' }, prismSkillEditor.content),
-          h('div', { className: 'pf-actions' }, h(Button, { primary: true, onClick: savePrismSkill, disabled: !!busy }, prismSkillEditor.isNew ? '创建 Skill' : '保存新版本'), !prismSkillEditor.isNew ? h(Button, { onClick: copyPrismSkill }, '复制 Skill') : null, !prismSkillEditor.isNew && !prismSkillEditor.enabled ? h(Button, { danger: true, onClick: deletePrismSkill }, '安全删除') : null),
-          !prismSkillEditor.isNew && prismSkillHistory.length ? h('div', { className: 'pf-workflow-history' }, h('h4', null, '版本历史'), prismSkillHistory.map(row => h('div', { className: 'pf-row pf-space pf-workflow-history-row', key: row.version }, h('span', { className: 'pf-code' }, `修订 ${row.version} · ${row.action} · ${row.sha256}`), row.version < prismSkillEditor.version ? h(Button, { onClick: () => rollbackPrismSkill(row.version) }, '回滚') : null))) : null)
+          h('div', { className: 'pf-actions pf-skill-save-actions' }, h(Button, { primary: true, onClick: savePrismSkill, disabled: !!busy }, prismSkillEditor.isNew ? '创建 Skill' : '保存新版本'), !prismSkillEditor.isNew ? h(Button, { onClick: copyPrismSkill }, '复制 Skill') : null),
+          !prismSkillEditor.isNew && prismSkillHistory.length ? h('div', { className: 'pf-workflow-history' }, h('h4', null, '版本历史'), prismSkillHistory.map(row => h('div', { className: 'pf-row pf-space pf-workflow-history-row', key: row.version }, h('span', { className: 'pf-code' }, `修订 ${row.version} · ${row.action} · ${row.sha256}`), row.version < prismSkillEditor.version ? h(Button, { onClick: () => rollbackPrismSkill(row.version) }, '回滚') : null))) : null,
+          !prismSkillEditor.isNew && prismSkillEditor.removable ? h('section', { className: 'pf-skill-danger', 'aria-label': '个人 Skill 危险操作' },
+            h('div', { className: 'pf-skill-danger-copy' }, h('strong', null, '删除个人 Skill'), h('span', null, '永久移除当前 Skill Bundle；SQLite 仍保留不可变审计 tombstone。')),
+            h(Button, { danger: true, onClick: () => deletePrismSkill(prismSkillEditor), disabled: !!busy }, '永久删除')) : null)
+        const promptSuggestionsPanel = promptSuggestions ? h('section', { className: 'pf-card pf-toolset-section' },
+          h('header', { className: 'pf-toolset-section-head' },
+            h('div', { className: 'pf-toolset-section-title' }, h('h3', null, 'Chat 候选输入文案'), h('p', null, '显示在 Chat 输入框上方；点击只填入输入框，不会自动发送或授予额外权限。')),
+            h('span', { className: 'pf-badge' }, `${promptSuggestions.items.filter(item => item.enabled).length} 条已显示`)),
+          h('div', { className: 'pf-toolset-section-body' },
+            h('div', { className: 'pf-prompt-editor-list' }, ...promptSuggestions.items.map((item, index) => h('div', { className: 'pf-prompt-editor-row', key: item.id },
+              h('div', { className: 'pf-prompt-editor-order' },
+                h(Button, { onClick: () => movePromptSuggestion(index, -1), disabled: index === 0 || !!busy, 'aria-label': '上移候选文案' }, '↑'),
+                h(Button, { onClick: () => movePromptSuggestion(index, 1), disabled: index === promptSuggestions.items.length - 1 || !!busy, 'aria-label': '下移候选文案' }, '↓')),
+              h('div', { className: 'pf-field' }, h('label', null, `候选文案 ${index + 1}`), h('textarea', { className: 'pf-textarea', maxLength: 4000, value: item.text,
+                onChange: event => updatePromptSuggestion(item.id, { text: event.target.value }) }), h('span', { className: 'pf-counter' }, `${item.text.length} / 4000`)),
+              h('div', { className: 'pf-prompt-editor-controls' },
+                h('label', { className: 'pf-check' }, h('input', { type: 'checkbox', checked: item.enabled, onChange: event => updatePromptSuggestion(item.id, { enabled: event.target.checked }) }), '显示'),
+                h(Button, { danger: true, onClick: () => deletePromptSuggestion(item.id), disabled: !!busy }, '删除'))))),
+          h('div', { className: 'pf-toolset-section-actions' },
+            h(Button, { onClick: addPromptSuggestion, disabled: !!busy || promptSuggestions.items.length >= 20 }, '新增文案'),
+            h(Button, { onClick: loadPrismToolset, disabled: !!busy }, '放弃修改'),
+            h(Button, { primary: true, onClick: savePromptSuggestions, disabled: !!busy }, '保存候选文案')))) : null
         const imageGenerationPanel = status?.services.imageGenerationSettings && imageGenerationSettings ? h('section', { className: 'pf-card pf-toolset-section' },
           h('header', { className: 'pf-toolset-section-head' },
-            h('div', { className: 'pf-toolset-section-title' }, h('h3', null, '图片生成接口'), h('p', null, '配置 prismflow_image_generation 的接口、模型和输出规格；保存后下一次 Chat 调用立即生效。')),
+            h('div', { className: 'pf-toolset-section-title' }, h('h3', null, '媒体处理与图片生成'), h('p', null, '配置 FFmpeg 视频处理、prismflow_image_generation 接口、模型和输出规格；保存后下一次调用立即生效。')),
             h(Badge, { enabled: imageGenerationCredential?.configured === true }, imageGenerationCredential?.configured ? 'API Key 已配置' : 'API Key 未配置')),
           h('div', { className: 'pf-toolset-section-body' },
             h('div', { className: 'pf-image-settings-grid' },
@@ -1044,8 +1282,14 @@ window.__ModuleLoader__.load({
               h(Field, { className: 'pf-image-compact', label: '图片尺寸', value: imageGenerationSettings.imageSize, placeholder: '1024x1024', onChange: value => editImageGenerationSetting('imageSize', value) }),
               h(Field, { className: 'pf-image-number', label: 'AVIF 质量', type: 'number', min: 1, max: 100, value: imageGenerationSettings.avifQuality, onChange: value => editImageGenerationSetting('avifQuality', value) }),
               h(Field, { className: 'pf-image-number', label: 'AVIF effort', type: 'number', min: 0, max: 9, value: imageGenerationSettings.avifEffort, onChange: value => editImageGenerationSetting('avifEffort', value) })),
-            /^http:\/\//iu.test(imageGenerationSettings.imageApiUrl.trim()) ? h('div', { className: 'pf-notice pf-notice-error', style: { margin: '14px 0 0' }, role: 'alert' }, '当前使用明文 HTTP：API Key、提示词和生成结果不会获得传输加密。仅在可信内网或兼容网关中使用。') : null),
-          h('div', { className: 'pf-toolset-section-actions' }, h(Button, { onClick: loadPrismToolset, disabled: !!busy }, '放弃修改'), h(Button, { primary: true, onClick: saveImageGenerationSettings, disabled: !!busy }, '保存接口配置')),
+            /^http:\/\//iu.test(imageGenerationSettings.imageApiUrl.trim()) ? h('div', { className: 'pf-notice pf-notice-error', style: { margin: '14px 0 0' }, role: 'alert' }, '当前使用明文 HTTP：API Key、提示词和生成结果不会获得传输加密。仅在可信内网或兼容网关中使用。') : null,
+            h('section', { className: 'pf-image-credentials', style: { margin: '18px -20px -18px' }, 'aria-label': 'FFmpeg 运行时' },
+              h('div', { className: 'pf-image-credential-head' },
+                h('div', { className: 'pf-image-credential-copy' }, h('strong', null, 'FFmpeg 视频处理'), h('span', null, '留空时按照当前操作系统、FFMPEG_PATH、PATH 和常见安装目录自动识别；填写时可使用绝对路径或 PATH 中的可执行文件名。')),
+                h('div', { className: 'pf-image-credential-state' }, h(Badge, { enabled: ffmpegStatus?.available === true }, ffmpegStatus?.available ? '已识别' : '不可用'), h('span', { className: 'pf-muted' }, ffmpegStatus?.mode === 'configured' ? '手动配置' : '系统自动识别'))),
+              h(Field, { label: 'FFmpeg 可执行文件', value: imageGenerationSettings.ffmpegPath, placeholder: '留空自动识别，例如 C:\\ffmpeg\\bin\\ffmpeg.exe 或 /usr/local/bin/ffmpeg',
+                help: ffmpegStatus?.available ? `当前使用：${ffmpegStatus.resolvedPath}` : ffmpegStatus?.error || '尚未检测', onChange: value => editImageGenerationSetting('ffmpegPath', value) }))),
+          h('div', { className: 'pf-toolset-section-actions' }, h(Button, { onClick: loadPrismToolset, disabled: !!busy }, '放弃修改 / 重新检测'), h(Button, { primary: true, onClick: saveImageGenerationSettings, disabled: !!busy }, '保存媒体与接口配置')),
           h('section', { className: 'pf-image-credentials', 'aria-label': '图片生成 API Key' },
             h('div', { className: 'pf-image-credential-head' },
               h('div', { className: 'pf-image-credential-copy' }, h('strong', null, '图片生成 API Key'), h('span', null, '真实值仅写入 DSH Credential Store，页面不会读取或回显旧值。')),
@@ -1057,27 +1301,40 @@ window.__ModuleLoader__.load({
                 h(Button, { danger: true, onClick: removeImageGenerationCredential, disabled: !!busy || !imageGenerationCredential?.configured || !imageGenerationCredential?.writable || !imageGenerationCredential?.allowDashboardWrite }, '移除 API Key'))))) : null
         return h('section', { className: 'pf-toolset-page' },
           h('header', { className: 'pf-toolset-header' },
-            h('div', { className: 'pf-toolset-header-copy' }, h('h2', { className: 'pf-section-title' }, 'PrismFlow 工具集'), h('p', { className: 'pf-section-help' }, '管理 PrismFlow Chat 工具、图片生成接口和标准 Skill；不会修改 DSH 通用工具。'))),
+            h('div', { className: 'pf-toolset-header-copy' }, h('h2', { className: 'pf-section-title' }, 'PrismFlow 工具集'), h('p', { className: 'pf-section-help' }, '“导出全部配置”会加密备份当前工作流及其完整历史、数据源、发布与存储目标、图片设置、工具集及相关 Cookie/API Key；不导出已抓取内容。')),
+            h('div', { className: 'pf-toolset-header-actions' },
+              h(Button, { onClick: exportPrismFlowData, disabled: !!busy }, '导出全部配置'),
+              h(Button, { onClick: importPrismFlowData, disabled: !!busy }, '导入全部配置'))),
           h('div', { className: 'pf-toolset-stack' },
+            promptSuggestionsPanel,
             imageGenerationPanel,
             h('section', { className: 'pf-card pf-toolset-section' },
               h('header', { className: 'pf-toolset-section-head' },
-                h('div', { className: 'pf-toolset-section-title' }, h('h3', null, 'Chat 工具'), h('p', null, '系统默认工具适用于通用流程；个人定制工具包含部署专属的媒体、RSS、GitHub 或自动化约束，并非所有用户都需要。')),
-                h('span', { className: 'pf-badge' }, prismToolset.mode === 'core' ? '系统默认配置' : prismToolset.mode === 'complete' ? '全部工具' : '自定义选择')),
+                h('div', { className: 'pf-toolset-section-title' }, h('h3', null, '插件与 Skill 配置'), h('p', null, '配置模式同时控制插件、插件工具和 Skill；Skill 只提供指令，不授予工具权限。')),
+                h('span', { className: 'pf-badge' }, prismToolset.mode === 'core' ? '系统默认组合' : prismToolset.mode === 'complete' ? '全部启用' : '自定义选择')),
               h('div', { className: 'pf-toolset-section-body' },
-                h(Field, { className: 'pf-toolset-mode', label: '工具集配置', help: prismToolset.mode === 'core' ? '启用全部系统默认工具和系统默认 Skill，不选择个人定制项。' : prismToolset.mode === 'complete' ? '启用全部工具和全部已启用 Skill，其中包含部署专属的个人定制项。' : '逐项选择需要启用的系统默认或个人定制工具与 Skill。', value: prismToolset.mode, options: [{ value: 'core', label: '系统默认工具' }, { value: 'complete', label: '全部工具（含个人定制）' }, { value: 'custom', label: '自定义选择' }], onChange: mode => setPrismToolset(current => {
-                  const enabledTools = mode === 'core' ? prismTools.filter(tool => typeof tool !== 'string' && tool.core).map(tool => tool.name) : mode === 'complete' ? prismTools.map(tool => typeof tool === 'string' ? tool : tool.name) : current.enabledTools
-                  const enabledSkills = mode === 'core' ? prismSkills.filter(skill => skill.enabled && skill.origin === 'system-default').map(skill => skill.skillId) : mode === 'complete' ? prismSkills.filter(skill => skill.enabled).map(skill => skill.skillId) : current.enabledSkills
-                  return { ...current, mode, enabledTools, enabledSkills }
-                }) }),
-                h('div', { className: 'pf-toolset-grid' }, toolCards))),
+                h(Field, { className: 'pf-toolset-mode', label: '插件与 Skill 配置模式', help: prismToolset.mode === 'core' ? '仅启用系统插件、系统工具和系统默认 Skill；不启用个人插件或个人定制 Skill。' : prismToolset.mode === 'complete' ? '启用全部系统插件、个人插件、工具和当前可用 Skill。' : '分别选择插件、插件内工具和 Skill；Skill 选择不会绕过插件权限。', value: prismToolset.mode, options: [{ value: 'core', label: '系统默认组合' }, { value: 'complete', label: '全部启用' }, { value: 'custom', label: '自定义选择' }], onChange: mode => setPrismToolset(current => {
+                  const selectedPlugins = mode === 'core' ? plugins.filter(plugin => plugin.origin === 'system') : mode === 'complete' ? plugins : null
+                  const enabledPlugins = selectedPlugins ? selectedPlugins.map(plugin => plugin.pluginId) : current.enabledPlugins
+                  const enabledTools = selectedPlugins ? selectedPlugins.flatMap(plugin => plugin.tools) : current.enabledTools
+                  const pluginSkillIds = new Set((selectedPlugins ?? []).flatMap(plugin => plugin.skills))
+                  const enabledSkills = mode === 'core' ? prismSkills.filter(skill => skill.enabled && skill.origin === 'system-default' && pluginSkillIds.has(skill.skillId)).map(skill => skill.skillId) : mode === 'complete' ? prismSkills.filter(skill => skill.enabled).map(skill => skill.skillId) : current.enabledSkills
+                  return { ...current, mode, enabledPlugins, enabledTools, enabledSkills }
+                }) }))),
+            h('section', { className: 'pf-card pf-toolset-section pf-plugin-section' },
+              h('header', { className: 'pf-toolset-section-head' }, h('div', { className: 'pf-toolset-section-title' }, h('h3', null, '系统插件'), h('p', null, '随 @prismflow/dsh 提供，不能删除；系统默认组合下全部启用。')), h('span', { className: 'pf-badge pf-origin-system' }, `${plugins.filter(plugin => plugin.origin === 'system').length} 个`)),
+              h('div', { className: 'pf-toolset-section-body' }, h('div', { className: 'pf-plugin-grid' }, pluginCards('system')))),
+            h('section', { className: 'pf-card pf-toolset-section pf-plugin-section' },
+              h('header', { className: 'pf-toolset-section-head' }, h('div', { className: 'pf-toolset-section-title' }, h('h3', null, '个人插件'), h('p', null, '内置个人插件与上传插件统一放在个人插件区；上传代码拥有 DSH 进程权限。')),
+                h('div', { className: 'pf-toolset-header-actions' }, h('span', { className: 'pf-badge pf-origin-custom' }, `${plugins.filter(plugin => plugin.origin === 'personal').length} 个`), h(Button, { onClick: importPersonalPluginZip, disabled: !!busy }, '上传个人插件 ZIP'))),
+              h('div', { className: 'pf-toolset-section-body' }, h('div', { className: 'pf-plugin-grid' }, pluginCards('personal')))),
             h('section', { className: 'pf-card pf-toolset-section pf-skill-section' },
               h('header', { className: 'pf-toolset-section-head' },
-                h('div', { className: 'pf-toolset-section-title' }, h('h3', null, 'PrismFlow Skills'), h('p', null, '启用或编辑可供 Chat 渐进式加载的标准 Skill Bundle。')),
+                h('div', { className: 'pf-toolset-section-title' }, h('h3', null, 'PrismFlow Skills'), h('p', null, 'Skill 只提供渐进式指令，不授予插件或工具权限；个人定制 Skill 可以直接删除；删除 Bundle 后仍保留审计 tombstone。')),
                 h('div', { className: 'pf-toolset-header-actions' }, h(Button, { onClick: importPrismSkillZip, disabled: !!busy }, '上传 Skill ZIP'), h(Button, { onClick: newPrismSkill }, '手动新增 Skill'))),
               h('div', { className: 'pf-toolset-section-body' }, h('div', { className: 'pf-toolset-grid' }, skillCards))),
             editorPanel),
-          h('div', { className: 'pf-publisher-save-footer pf-publisher-changebar' }, h('div', { className: 'pf-publisher-change-copy' }, h('strong', null, `工具集修订 ${prismToolset.version}`), h('span', null, 'Skill 变更即时进入后续目录；工具 Schema 变更需重启 DSH。')), h('div', { className: 'pf-actions' }, h(Button, { onClick: loadPrismToolset }, '放弃修改'), h(Button, { primary: true, onClick: savePrismToolset, disabled: !!busy }, '保存工具集'))))
+          h('div', { className: 'pf-publisher-save-footer pf-publisher-changebar' }, h('div', { className: 'pf-publisher-change-copy' }, h('strong', null, `插件与 Skill 配置修订 ${prismToolset.version}`), h('span', null, 'Skill 变更即时进入后续目录；插件和工具变更需重启 DSH。')), h('div', { className: 'pf-actions' }, h(Button, { onClick: loadPrismToolset }, '放弃修改'), h(Button, { primary: true, onClick: savePrismToolset, disabled: !!busy }, '保存插件与 Skill 配置'))))
       }
 
       function overviewView() {
@@ -1246,6 +1503,67 @@ window.__ModuleLoader__.load({
               source.type === 'ai-search' ? h('p', null, `关键词：${source.keyword}`) : null,
               h('div', { className: 'pf-actions' }, h(Button, { onClick: () => beginEditSource(source), disabled: !!busy }, '编辑 Item'), h(Button, { onClick: () => toggleSourceSetting(source), disabled: !!busy }, source.enabled ? '停用' : '启用'), h(Button, { danger: true, onClick: () => deleteSourceSetting(source.settingsId), disabled: !!busy }, '删除')))) : h('p', { className: 'pf-muted' }, '暂无 Item'),
             h('div', { className: 'pf-actions' }, h(Button, { onClick: () => beginCreateSource(adapter.value), disabled: !!busy }, `新增 ${adapter.label} Item`))))))
+      }
+
+      function contentDate(value) {
+        if (!value) return '—'
+        const date = new Date(value)
+        return Number.isNaN(date.getTime()) ? value : date.toLocaleString('zh-CN', { hour12: false })
+      }
+      function updateContentQuery(field, value) { setContentQuery(current => ({ ...current, [field]: value })) }
+      function commitContentQuery(patch = {}) {
+        const next = { ...contentQuery, ...patch }
+        setContentQuery(next)
+        void loadContent(next)
+      }
+      function contentView() {
+        if (!status?.services.contentStore) return h(Empty, null, 'Content Store 未启用。请由部署者启用 prismflow-store-content。')
+        const totalPages = Math.max(1, Math.ceil(contentPage.total / contentQuery.pageSize))
+        const categoryOptions = [{ value: '', label: '全部分类' }, ...contentPage.categories.map(row => ({ value: row.category, label: `${row.category} (${row.count})` }))]
+        const statusOptions = [{ value: '', label: '全部状态' }, { value: 'unread', label: '未读' }, { value: 'read', label: '已读' }, { value: 'archived', label: '已归档' }]
+        const sortOptions = [
+          { value: 'publishedAt', label: '发布时间' }, { value: 'fetchedAt', label: '抓取时间' }, { value: 'updatedAt', label: '更新时间' },
+          { value: 'title', label: '标题' }, { value: 'source', label: '来源' }, { value: 'category', label: '分类' },
+        ]
+        return h('div', { className: 'pf-content-page' },
+          h('div', { className: 'pf-review-header' },
+            h('div', null, h('h2', { className: 'pf-section-title' }, '已抓取数据'), h('p', { className: 'pf-section-help' }, '查看 Content Store 中的全部已抓取记录。搜索、分类筛选、排序和分页均在服务端执行。')),
+            h(Badge, { enabled: true }, `${contentPage.total} 条`)),
+          h('form', { className: 'pf-content-toolbar', onSubmit: event => { event.preventDefault(); commitContentQuery({ page: 1 }) } },
+            h(Field, { label: '搜索', value: contentQuery.search, placeholder: '标题、摘要、来源或作者', maxLength: 256, onChange: value => updateContentQuery('search', value) }),
+            h(Field, { label: '分类', value: contentQuery.category, options: categoryOptions, onChange: value => commitContentQuery({ category: value, page: 1 }) }),
+            h(Field, { label: '排序字段', value: contentQuery.sortBy, options: sortOptions, onChange: value => commitContentQuery({ sortBy: value, page: 1 }) }),
+            h(Field, { label: '顺序', value: contentQuery.sortOrder, options: [{ value: 'desc', label: '降序' }, { value: 'asc', label: '升序' }], onChange: value => commitContentQuery({ sortOrder: value, page: 1 }) }),
+            h('div', { className: 'pf-actions' }, h(Button, { primary: true, disabled: !!busy, onClick: () => commitContentQuery({ page: 1 }) }, '搜索'), h(Button, { type: 'button', disabled: !!busy, onClick: () => commitContentQuery({ search: '', category: '', status: '', sortBy: 'publishedAt', sortOrder: 'desc', page: 1 }) }, '重置'))),
+          h('div', { className: 'pf-row pf-space', style: { marginBottom: 10 } },
+            h(Field, { label: '状态', value: contentQuery.status, options: statusOptions, onChange: value => commitContentQuery({ status: value, page: 1 }) }),
+            h(Field, { label: '每页', value: String(contentQuery.pageSize), options: [10, 20, 50, 100].map(value => ({ value: String(value), label: `${value} 条` })), onChange: value => commitContentQuery({ pageSize: Number(value), page: 1 }) })),
+          contentPage.records.length ? h('div', { className: 'pf-content-table-wrap' }, h('table', { className: 'pf-content-table' },
+            h('thead', null, h('tr', null, h('th', null, '标题与摘要'), h('th', null, '来源'), h('th', null, '分类'), h('th', null, '状态'), h('th', null, '发布时间'), h('th', null, '抓取时间'))),
+            h('tbody', null, contentPage.records.map(record => h('tr', { key: record.storeId },
+              h('td', null,
+                record.url ? h('a', { className: 'pf-content-title pf-content-title-link', href: record.url, target: '_blank', rel: 'noopener noreferrer' }, record.title) : h('span', { className: 'pf-content-title' }, record.title),
+                record.description ? h('span', { className: 'pf-content-summary' }, record.description) : null,
+                h('details', { className: 'pf-content-details' }, h('summary', null, '查看完整记录'), h('div', { className: 'pf-content-details-body' },
+                  h('strong', null, '正文摘要'), record.description || '—',
+                  record.sourceAiSummary ? h(React.Fragment, null, h('strong', null, '来源AI摘要'), record.sourceAiSummary) : null,
+                  Number.isInteger(record.aiScore) ? h(React.Fragment, null,
+                    h('strong', null, 'AI评分'), `${record.aiScore} / 100`,
+                    h('strong', null, 'AI摘要'), record.aiSummary,
+                    h('strong', null, '评分理由'), record.aiReason,
+                    h('strong', null, '审核时间'), contentDate(record.aiReviewedAt)) : null,
+                  h('strong', null, '记录标识'), `Store ID: ${record.storeId}\nSource ID: ${record.sourceId}\nExternal ID: ${record.externalId}\n首次发现: ${contentDate(record.firstSeenAt)}\n最后更新: ${contentDate(record.updatedAt)}`))),
+              h('td', { className: 'pf-content-source' }, h('strong', null, record.source || '—'), h('span', null, record.author || record.sourceId || '—')),
+              h('td', null, h('span', { className: 'pf-badge' }, record.category || '未分类')),
+              h('td', null, h('span', { className: 'pf-badge' }, record.status === 'unread' ? '未读' : record.status === 'read' ? '已读' : '已归档')),
+              h('td', { className: 'pf-content-date' }, contentDate(record.publishedAt)),
+              h('td', { className: 'pf-content-date' }, contentDate(record.fetchedAt))))))) : h(Empty, null, '没有符合当前条件的已抓取数据。'),
+          h('div', { className: 'pf-content-pagination' },
+            h('span', { className: 'pf-muted' }, `第 ${Math.min(contentQuery.page, totalPages)} / ${totalPages} 页 · 共 ${contentPage.total} 条`),
+            h('div', { className: 'pf-actions' },
+              h(Button, { disabled: !!busy || contentQuery.page <= 1, onClick: () => commitContentQuery({ page: contentQuery.page - 1 }) }, '上一页'),
+              h(Button, { disabled: !!busy || contentQuery.page >= totalPages, onClick: () => commitContentQuery({ page: contentQuery.page + 1 }) }, '下一页'),
+              h(Button, { disabled: !!busy, onClick: () => loadContent(contentQuery) }, '刷新'))))
       }
 
       function workflowContent(value) {
@@ -1648,8 +1966,15 @@ window.__ModuleLoader__.load({
       }
       async function refreshReview() {
         if (drafts.some(draft => draftDirty(draft)) && !window.confirm('刷新会放弃所有未保存的草稿修改，是否继续？')) return
-        await loadReview({ resetEditors: true })
+        await loadReview({ resetEditors: true, queryState: draftQuery })
       }
+      async function queryDraftPage(next) {
+        if (drafts.some(draft => draftDirty(draft)) && !window.confirm('切换筛选或分页会放弃未保存的草稿修改，是否继续？')) return
+        setDraftQuery(next); setExpandedDrafts({}); setPublicationFeedback(null)
+        await loadReview({ resetEditors: true, queryState: next })
+      }
+      async function applyDraftFilters() { await queryDraftPage({ ...draftQuery, page: 1 }) }
+      async function resetDraftFilters() { await queryDraftPage({ status: '', query: '', page: 1, pageSize: draftQuery.pageSize }) }
       async function toggleRssOutput(outputId) {
         if (rssOutputDetails[outputId]) {
           setRssOutputDetails(current => { const next = { ...current }; delete next[outputId]; return next })
@@ -1679,9 +2004,14 @@ window.__ModuleLoader__.load({
         }
       }
       async function deleteDraft(draft) {
-        if (!['draft', 'rejected'].includes(draft.status)) return
+        if (!['draft', 'rejected', 'approved', 'published'].includes(draft.status)) return
         if (draftDirty(draft)) { setNotice({ type: 'error', text: '请先保存或放弃当前修改，再删除草稿。' }); return }
-        if (!window.confirm(`永久从草稿列表中删除这份未批准草稿？\n\n标题：${draft.title}\nDraft ID：${draft.draftId}\n版本：${draft.version}\nSHA-256：${draft.sha256}\n\n历史 Generation Request 和审计来源仍会保留，但草稿不会恢复。`)) return
+        const deletionWarning = draft.status === 'published'
+          ? '这只会删除 PrismFlow 本地草稿；已经写入外部平台的内容不会被撤回。发布回执、Generation Request 和来源审计仍会保留。'
+          : draft.status === 'approved'
+            ? '删除后该已审批 Artifact 将不能再发布。Generation Request、审批来源和审计记录仍会保留。'
+            : '历史 Generation Request 和审计来源仍会保留。'
+        if (!window.confirm(`永久从草稿列表中删除这份${draftStatus(draft.status).label}草稿？\n\n标题：${draft.title}\nDraft ID：${draft.draftId}\n版本：${draft.version}\nSHA-256：${draft.sha256}\n\n${deletionWarning}\n草稿删除后不能恢复。`)) return
         const value = await run(`review:delete:${draft.draftId}`, async signal => {
           try {
             return await api('/production/delete-draft', { body: {
@@ -1703,7 +2033,7 @@ window.__ModuleLoader__.load({
         if (value) {
           setDrafts(current => current.filter(item => item.draftId !== draft.draftId))
           setDraftEditors(current => { const next = { ...current }; delete next[draft.draftId]; return next })
-          setExpandedDrafts(current => { const next = { ...current }; delete next[draft.draftId]; return next })
+          setExpandedDrafts(current => { const next = { ...current }; delete next[draft.draftId]; delete next[`preview:${draft.draftId}`]; return next })
         }
       }
       async function reconcileWechatCommitted(draft, attempt) {
@@ -1793,68 +2123,106 @@ window.__ModuleLoader__.load({
           }
         }
       }
-      function draftCoverRows(draft) {
-        return (draft.destinationPresentations ?? []).flatMap(item => item.cover?.assetId
-          ? [{ publisherId: item.publisherId, assetId: item.cover.assetId }]
-          : [])
+      function draftPresentationImageRows(draft) {
+        const all = draft.destinationPresentations ?? []
+        const configuredPublisherIds = new Set(publishers.map(item => item.id))
+        const active = all.filter(item => configuredPublisherIds.has(item.publisherId))
+        const visible = active.length ? active : all
+        return visible.flatMap(item => {
+          const ordered = [...new Set([item.cover?.assetId, ...(item.imageOrder ?? [])].filter(Boolean))]
+          return ordered.map((assetId, index) => ({ publisherId: item.publisherId, assetId, position: index + 1, isCover: index === 0 }))
+        })
       }
       function draftMediaUrl(draftId, assetId) {
         return `${API_PREFIX}/production/media?draftId=${encodeURIComponent(draftId)}&assetId=${encodeURIComponent(assetId)}`
       }
-      function coverPreviewView() {
-        if (!coverPreview) return null
-        return h('div', { className: 'pf-destructive-overlay pf-cover-overlay', role: 'presentation' },
-          h('button', { type: 'button', className: 'pf-backdrop', onClick: () => setCoverPreview(null), 'aria-label': '关闭封面预览' }),
-          h('section', { className: 'pf-cover-dialog', role: 'dialog', 'aria-modal': true, 'aria-labelledby': 'pf-cover-preview-title',
-            onKeyDown: event => { if (event.key === 'Escape') setCoverPreview(null) } },
-            h('div', { className: 'pf-cover-dialog-head' },
-              h('div', null, h('h2', { id: 'pf-cover-preview-title' }, '已绑定封面'), h('p', null, coverPreview.title)),
-              h('button', { type: 'button', className: 'pf-close', onClick: () => setCoverPreview(null), 'aria-label': '关闭封面预览' }, '×')),
-            h('div', { className: 'pf-cover-grid' }, ...coverPreview.covers.map(cover => {
-              const publisher = publishers.find(item => item.id === cover.publisherId)
-              return h('figure', { className: 'pf-cover-figure', key: `${cover.publisherId}:${cover.assetId}` },
-                h('img', { className: 'pf-cover-image', src: draftMediaUrl(coverPreview.draftId, cover.assetId),
-                  alt: `${publisher?.name ?? cover.publisherId} 已绑定封面`, referrerPolicy: 'no-referrer' }),
-                h('figcaption', null,
-                  h('strong', null, publisher?.name ?? cover.publisherId),
-                  h('span', { className: 'pf-code' }, cover.assetId)))
-            })),
-            h('div', { className: 'pf-actions' }, h(Button, { onClick: () => setCoverPreview(null) }, '关闭'))))
+      function closePresentationMediaPreview() { setPresentationMediaPreview(null) }
+      function closePresentationOriginalPreview() {
+        setPresentationMediaPreview(current => current ? { ...current, original: null } : current)
+      }
+      function presentationMediaPreviewView() {
+        if (!presentationMediaPreview) return null
+        const original = presentationMediaPreview.original
+        return h(React.Fragment, null,
+          h('div', { className: 'pf-destructive-overlay pf-cover-overlay', role: 'presentation' },
+            h('button', { type: 'button', className: 'pf-backdrop', onClick: closePresentationMediaPreview, 'aria-label': '关闭非正文图片列表' }),
+            h('section', { className: 'pf-cover-dialog', role: 'dialog', 'aria-modal': original ? undefined : true, 'aria-labelledby': 'pf-presentation-media-title',
+              onKeyDown: event => { if (event.key === 'Escape' && !original) closePresentationMediaPreview() } },
+              h('div', { className: 'pf-cover-dialog-head' },
+                h('div', null, h('h2', { id: 'pf-presentation-media-title' }, '不在正文中的图片'),
+                  h('p', null, `${presentationMediaPreview.title} · 按微信上传顺序排列，第一张作为封面上传。点击图片查看原图。`)),
+                h('button', { type: 'button', className: 'pf-close', onClick: closePresentationMediaPreview, 'aria-label': '关闭非正文图片列表' }, '×')),
+              h('div', { className: 'pf-cover-grid' }, ...presentationMediaPreview.images.map(image => {
+                const publisher = publishers.find(item => item.id === image.publisherId)
+                const publisherName = publisher?.name ?? image.publisherId
+                const imageUrl = draftMediaUrl(presentationMediaPreview.draftId, image.assetId)
+                const imageAlt = `${publisherName} 第 ${image.position} 张非正文图片${image.isCover ? '（封面）' : ''}`
+                return h('figure', { className: 'pf-cover-figure', key: `${image.publisherId}:${image.assetId}` },
+                  h('button', { type: 'button', className: 'pf-cover-image-button', title: '点击查看原图', 'aria-label': `查看原图：${imageAlt}`,
+                    onClick: () => setPresentationMediaPreview(current => current ? { ...current, original: { ...image, publisherName, imageUrl, imageAlt } } : current) },
+                    h('img', { className: 'pf-cover-image', src: imageUrl, alt: imageAlt, referrerPolicy: 'no-referrer' })),
+                  h('figcaption', null,
+                    h('strong', null, `${publisherName} · 第 ${image.position} 张${image.isCover ? ' · 封面' : ' · 非封面'}`),
+                    h('span', { className: 'pf-code' }, image.assetId)))
+              })),
+              h('div', { className: 'pf-actions' }, h(Button, { onClick: closePresentationMediaPreview }, '关闭')))),
+          original ? h('div', { className: 'pf-destructive-overlay pf-original-overlay', role: 'presentation' },
+            h('button', { type: 'button', className: 'pf-backdrop', onClick: closePresentationOriginalPreview, 'aria-label': '关闭原图预览' }),
+            h('section', { className: 'pf-original-dialog', role: 'dialog', 'aria-modal': true, 'aria-labelledby': 'pf-original-image-title',
+              onKeyDown: event => { if (event.key === 'Escape') { event.stopPropagation(); closePresentationOriginalPreview() } } },
+              h('div', { className: 'pf-original-dialog-head' },
+                h('div', null, h('h2', { id: 'pf-original-image-title' }, '查看原图'),
+                  h('p', null, `${original.publisherName} · 第 ${original.position} 张${original.isCover ? ' · 封面' : ''} · ${original.assetId}`)),
+                h('button', { type: 'button', className: 'pf-close', onClick: closePresentationOriginalPreview, 'aria-label': '关闭原图预览' }, '×')),
+              h('div', { className: 'pf-original-stage' },
+                h('img', { className: 'pf-original-image', src: original.imageUrl, alt: original.imageAlt, referrerPolicy: 'no-referrer' })),
+              h('div', { className: 'pf-actions' },
+                h('a', { className: 'pf-btn', href: original.imageUrl, target: '_blank', rel: 'noopener noreferrer' }, '在新窗口打开'),
+                h(Button, { onClick: closePresentationOriginalPreview }, '返回图片列表')))) : null)
       }
       function reviewView() {
         if (!status?.services.production) return h(Empty, null, '草稿生产服务未启用。数据获取和内容生成请在 DSH Chat 中执行。')
-        const statusCounts = drafts.reduce((counts, draft) => ({ ...counts, [draft.status]: (counts[draft.status] ?? 0) + 1 }), {})
+        const statusCounts = draftPage.statusCounts ?? {}
         const reviewSummary = [
-          ['待审核', statusCounts.draft ?? 0], ['已拒绝', statusCounts.rejected ?? 0], ['已批准', statusCounts.approved ?? 0],
-          ['发布处理中', statusCounts.publishing ?? 0], ['已发布', statusCounts.published ?? 0],
+          ['', '全部', Object.values(statusCounts).reduce((sum, value) => sum + Number(value || 0), 0)],
+          ['draft', '待审核', statusCounts.draft ?? 0], ['rejected', '已拒绝', statusCounts.rejected ?? 0], ['approved', '已批准', statusCounts.approved ?? 0],
+          ['publishing', '发布处理中', statusCounts.publishing ?? 0], ['published', '已发布', statusCounts.published ?? 0],
         ]
+        const totalPages = Math.max(1, Math.ceil(draftPage.total / draftQuery.pageSize))
         const publishersById = new Map(publishers.map(publisher => [publisher.id, publisher]))
         return h('div', { className: 'pf-review-page' },
-          h('h2', { className: 'pf-section-title' }, '草稿审核与发布'),
-          h('p', { className: 'pf-section-help' }, '先根据状态定位需要处理的草稿。展开后可编辑、预览和审核；发布始终只读取已批准并与版本及 SHA-256 精确绑定的 Artifact。'),
-          h('div', { className: 'pf-review-toolbar' },
-            h('span', { className: 'pf-muted' }, `共 ${drafts.length} 份草稿`),
-            h('div', { className: 'pf-actions' }, h(Button, { onClick: refreshReview, disabled: !!busy }, '刷新草稿'))),
-          h('div', { className: 'pf-review-summary', role: 'list', 'aria-label': '草稿状态汇总' }, ...reviewSummary.map(([label, count]) => h('div', { key: label, className: 'pf-review-stat', role: 'listitem' }, h('strong', null, String(count)), h('span', null, label)))),
+          h('div', { className: 'pf-review-header' },
+            h('div', null, h('h2', { className: 'pf-section-title' }, '草稿审核与发布'), h('p', { className: 'pf-section-help' }, '使用筛选快速定位草稿；列表保持紧凑，每次仅展开一份草稿处理内容、审批和发布。')),
+            h(Button, { onClick: refreshReview, disabled: !!busy }, '刷新')),
+          h('section', { className: 'pf-review-filter-panel', 'aria-label': '草稿筛选' },
+            h('form', { className: 'pf-review-filter-form', onSubmit: event => { event.preventDefault(); void applyDraftFilters() } },
+              h(Field, { className: 'pf-review-search', label: '搜索', value: draftQuery.query, placeholder: '标题、Draft ID、生成器或 Request ID', onChange: query => setDraftQuery(current => ({ ...current, query })) }),
+              h(Field, { className: 'pf-review-status-filter', label: '状态', value: draftQuery.status, options: reviewSummary.map(([value, label]) => ({ value, label })), onChange: status => setDraftQuery(current => ({ ...current, status })) }),
+              h(Field, { className: 'pf-review-page-size', label: '每页', value: String(draftQuery.pageSize), options: [10, 20, 50].map(value => ({ value: String(value), label: `${value} 条` })), onChange: value => setDraftQuery(current => ({ ...current, pageSize: Number(value) })) }),
+              h('div', { className: 'pf-review-filter-actions' }, h(Button, { primary: true, onClick: applyDraftFilters, disabled: !!busy }, '查询'), h(Button, { onClick: resetDraftFilters, disabled: !!busy || (!draftQuery.status && !draftQuery.query) }, '重置'))),
+            h('div', { className: 'pf-review-status-chips', role: 'list', 'aria-label': '按状态快速筛选' }, ...reviewSummary.map(([value, label, count]) => h('button', { type: 'button', key: value || 'all', className: `pf-review-status-chip${draftQuery.status === value ? ' pf-review-status-chip-on' : ''}`, disabled: !!busy, onClick: () => queryDraftPage({ ...draftQuery, status: value, page: 1 }) }, h('span', null, label), h('strong', null, String(count))))),
+            h('div', { className: 'pf-review-toolbar' }, h('span', { className: 'pf-muted' }, `找到 ${draftPage.total} 份草稿 · 第 ${draftQuery.page} / ${totalPages} 页`), h('span', { className: 'pf-muted' }, '默认按创建时间从新到旧'))),
           drafts.some(draft => draftDirty(draft)) ? h('div', { className: 'pf-notice pf-notice-error' }, '存在未保存的草稿修改；发布已阻止。请先保存或放弃全部草稿修改。') : null,
           drafts.length ? h('div', { className: 'pf-review-list' }, drafts.map((draft, draftIndex) => {
             const editor = editorForDraft(draft)
             const editable = ['draft', 'rejected'].includes(draft.status)
+            const deletable = ['draft', 'rejected', 'approved', 'published'].includes(draft.status)
             const dirty = draftDirty(draft)
             const invalid = draftEditorInvalid(editor)
             const expanded = expandedDrafts[draft.draftId] === true
+            const previewExpanded = expandedDrafts[`preview:${draft.draftId}`] === true
             const titleInputId = `pf-draft-title-${draftIndex}`
             const markdownInputId = `pf-draft-markdown-${draftIndex}`
             const previewLabelId = `pf-draft-preview-label-${draftIndex}`
             const draftTitleId = `pf-draft-title-label-${draftIndex}`
             const state = draftStatus(draft.status)
             const draftRssOutputs = rssOutputs.filter(output => output.draftId === draft.draftId)
-            const boundCovers = draftCoverRows(draft)
+            const presentationImages = draftPresentationImageRows(draft)
             const hasNewspicPresentation = draft.destinationPresentations?.some(item => publishers.some(publisher => publisher.id === item.publisherId && publisher.articleType === 'newspic')) === true
             const reconciliationAttempt = draft.reconciliationRequired
               ? draft.publicationAttempts?.find(attempt => attempt.state === 'reconciliation-required' && attempt.publisherId?.startsWith('wechat-draft:'))
               : undefined
-            return h('article', { className: `pf-card pf-draft-card pf-draft-status-${draft.status}`, key: draft.draftId, 'aria-labelledby': draftTitleId },
+            return h('article', { className: `pf-card pf-draft-card pf-draft-status-${draft.status}${expanded ? ' pf-draft-card-expanded' : ''}`, key: draft.draftId, 'aria-labelledby': draftTitleId },
               h('div', { className: 'pf-draft-card-head' },
                 h('div', { className: 'pf-draft-heading' },
                   h('div', { className: 'pf-draft-state-row' },
@@ -1863,18 +2231,17 @@ window.__ModuleLoader__.load({
                     draft.reconciliationRequired ? h('span', { className: 'pf-badge pf-draft-dirty' }, '需要人工对账') : null),
                   h('h3', { id: draftTitleId, className: 'pf-draft-title' }, editor.title || '(无标题)')),
                 h('div', { className: 'pf-actions pf-draft-head-actions' },
-                  boundCovers.length ? h(Button, { onClick: () => setCoverPreview({ draftId: draft.draftId, title: editor.title || '(无标题)', covers: boundCovers }),
-                    'aria-label': `查看已绑定封面：${editor.title || '无标题'}` }, boundCovers.length > 1 ? `查看封面 (${boundCovers.length})` : '查看封面') : null,
+                  presentationImages.length ? h(Button, { onClick: () => setPresentationMediaPreview({ draftId: draft.draftId, title: editor.title || '(无标题)', images: presentationImages }),
+                    'aria-label': `查看不在正文中的图片：${editor.title || '无标题'}` }, `非正文图片 (${presentationImages.length})`) : null,
                   h('button', {
                     type: 'button', className: 'pf-btn', 'aria-expanded': expanded, 'aria-controls': `pf-draft-body-${draftIndex}`, 'aria-label': `${expanded ? '收起' : '展开'}草稿：${editor.title || '无标题'}`,
-                    onClick: () => setExpandedDrafts(current => ({ ...current, [draft.draftId]: current[draft.draftId] !== true })),
+                    onClick: () => setExpandedDrafts(current => current[draft.draftId] === true ? {} : { [draft.draftId]: true }),
                   }, expanded ? '收起' : '展开'))),
               h('div', { className: 'pf-draft-meta' },
-                h('span', { className: 'pf-draft-meta-item' }, '当前阶段：', h('strong', null, state.hint)),
                 h('span', { className: 'pf-draft-meta-item' }, '生成器：', h('strong', null, draft.generatorId)),
                 h('span', { className: 'pf-draft-meta-item' }, '更新时间：', h('strong', null, displayDraftTime(draft.updatedAt))),
                 draft.publishedPublisherIds?.length ? h('span', { className: 'pf-draft-meta-item' }, '已发布渠道：', h('strong', null, String(draft.publishedPublisherIds.length))) : null),
-              h('p', { className: 'pf-code pf-draft-technical' }, `${draft.draftId} · 修订 ${draft.version} · SHA-256 ${expanded ? draft.sha256 : `${draft.sha256.slice(0, 12)}…`}`),
+              expanded ? h('p', { className: 'pf-code pf-draft-technical' }, `${draft.draftId} · 修订 ${draft.version} · SHA-256 ${draft.sha256}`) : null,
               draft.reconciliationRequired ? h('div', { className: 'pf-notice pf-notice-error', style: { margin: '14px 20px 0' } },
                 h('p', null, 'DSH 未收到可确认的最终响应；本地“需要对账”状态不代表微信公众号创建失败。请登录公众号后台核对本次文章，确认前不要重试。'),
                 reconciliationAttempt ? h('div', { className: 'pf-actions' },
@@ -1890,13 +2257,17 @@ window.__ModuleLoader__.load({
                 draft.destinationPresentations?.length || draft.mediaAssets?.length ? h('div', { className: 'pf-notice' },
                   h('strong', null, '已绑定的发布呈现（只读）'),
                   h('p', null, `${draft.mediaAssets?.length ?? 0} 个内容寻址图片 · Artifact Binding ${draft.artifactBindingSha256 || '-'}`),
-                  ...(draft.destinationPresentations ?? []).map(item => h('div', { key: item.publisherId, className: 'pf-row' },
-                    h('span', { className: 'pf-code' }, item.publisherId),
-                    h('span', null, `作者：${item.author || 'Profile 默认'} · 摘要：${item.digest || 'Profile 策略'} · 图片顺序：${item.imageOrder?.length ?? 0}`),
-                    item.cover?.assetId ? h('button', { type: 'button', className: 'pf-cover-thumb-button',
-                      onClick: () => setCoverPreview({ draftId: draft.draftId, title: editor.title || '(无标题)', covers: boundCovers }), 'aria-label': '查看已绑定封面大图' },
-                      h('img', { src: draftMediaUrl(draft.draftId, item.cover.assetId), alt: '已绑定封面',
-                        className: 'pf-cover-thumb', referrerPolicy: 'no-referrer' })) : null))) : null,
+                  ...(draft.destinationPresentations ?? []).map(item => {
+                    const images = presentationImages.filter(image => image.publisherId === item.publisherId)
+                    const first = images[0]
+                    return h('div', { key: item.publisherId, className: 'pf-row' },
+                      h('span', { className: 'pf-code' }, item.publisherId),
+                      h('span', null, `作者：${item.author || 'Profile 默认'} · 摘要：${item.digest || 'Profile 策略'} · 非正文图片：${images.length} 张 · 第一张作为封面`),
+                      first ? h('button', { type: 'button', className: 'pf-cover-thumb-button',
+                        onClick: () => setPresentationMediaPreview({ draftId: draft.draftId, title: editor.title || '(无标题)', images }), 'aria-label': '查看非正文图片列表' },
+                        h('img', { src: draftMediaUrl(draft.draftId, first.assetId), alt: '非正文图片列表第一张（封面）',
+                          className: 'pf-cover-thumb', referrerPolicy: 'no-referrer' })) : null)
+                  })) : null,
                 h('div', { className: 'pf-draft-section-head' },
                   h('strong', null, '内容编辑'),
                   h('span', null, editable ? '修改后需保存为新版本，再重新审核。' : '当前状态内容只读。')),
@@ -1911,10 +2282,13 @@ window.__ModuleLoader__.load({
                 h('div', { className: 'pf-actions' },
                   h(Button, { primary: true, onClick: () => saveDraftRevision(draft), disabled: !!busy || !editable || !dirty || invalid }, '保存新版本'),
                   h(Button, { onClick: () => setDraftEditors(current => ({ ...current, [draft.draftId]: { title: draft.title, markdown: draft.markdown } })), disabled: !!busy || !editable || !dirty }, '放弃修改')),
-                h('div', { className: 'pf-field', style: { marginTop: 12 } },
-                  h('strong', { id: previewLabelId }, '安全渲染预览（Markdown）'),
-                  hasNewspicPresentation ? h('p', { className: 'pf-muted' }, '当前绑定包含微信图片消息（newspic）：微信接口只接受纯文本，发布时会移除 Markdown 样式和正文图片，但保留段落空行、列表编号、项目符号及行内空格。此处不是微信像素级预览。') : null,
-                  h('div', { className: 'pf-preview', role: 'region', 'aria-labelledby': previewLabelId }, ...renderMarkdownPreview(editor.markdown, draft.draftId))),
+                h('div', { className: 'pf-field pf-draft-preview-section', style: { marginTop: 12 } },
+                  h('div', { className: 'pf-draft-section-head' },
+                    h('strong', { id: previewLabelId }, '安全渲染预览（Markdown）'),
+                    h('button', { type: 'button', className: 'pf-btn', 'aria-expanded': previewExpanded, 'aria-controls': `pf-draft-preview-${draftIndex}`,
+                      onClick: () => setExpandedDrafts(current => ({ ...current, [`preview:${draft.draftId}`]: !previewExpanded })) }, previewExpanded ? '收起预览' : '展开预览')),
+                  previewExpanded && hasNewspicPresentation ? h('p', { className: 'pf-muted' }, '当前绑定包含微信图片消息（newspic）：微信接口只接受纯文本，发布时会移除 Markdown 样式和正文图片，但保留段落空行、列表编号、项目符号及行内空格。此处不是微信像素级预览。') : null,
+                  previewExpanded ? h('div', { id: `pf-draft-preview-${draftIndex}`, className: 'pf-preview', role: 'region', 'aria-labelledby': previewLabelId }, ...renderMarkdownPreview(editor.markdown, draft.draftId)) : null),
                 h('section', { className: 'pf-draft-attempts', 'aria-label': '本地 RSS 生成内容' },
                   h('strong', null, '本地 RSS 生成内容'),
                   draftRssOutputs.length ? draftRssOutputs.map(output => {
@@ -1933,10 +2307,10 @@ window.__ModuleLoader__.load({
                   h('div', { className: 'pf-draft-decision-copy' },
                     h('strong', null, draft.status === 'draft' ? '审核决定' : ['approved', 'published'].includes(draft.status) ? '选择发布渠道' : '草稿管理'),
                     h('span', null, draft.status === 'draft' ? '审批会精确绑定当前显示的版本与 SHA-256。' : ['approved', 'published'].includes(draft.status) ? '每张渠道卡片对应一个固定发布目标；发布器只读取已批准且持久化的 Artifact。' : '被拒绝的草稿可继续修改，或从列表中永久移除。')),
-                  draft.status === 'draft' || editable ? h('div', { className: 'pf-actions' },
+                  deletable ? h('div', { className: 'pf-actions' },
                     draft.status === 'draft' ? h(Button, { primary: true, onClick: () => reviewDraft(draft, 'approve'), disabled: !!busy || dirty }, '批准显示的版本与哈希') : null,
                     draft.status === 'draft' ? h(Button, { danger: true, onClick: () => reviewDraft(draft, 'reject'), disabled: !!busy || dirty }, '拒绝显示的版本与哈希') : null,
-                    editable ? h(Button, { danger: true, onClick: () => deleteDraft(draft), disabled: !!busy || dirty }, '删除草稿') : null) : null,
+                    h(Button, { danger: true, onClick: () => deleteDraft(draft), disabled: !!busy || dirty }, '删除草稿')) : null,
                   ['approved', 'published'].includes(draft.status) ? h('section', { className: 'pf-publish-section', 'aria-label': '可用发布渠道' },
                     h('div', { className: 'pf-publish-section-head' }, h('strong', null, '可用发布目标'), h('span', null, '首次发布与显式重复发布会分别创建独立尝试及回执')),
                     publicationFeedback?.draftId === draft.draftId ? h('div', { className: `pf-notice${publicationFeedback.type === 'error' ? ' pf-notice-error' : ''} pf-publication-feedback`, role: 'status', 'aria-live': 'polite' }, publicationFeedback.text) : null,
@@ -1974,8 +2348,16 @@ window.__ModuleLoader__.load({
                       h('td', { className: 'pf-code' }, attempt.targetIdentifier || '-'), h('td', null, attempt.createdAt), h('td', null, attempt.completedAt || '-'))))))
                     : h('p', { className: 'pf-muted' }, '暂无尝试记录；升级前回执显示为“历史回执（无尝试编号）”。'))
               ) : null)
-          })) : h(Empty, null, '尚无草稿。请先在 DSH Chat 中完成数据处理与 AI 生成。'),
-          coverPreviewView())
+          })) : h(Empty, null, draftQuery.status || draftQuery.query ? '当前筛选条件下没有草稿。' : '尚无草稿。请先在 DSH Chat 中完成数据处理与 AI 生成。'),
+          draftPage.total > 0 ? h('nav', { className: 'pf-review-pagination', 'aria-label': '草稿分页' },
+            h('span', { className: 'pf-muted' }, `第 ${draftQuery.page} / ${totalPages} 页，共 ${draftPage.total} 条`),
+            h('div', { className: 'pf-actions' },
+              h(Button, { onClick: () => queryDraftPage({ ...draftQuery, page: 1 }), disabled: !!busy || draftQuery.page <= 1 }, '首页'),
+              h(Button, { onClick: () => queryDraftPage({ ...draftQuery, page: draftQuery.page - 1 }), disabled: !!busy || draftQuery.page <= 1 }, '上一页'),
+              h(Button, { onClick: () => queryDraftPage({ ...draftQuery, page: draftQuery.page + 1 }), disabled: !!busy || draftQuery.page >= totalPages }, '下一页'),
+              h(Button, { onClick: () => queryDraftPage({ ...draftQuery, page: totalPages }), disabled: !!busy || draftQuery.page >= totalPages }, '末页')))
+            : null,
+          presentationMediaPreviewView())
       }
 
       function updatePublisherRow(rowId, operation) {
@@ -2551,7 +2933,7 @@ window.__ModuleLoader__.load({
               h(Button, { danger: true, disabled: !!busy || publisherPendingOperation.canCancel !== true, onClick: () => reconcilePendingPublisherOperation('cancel') }, '取消（暂停任务前）'))) : null)
       }
 
-      const views = { overview: overviewView, 'source-settings': sourceSettingsView, toolsets: toolsetsView, workflows: workflowBuilderView, review: reviewView, 'publisher-profile': publisherProfileManagerView, receipts: receiptsView }
+      const views = { overview: overviewView, 'source-settings': sourceSettingsView, content: contentView, toolsets: toolsetsView, workflows: workflowBuilderView, review: reviewView, 'publisher-profile': publisherProfileManagerView, receipts: receiptsView }
       return h('div', { className: 'pf-shell' },
         h('div', { className: 'pf-shell-top' },
           h('div', { className: 'pf-head' }, h('div', null, h('h1', { className: 'pf-title' }, 'PrismFlow 流光'), h('p', { className: 'pf-sub' }, '受控配置、不可变草稿审核、可信 Artifact 发布与审计'), h('p', { className: 'pf-version' }, `@prismflow/dsh · ${status?.pluginVersion ?? '加载中…'}`)), busy ? h(Badge, { enabled: true }, '处理中…') : h(Badge, { enabled: true }, '就绪')),
@@ -2578,6 +2960,11 @@ window.__ModuleLoader__.load({
     const inject = ['slots']
     function apply(ctx) {
       const controller = createDashboardController()
+      ctx.slots.inject('conversation.input.dock', () => ctx.slots.register({
+        name: 'conversation.input.dock',
+        id: 'prismflow-prompt-suggestions',
+        order: 30,
+      }, PromptSuggestionsDock))
       ctx.slots.inject('sidebar.footer.action', () => ctx.slots.register({
         name: 'sidebar.footer.action',
         id: 'prismflow',
@@ -2599,6 +2986,7 @@ window.__ModuleLoader__.load({
     exports.normalizePublisherConfigBrowser = normalizePublisherConfigBrowser
     exports.canonicalProfileValue = canonicalProfileValue
     exports.publisherRuntimeApplied = publisherRuntimeApplied
+    exports.PromptSuggestionsDock = PromptSuggestionsDock
     return module.exports
   },
 })

@@ -1,6 +1,6 @@
 // Generated from src/core/content/AIContentSelection.ts by integrations/dsh/scripts/sync-shared.mjs.
 import { createHash } from 'node:crypto';
-export const AI_CONTENT_SELECTION_STRATEGY_VERSION = 'ai-selection-v2';
+export const AI_CONTENT_SELECTION_STRATEGY_VERSION = 'ai-selection-v4';
 const STOPWORDS = new Set([
     'the', 'a', 'an', 'and', 'or', 'for', 'of', 'to', 'in', 'on', 'with', 'from', 'by',
     'new', 'latest', 'today', 'report', 'update', 'announces', 'launches',
@@ -133,8 +133,11 @@ function candidateBodyChars(candidate) {
     return (typeof item.description === 'string' ? item.description.length : 0)
         + (typeof item.content === 'string' ? item.content.length : 0);
 }
+function candidateAIScore(candidate) {
+    return Number.isInteger(candidate.editorial?.aiScore) ? candidate.editorial.aiScore : 0;
+}
 function representativeTuple(candidate, sourceCount) {
-    return [candidate.relevanceOrigin === 'local-match' ? 1 : 0, candidateBodyChars(candidate), sourceCount, candidate.effectiveTimestamp, candidate.record.storeId];
+    return [candidateAIScore(candidate), candidateBodyChars(candidate), sourceCount, candidate.effectiveTimestamp, candidate.record.storeId];
 }
 function compareTupleDescending(left, right) {
     for (let index = 0; index < 4; index += 1) {
@@ -222,25 +225,57 @@ export function clusterAIEvents(candidates, options = {}) {
         values.push(sorted[index]);
         groups.set(root, values);
     }
-    return [...groups.values()].map(members => {
-        members.sort((a, b) => a.record.storeId.localeCompare(b.record.storeId));
-        const sources = new Set(members.map(item => item.record.sourceId));
-        const representative = [...members].sort((a, b) => compareTupleDescending(representativeTuple(a, sources.size), representativeTuple(b, sources.size)))[0];
-        const topics = [...new Set(members.flatMap(item => item.assessment.topics))].sort();
-        const claims = members.map(item => `${item.record.storeId}:${item.contentHash}`).sort().join('\n');
-        return {
-            clusterId: createHash('sha256').update(claims, 'utf8').digest('hex'), members, representative, topics,
-            signals: {
-                distinctSourceCount: sources.size, memberCount: members.length,
-                recencyTimestamp: Math.max(...members.map(item => item.effectiveTimestamp)),
-                bodyChars: candidateBodyChars(representative), topicCount: topics.length,
-                localMatch: representative.relevanceOrigin === 'local-match',
-            },
-        };
-    }).sort((a, b) => a.clusterId.localeCompare(b.clusterId));
+    return [...groups.values()].map(buildEventCluster).sort((a, b) => a.clusterId.localeCompare(b.clusterId));
+}
+function buildEventCluster(input) {
+    const members = [...input].sort((a, b) => a.record.storeId.localeCompare(b.record.storeId));
+    if (members.length < 1)
+        throw new Error('AI event cluster cannot be empty');
+    const sources = new Set(members.map(item => item.record.sourceId));
+    const representative = [...members].sort((a, b) => compareTupleDescending(representativeTuple(a, sources.size), representativeTuple(b, sources.size)))[0];
+    const topics = [...new Set(members.flatMap(item => item.assessment.topics))].sort();
+    const claims = members.map(item => `${item.record.storeId}:${item.contentHash}`).sort().join('\n');
+    return {
+        clusterId: createHash('sha256').update(claims, 'utf8').digest('hex'), members, representative, topics,
+        signals: {
+            distinctSourceCount: sources.size, memberCount: members.length,
+            recencyTimestamp: Math.max(...members.map(item => item.effectiveTimestamp)),
+            bodyChars: candidateBodyChars(representative), topicCount: topics.length,
+            localMatch: representative.relevanceOrigin === 'local-match',
+            aiScore: Math.max(...members.map(candidateAIScore)),
+        },
+    };
+}
+/** Build deterministic, hash-bound clusters from semantic groups decided by the AI reviewer. */
+export function clusterAIEventsFromGroups(candidates, storeIdGroups) {
+    if (!Array.isArray(candidates) || candidates.length < 1 || !Array.isArray(storeIdGroups) || storeIdGroups.length < 1) {
+        throw new Error('AI event grouping input is invalid');
+    }
+    const byId = new Map();
+    for (const candidate of candidates) {
+        const storeId = candidate?.record?.storeId;
+        if (typeof storeId !== 'string' || !storeId || byId.has(storeId))
+            throw new Error('AI event candidates contain duplicate or invalid ids');
+        byId.set(storeId, candidate);
+    }
+    const seen = new Set();
+    const clusters = storeIdGroups.map(group => {
+        if (!Array.isArray(group) || group.length < 1)
+            throw new Error('AI event grouping contains an empty cluster');
+        const members = group.map(storeId => {
+            if (typeof storeId !== 'string' || seen.has(storeId) || !byId.has(storeId))
+                throw new Error('AI event grouping contains a duplicate or unknown id');
+            seen.add(storeId);
+            return byId.get(storeId);
+        });
+        return buildEventCluster(members);
+    });
+    if (seen.size !== byId.size)
+        throw new Error('AI event grouping omitted candidates');
+    return clusters.sort((a, b) => a.clusterId.localeCompare(b.clusterId));
 }
 function clusterPriority(cluster) {
-    return [Math.min(cluster.signals.distinctSourceCount, 5), cluster.signals.localMatch ? 1 : 0,
+    return [cluster.signals.aiScore, Math.min(cluster.signals.distinctSourceCount, 5),
         cluster.signals.topicCount, Math.min(cluster.signals.bodyChars, 100_000), cluster.signals.recencyTimestamp, cluster.clusterId];
 }
 function compareClusterPriority(left, right) {
@@ -307,7 +342,8 @@ export function rankDiverseEvents(clusters, options) {
         rank: index + 1, cluster,
         reasons: [quota && cluster.representative.record.sourceId === quota.sourceId ? 'source-quota' : undefined,
             cluster.signals.distinctSourceCount > 1 ? 'cross-source-corroboration' : 'long-tail-event',
-            cluster.signals.localMatch ? 'local-ai-match' : 'reviewer-accepted',
+            cluster.representative.relevanceOrigin === 'ai-editorial' ? `ai-editorial-score-${cluster.signals.aiScore}`
+                : cluster.signals.localMatch ? 'local-ai-match' : 'reviewer-accepted',
             cluster.signals.topicCount > 1 ? 'multi-topic-event' : 'topic-representative'].filter((reason) => Boolean(reason)),
     }));
 }
@@ -673,6 +709,9 @@ export function buildPackedMaterial(candidate, maxChars, maxMediaPerItem = 16) {
         author: clean(item.author, Math.min(512, Math.max(0, Math.floor(maxChars * 0.06)))),
         publishedDate: clean(item.published_date, 64),
         category: clean(item.category, Math.min(256, Math.max(0, Math.floor(maxChars * 0.06)))),
+        aiSummary: clean(candidate.editorial?.aiSummary, Math.min(4_000, Math.max(0, Math.floor(maxChars * 0.4)))),
+        aiScore: candidateAIScore(candidate),
+        scoreReason: clean(candidate.editorial?.reason, Math.min(2_000, Math.max(0, Math.floor(maxChars * 0.25)))),
     };
     while (excerpts.length > 0 && JSON.stringify({ ...base, excerpts, media }).length > maxChars)
         excerpts.pop();

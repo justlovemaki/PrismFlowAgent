@@ -9,6 +9,7 @@ import { validatePublisherChangePlan } from '../lib/publisher-profile-cli.js'
 const clientPath = new URL('../lib/client.js', import.meta.url)
 const packagePath = new URL('../package.json', import.meta.url)
 const installerPath = new URL('../scripts/install-dashboard.mjs', import.meta.url)
+const packageVersion = JSON.parse(await readFile(packagePath, 'utf8')).version
 
 function childrenOf(node) {
   const children = node?.props?.children
@@ -97,21 +98,21 @@ async function loadClient(overrides = new Map(), environment = {}) {
       get activeElement() { return activeElement },
       head: { appendChild(value) { appendedStyle = value } },
     },
-    AbortController, URL: SandboxURL, Blob, TextEncoder, console,
+    AbortController, URL: SandboxURL, URLSearchParams, Blob, TextEncoder, setTimeout, console,
     fetch(url, options) {
       fetchCalls.push({ url, ...options })
       return new Promise((resolve, reject) => { pendingFetches.push(resolve); pendingFetchRejects.push(reject) })
     },
   }
   vm.runInNewContext(source, sandbox, { filename: 'client.js' })
-  assert.equal(registration.id, '@prismflow/dsh-dashboard')
+  assert.equal(registration.id, '@prismflow/dsh/ui')
   const exports = registration.factory(id => {
     if (id === 'react') return React
     throw new Error(`unexpected client dependency: ${id}`)
   })
   exports.apply({
     slots: {
-      inject(name, callback) { assert.ok(['sidebar.footer.action', 'shell.overlay'].includes(name)); return callback() },
+      inject(name, callback) { assert.ok(['conversation.input.dock', 'sidebar.footer.action', 'shell.overlay'].includes(name)); return callback() },
       register(options, component) { registrations.set(options.name, { options, component }); return () => {} },
     },
   })
@@ -124,6 +125,11 @@ async function loadClient(overrides = new Map(), environment = {}) {
     refHook = 0
     return overlay.component(overlay.options.inject())
   }
+  function renderPromptDock(props) {
+    const dock = registrations.get('conversation.input.dock')
+    hook = 0; refHook = 0
+    return dock.component(props)
+  }
   function renderDashboard() {
     const overlayTree = renderOverlay()
     const dashboard = descendants(overlayTree).find(node => typeof node?.type === 'function' && node.type.name === 'Dashboard')
@@ -134,7 +140,7 @@ async function loadClient(overrides = new Map(), environment = {}) {
   }
   const controller = registrations.get('shell.overlay').options.inject().controller
   return {
-    source, exports, registrations, controller, renderDashboard, renderOverlay, appendedStyle, fetchCalls, pendingFetches, pendingFetchRejects, effects,
+    source, exports, registrations, controller, renderDashboard, renderOverlay, renderPromptDock, appendedStyle, fetchCalls, pendingFetches, pendingFetchRejects, effects,
     eventListeners, confirmCalls, promptCalls, clipboardWrites, downloads, stateSlots,
     runAnimationFrames() { const queued = [...animationFrames.values()]; animationFrames.clear(); for (const callback of queued) callback() },
     setActiveElement(value) { activeElement = value },
@@ -142,51 +148,63 @@ async function loadClient(overrides = new Map(), environment = {}) {
 }
 
 const status = {
-  pluginVersion: '0.19.23',
+  pluginVersion: packageVersion,
   services: { sources: true, sourceSettings: true, contentStore: true, publishers: true, receipts: true, production: true, generatorWorkflows: true, toolsets: true, imageGenerationSettings: true, rssOutputs: false },
-  counts: { sources: 2, sourceSettings: 1, publishers: 1, generators: 1, generatorWorkflows: 1, rssOutputs: 0 },
+  counts: { sources: 2, sourceSettings: 1, contents: 42, publishers: 1, generators: 1, generatorWorkflows: 1, rssOutputs: 0 },
 }
 
-test('dashboard installer derives its client package version from the publish package', async () => {
+test('dashboard client is exported by the owning package without a generated file dependency', async () => {
   const packageJson = JSON.parse(await readFile(packagePath, 'utf8'))
   const installer = await readFile(installerPath, 'utf8')
-  assert.equal(packageJson.version, '0.19.23')
+  assert.equal(packageJson.version, packageVersion)
   assert.equal(packageJson.dependencies['prism-flow-agent'], undefined, 'packed DSH package must not depend on its repository parent')
-  assert.match(installer, /const packageVersion = JSON\.parse\(readFileSync\(join\(packageRoot, 'package\.json'\), 'utf8'\)\)\.version/)
-  assert.match(installer, /version: packageVersion/)
-  assert.doesNotMatch(installer, /version: '0\.[45]\.0'/)
+  assert.equal(packageJson.exports['./ui/package.json'], './package.json')
+  assert.deepEqual(packageJson.dsh.client, {
+    platform: 'web',
+    inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-layout', '@deepseek-ai/dsh-client-ui-sidebar'],
+  })
+  assert.match(installer, /delete profilePackage\.dependencies\['@prismflow\/dsh-dashboard'\]/u)
+  assert.doesNotMatch(installer, /file:\.prismflow\/dashboard/u)
 })
 
-test('dashboard client is a seven-tab controlled admin, local Profile planning, and trusted publication plane', async () => {
+test('dashboard client is an eight-tab controlled admin, local Profile planning, and trusted publication plane', async () => {
   const client = await loadClient(new Map([[3, status]]))
   assert.equal(client.exports.inject[0], 'slots')
+  assert.equal(client.registrations.get('conversation.input.dock').options.id, 'prismflow-prompt-suggestions')
   assert.equal(client.registrations.get('sidebar.footer.action').options.id, 'prismflow')
   assert.equal(client.registrations.get('shell.overlay').options.id, 'prismflow-dashboard')
   assert.doesNotMatch(client.source, /settings\.section/)
-  for (const label of ['总览', '数据源配置', '工具集', '图片生成接口', '工作流生成器', '草稿审核与发布', '发布与存储', '发布审计']) assert.match(client.source, new RegExp(label))
+  for (const label of ['总览', '数据源配置', '已抓取数据', '工具集', '图片生成接口', '工作流生成器', '草稿审核与发布', '发布与存储', '发布审计']) assert.match(client.source, new RegExp(label))
   for (const removed of ['采集中心', '内容库', '原始快照发布', '选择素材', '创建生成任务', '兼容提示词', '生成提示词管理']) assert.equal(client.source.includes(removed), false, removed)
   for (const endpoint of ["api('/sources'", "api('/fetch'", "api('/sync'", "api('/content/query'", "api('/content/status'", "api('/publish'", "api('/production/generators'", "api('/generator-prompts'"]) assert.equal(client.source.includes(endpoint), false, endpoint)
-  assert.doesNotMatch(client.source, /pf-prompt|promptAdmin|promptEditor|savePrompt|rollbackPrompt/u)
+  assert.doesNotMatch(client.source, /promptAdmin|promptEditor|rollbackPrompt/u)
+  assert.match(client.source, /Chat 候选输入文案/u)
   assert.doesNotMatch(client.source, /credentialRef|apiUrl|baseUrl|webSearchTool|cookieEnv/)
+  for (const backupSurface of ['导出全部配置', '导入全部配置', '/configuration-backup/export', '/configuration-backup/import']) assert.ok(client.source.includes(backupSurface))
+  for (const retiredSurface of ['仅导出启用状态', '仅导入启用状态', '/toolsets/configuration/export', '/toolsets/configuration/import']) assert.equal(client.source.includes(retiredSurface), false)
+  assert.match(client.source, /当前工作流及其完整历史/u)
   assert.doesNotMatch(client.source, /dangerouslySetInnerHTML/)
   assert.match(client.source, /activeController\.current\?\.abort\(\)/)
   assert.match(client.source, /发布目标可能已写入，但持久化审计回执失败/)
   for (const provenance of ['草稿版本', 'Artifact SHA-256', 'artifactSha256', 'draftVersion', 'draftId']) assert.ok(client.source.includes(provenance))
-  assert.equal(client.appendedStyle.dataset.pluginCss, '@prismflow/dsh-dashboard/dashboard')
+  assert.equal(client.appendedStyle.dataset.pluginCss, '@prismflow/dsh/ui/dashboard')
   assert.match(client.appendedStyle.textContent, /\.pf-shell\{[^}]*overflow:hidden[^}]*display:flex[^}]*flex-direction:column/u)
   assert.match(client.appendedStyle.textContent, /\.pf-shell-top\{[^}]*flex:none/u)
   assert.match(client.appendedStyle.textContent, /\.pf-shell-content\{[^}]*flex:1[^}]*overflow:auto/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-sidebar-footer-stack\{[^}]*flex-direction:column[^}]*align-items:stretch/u)
+  assert.doesNotMatch(client.appendedStyle.textContent, /\.pf-sidebar-action-(?:wide|rail)\{[^}]*position:fixed/u)
+  assert.match(client.source, /footer\.classList\.add\('pf-sidebar-footer-stack'\)/u)
 
   const dashboard = client.renderDashboard()
   const [fixedTop, scrollingContent] = childrenOf(dashboard)
   assert.equal(fixedTop.props.className, 'pf-shell-top')
   assert.equal(scrollingContent.props.className, 'pf-shell-content')
   assert.ok(descendants(fixedTop).some(node => node?.props?.className === 'pf-tabs'))
-  assert.ok(descendants(fixedTop).includes('@prismflow/dsh · 0.19.23'))
+  assert.ok(descendants(fixedTop).includes(`@prismflow/dsh · ${packageVersion}`))
   assert.equal(descendants(scrollingContent).some(node => node?.props?.className === 'pf-tabs'), false)
   const values = descendants(dashboard)
   const tabs = values.filter(node => node?.type === 'button' && node?.props?.className?.split?.(' ').includes('pf-tab')).map(node => childrenOf(node)[0])
-  assert.deepEqual(tabs, ['总览', '工具集', '数据源配置', '发布与存储', '工作流生成器', '草稿审核与发布', '发布审计'])
+  assert.deepEqual(tabs, ['总览', '工具集', '数据源配置', '已抓取数据', '发布与存储', '工作流生成器', '草稿审核与发布', '发布审计'])
   assert.match(client.source, /PrismFlowPublisherProfileDocument\/v2/)
   assert.match(client.source, /保存配置并准备重启/)
   assert.match(client.source, /api\('\/publisher-profile\/apply'/)
@@ -196,20 +214,93 @@ test('dashboard client is a seven-tab controlled admin, local Profile planning, 
   assert.equal(values.includes('并且只能在 Dashboard 发布。'), false)
 })
 
-test('toolset page exposes write-only image endpoint, model, size, encoding, and API Key controls', async () => {
-  const imageSettings = { id: 'current', version: 3, sha256: '7'.repeat(64), imageApiUrl: 'https://images.example/v1/images/generations', imageApiProtocol: 'images-generations', imageModel: 'image-pro', imageSize: '1024x1024', avifQuality: '70', avifEffort: '5', updatedAt: '2026-01-01T00:00:00.000Z' }
-  const toolset = { mode: 'complete', version: 3, sha256: '8'.repeat(64), enabledTools: ['prismflow_image_generation', 'prismflow_sources'], enabledSkills: ['prismflow-system', 'prismflow-personal'] }
-  const skills = [
-    { skillId: 'prismflow-personal', description: 'Personal Skill', enabled: true, origin: 'personal-custom' },
-    { skillId: 'prismflow-system', description: 'System Skill', enabled: true, origin: 'system-default' },
-  ]
-  const tools = [
-    { name: 'prismflow_image_generation', origin: 'personal-custom', core: false },
-    { name: 'prismflow_sources', origin: 'system-default', core: true },
-  ]
-  const client = await loadClient(new Map([[0, 'toolsets'], [3, status], [37, toolset], [38, tools], [39, skills], [44, imageSettings], [45, { configured: true, writable: true, allowDashboardWrite: true, source: 'file' }], [46, '']]))
+test('captured-content tab renders server-paged searchable sortable category-filtered records', async () => {
+  const query = { search: 'AI', category: 'news', status: '', sortBy: 'title', sortOrder: 'asc', page: 2, pageSize: 20 }
+  const page = { total: 45, categories: [{ category: 'news', count: 30 }, { category: 'paper', count: 15 }], records: [{
+    storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', status: 'unread', firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', fetchedAt: '2026-01-02T00:00:00.000Z',
+    title: 'AI News', description: '完整摘要', sourceAiSummary: '来源摘要', aiSummary: 'AI 摘要', aiScore: 85, aiReason: '四维加权评分理由', aiReviewedAt: '2026-01-02T01:02:03.000Z', url: 'https://example.com/news', publishedAt: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author',
+  }] }
+  const client = await loadClient(new Map([[0, 'content'], [3, status], [51, query], [52, page]]))
   const values = descendants(client.renderDashboard())
-  for (const label of ['图片生成接口', '调用接口 URL', '调用协议', '调用模型', '图片尺寸', 'AVIF 质量', 'AVIF effort', '图片生成 API Key']) assert.ok(values.includes(label) || values.some(node => node?.props?.label === label), label)
+  for (const label of ['已抓取数据', '搜索', '分类', '排序字段', '顺序', '状态', '每页', '标题与摘要', '抓取时间', '上一页', '下一页']) assert.ok(values.includes(label) || values.some(node => node?.props?.label === label), label)
+  assert.ok(values.includes('AI News')); assert.ok(values.includes('完整摘要')); assert.ok(values.includes('查看完整记录')); assert.ok(values.includes('第 2 / 3 页 · 共 45 条'))
+  for (const value of ['来源AI摘要', '来源摘要', 'AI评分', '85 / 100', 'AI摘要', 'AI 摘要', '评分理由', '四维加权评分理由', '审核时间']) assert.ok(values.includes(value), value)
+  assert.match(client.source, /api\(`\/content\?\$\{params\.toString\(\)\}`/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-content-table-wrap\{[^}]*overflow:auto/u)
+})
+
+test('Chat prompt suggestion dock loads above the composer and fills without auto-submitting', async () => {
+  const client = await loadClient()
+  let draft = ''; let submissions = 0
+  const props = { input: { draft: '', phase: 'plain' }, inputActions: { setDraft(value) { draft = value }, submit() { submissions += 1 } } }
+  let tree = client.renderPromptDock(props)
+  assert.equal(tree, null)
+  client.effects.at(-1).effect()
+  await Promise.resolve()
+  client.pendingFetches[0]({ ok: true, status: 200, async json() { return { suggestions: { items: [
+    { id: 'one', text: '获取PrismFlow 已配置的所有数据源的数据', enabled: true },
+    { id: 'long', text: '第一段。\n\n第二段需要完整换行显示，而不是截断成一行。'.repeat(3), enabled: true },
+    { id: 'hidden', text: '隐藏', enabled: false },
+  ] } } } })
+  await new Promise(resolve => setTimeout(resolve, 0))
+  tree = client.renderPromptDock(props)
+  const button = descendants(tree).find(node => node?.type === 'button' && childrenOf(node).includes('获取PrismFlow 已配置的所有数据源的数据'))
+  assert.ok(button); button.props.onClick()
+  assert.equal(draft, '获取PrismFlow 已配置的所有数据源的数据'); assert.equal(submissions, 0)
+  assert.equal(descendants(tree).includes('隐藏'), false); assert.equal(descendants(tree).includes('快捷输入'), false)
+  const copyButton = descendants(tree).find(node => node?.type === 'button' && node.props?.['aria-label'] === '复制候选文案：one')
+  assert.ok(copyButton); draft = '保持当前输入'; let copyPropagationStopped = false
+  await copyButton.props.onClick({ stopPropagation() { copyPropagationStopped = true } })
+  assert.equal(copyPropagationStopped, true); assert.deepEqual(client.clipboardWrites, ['获取PrismFlow 已配置的所有数据源的数据'])
+  assert.equal(draft, '保持当前输入'); assert.equal(submissions, 0, 'copy must neither replace nor submit the composer draft')
+  tree = client.renderPromptDock(props)
+  assert.ok(descendants(tree).some(node => node?.type === 'button' && node.props?.['aria-label'] === '已复制候选文案：one' && childrenOf(node).includes('✓')))
+  const scroller = descendants(tree).find(node => node?.props?.className === 'pf-prompt-dock-list')
+  let clickCaptured = false
+  const clickTarget = { scrollLeft: 0, classList: { add() {}, remove() {} }, setPointerCapture() { clickCaptured = true }, hasPointerCapture() { return false } }
+  scroller.props.onPointerDown({ button: 0, pointerType: 'mouse', pointerId: 6, clientX: 50, currentTarget: clickTarget })
+  scroller.props.onPointerUp({ pointerId: 6, currentTarget: clickTarget })
+  assert.equal(clickCaptured, false, 'a normal click must remain targeted at the suggestion button')
+  draft = ''; button.props.onClick(); assert.equal(draft, '获取PrismFlow 已配置的所有数据源的数据')
+  const scrollTarget = { scrollLeft: 10 }; let wheelPrevented = false
+  scroller.props.onWheel({ deltaX: 0, deltaY: 18, currentTarget: scrollTarget, preventDefault() { wheelPrevented = true } })
+  assert.equal(scrollTarget.scrollLeft, 28); assert.equal(wheelPrevented, true)
+  const dragClasses = new Set(); let captured = false; let released = false; let dragPrevented = false
+  const dragTarget = { scrollLeft: 40, classList: { add(value) { dragClasses.add(value) }, remove(value) { dragClasses.delete(value) } }, setPointerCapture() { captured = true }, hasPointerCapture() { return true }, releasePointerCapture() { released = true } }
+  scroller.props.onPointerDown({ button: 0, pointerType: 'mouse', pointerId: 7, clientX: 100, currentTarget: dragTarget })
+  scroller.props.onPointerMove({ pointerId: 7, clientX: 70, currentTarget: dragTarget, preventDefault() { dragPrevented = true } })
+  assert.equal(dragTarget.scrollLeft, 70); assert.equal(captured, true); assert.equal(dragPrevented, true); assert.equal(dragClasses.has('pf-prompt-dragging'), true)
+  scroller.props.onPointerUp({ pointerId: 7, currentTarget: dragTarget })
+  assert.equal(released, true); assert.equal(dragClasses.size, 0)
+  button.props.onClick(); assert.equal(draft, '获取PrismFlow 已配置的所有数据源的数据', 'a drag must not select its ending card')
+  const longButton = descendants(tree).find(node => node?.type === 'button' && childrenOf(node).some(value => typeof value === 'string' && value.includes('第二段需要完整换行显示')))
+  assert.ok(longButton); assert.equal(longButton.props.className, 'pf-prompt-chip')
+  assert.match(client.appendedStyle.textContent, /\.pf-prompt-dock\{[^}]*width:50%[^}]*max-width:50%[^}]*margin:0 auto[^}]*background:transparent[^}]*box-shadow:none/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-prompt-dock-list\{[^}]*display:flex[^}]*overflow-x:auto[^}]*scrollbar-width:none[^}]*-ms-overflow-style:none/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-prompt-dock-list::-webkit-scrollbar\{display:none/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-prompt-dock-list\.pf-prompt-dragging[^}]*cursor:grabbing/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-prompt-item\{[^}]*max-height:40px[^}]*border:1px solid[^}]*border-radius:8px[^}]*overflow:hidden/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-prompt-chip\{[^}]*flex:0 0 auto[^}]*max-width:260px[^}]*max-height:38px[^}]*border:0[^}]*white-space:pre-line[^}]*-webkit-line-clamp:2/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-prompt-copy\{[^}]*width:34px[^}]*height:38px[^}]*border:0[^}]*border-left:1px solid/u)
+})
+
+test('toolset page exposes write-only image endpoint, model, size, encoding, and API Key controls', async () => {
+  const imageSettings = { id: 'current', version: 3, sha256: '7'.repeat(64), imageApiUrl: 'https://images.example/v1/images/generations', imageApiProtocol: 'images-generations', imageModel: 'image-pro', imageSize: '1024x1024', avifQuality: '70', avifEffort: '5', ffmpegPath: '', updatedAt: '2026-01-01T00:00:00.000Z' }
+  const toolset = { mode: 'complete', version: 3, sha256: '8'.repeat(64), enabledPlugins: ['prismflow-system-sources', 'prismflow-personal-image-generation'], enabledTools: ['prismflow_image_generation', 'prismflow_sources'], enabledSkills: ['prismflow-system', 'prismflow-personal'] }
+  const skills = [
+    { skillId: 'prismflow-personal', description: 'Personal Skill', enabled: true, origin: 'personal-custom', removable: true },
+    { skillId: 'prismflow-system', description: 'System Skill', enabled: true, origin: 'system-default', removable: false },
+  ]
+  const plugins = [
+    { pluginId: 'prismflow-personal-image-generation', name: '图片生成', description: 'Personal image plugin', origin: 'personal', version: 1, configurable: true, uploaded: false, removable: true, tools: ['prismflow_image_generation'], skills: [] },
+    { pluginId: 'prismflow-system-sources', name: '数据源同步', description: 'System source plugin', origin: 'system', version: 1, configurable: false, uploaded: false, removable: false, tools: ['prismflow_sources'], skills: ['prismflow-system'] },
+    { pluginId: 'prismflow-personal-upload', name: 'Uploaded', description: 'Uploaded executable plugin', origin: 'personal', version: '1.0.0', configurable: false, uploaded: true, removable: true, tools: ['prismflow_upload'], skills: [] },
+  ]
+  const promptSuggestions = { items: [{ id: 'sync', text: '获取PrismFlow 已配置的所有数据源的数据', enabled: true }], version: 1, sha256: '6'.repeat(64) }
+  const client = await loadClient(new Map([[0, 'toolsets'], [3, status], [37, toolset], [38, plugins], [39, skills], [44, imageSettings], [45, { configured: true, writable: true, allowDashboardWrite: true, source: 'file' }], [46, ''], [50, promptSuggestions], [53, { available: true, mode: 'auto', platform: 'win32', resolvedPath: 'C:\\ffmpeg\\bin\\ffmpeg.exe' }]]), { promptResult: 'correct horse battery staple' })
+  const values = descendants(client.renderDashboard())
+  for (const label of ['Chat 候选输入文案', '保存候选文案', '媒体处理与图片生成', 'FFmpeg 视频处理', 'FFmpeg 可执行文件', '调用接口 URL', '调用协议', '调用模型', '图片尺寸', 'AVIF 质量', 'AVIF effort', '图片生成 API Key']) assert.ok(values.includes(label) || values.some(node => node?.props?.label === label), label)
+  assert.ok(values.some(node => node?.type === 'textarea' && node.props?.value === '获取PrismFlow 已配置的所有数据源的数据'))
   assert.equal(values.includes('OPENAI_IMAGE_API_KEY'), false)
   const password = values.find(node => typeof node?.type === 'function' && node.type.name === 'Field' && node.props.type === 'password')
   assert.ok(password); assert.equal(password.props.value, '')
@@ -217,12 +308,24 @@ test('toolset page exposes write-only image endpoint, model, size, encoding, and
   assert.match(client.source, /当前图片生成接口使用明文 HTTP/u)
   assert.match(client.source, /接受不含凭证、查询参数和片段的 HTTP 或 HTTPS 地址/u)
   assert.match(client.source, /expected: \{ version: current\.version, sha256: current\.sha256 \}/u)
-  for (const className of ['pf-toolset-header', 'pf-toolset-stack', 'pf-toolset-section', 'pf-image-settings-grid', 'pf-image-credential-row', 'pf-tool-option']) assert.ok(values.some(node => node?.props?.className?.split?.(' ').includes(className)), className)
+  for (const className of ['pf-toolset-header', 'pf-toolset-stack', 'pf-toolset-section', 'pf-image-settings-grid', 'pf-image-credential-row', 'pf-plugin-card', 'pf-tool-option']) assert.ok(values.some(node => node?.props?.className?.split?.(' ').includes(className)), className)
   assert.match(client.source, /className: 'pf-skill-card'/u)
-  assert.match(client.source, /toolOrigins/u)
+  assert.match(client.source, /value\.toolsets\.plugins/u)
+  assert.match(client.source, /enabledPlugins: prismToolset\.enabledPlugins/u)
+  assert.match(client.source, /toolsets\/plugin\/import-zip/u)
+  assert.match(client.source, /toolsets\/plugin\/delete/u)
   const toolsetHeader = values.find(node => node?.props?.className === 'pf-toolset-header')
   const skillSection = values.find(node => node?.props?.className?.split?.(' ').includes('pf-skill-section'))
   assert.ok(toolsetHeader); assert.ok(skillSection)
+  for (const label of ['导出全部配置', '导入全部配置']) assert.ok(descendants(toolsetHeader).includes(label))
+  const exportAll = descendants(toolsetHeader).find(node => typeof node?.type === 'function' && descendants(node).includes('导出全部配置'))
+  const backupBlob = new Blob(['full-backup'], { type: 'application/gzip' })
+  const exportingAll = exportAll.props.onClick()
+  assert.equal(client.fetchCalls.at(-1).url, '/api/prismflow/configuration-backup/export')
+  client.pendingFetches.at(-1)({ ok: true, status: 200, async blob() { return backupBlob } })
+  await exportingAll
+  assert.equal(client.downloads.length, 1); assert.match(client.downloads[0].download, /^prismflow-configuration-backup-\d{4}-\d{2}-\d{2}\.pfbackup$/u)
+  assert.equal(client.downloads[0].blob, backupBlob)
   assert.equal(descendants(toolsetHeader).includes('上传 Skill ZIP'), false)
   assert.equal(descendants(toolsetHeader).includes('手动新增 Skill'), false)
   assert.ok(descendants(skillSection).includes('上传 Skill ZIP'))
@@ -232,18 +335,23 @@ test('toolset page exposes write-only image endpoint, model, size, encoding, and
   const renderedSkillCards = descendants(skillSection).filter(node => node?.props?.className === 'pf-skill-card')
   assert.equal(descendants(renderedSkillCards[0]).includes('prismflow-system'), true)
   assert.equal(descendants(renderedSkillCards[1]).includes('prismflow-personal'), true)
-  const toolsetMode = values.find(node => typeof node?.type === 'function' && node.type.name === 'Field' && node.props.label === '工具集配置')
+  const toolsetMode = values.find(node => typeof node?.type === 'function' && node.type.name === 'Field' && node.props.label === '插件与 Skill 配置模式')
   assert.ok(toolsetMode)
-  assert.equal(toolsetMode.props.options.map(option => option.label).join('|'), '系统默认工具|全部工具（含个人定制）|自定义选择')
-  const renderedToolCards = values.filter(node => node?.props?.className === 'pf-tool-option')
-  assert.equal(descendants(renderedToolCards[0]).includes('prismflow_sources'), true)
-  assert.equal(descendants(renderedToolCards[0]).includes('系统默认'), true)
-  assert.equal(descendants(renderedToolCards[1]).includes('prismflow_image_generation'), true)
-  assert.equal(descendants(renderedToolCards[1]).includes('个人定制'), true)
+  assert.equal(toolsetMode.props.options.map(option => option.label).join('|'), '系统默认组合|全部启用|自定义选择')
+  const renderedPlugins = values.filter(node => node?.props?.className?.split?.(' ').includes('pf-plugin-card'))
+  assert.equal(descendants(renderedPlugins[0]).includes('prismflow-system-sources'), true)
+  assert.equal(descendants(renderedPlugins[0]).includes('系统插件'), true)
+  assert.equal(descendants(renderedPlugins[1]).includes('prismflow-personal-image-generation'), true)
+  assert.equal(descendants(renderedPlugins[1]).includes('个人插件'), true)
+  assert.equal(values.includes('查看工具'), true)
+  assert.equal(values.includes('查看工具与 Skill'), false)
+  assert.ok(values.includes('上传个人插件 ZIP')); assert.ok(values.includes('个人上传')); assert.ok(values.includes('删除插件')); assert.equal(values.includes('准备删除'), false)
+  const deletePlugin = descendants(renderedPlugins[1]).find(node => typeof node?.type === 'function' && node.props?.danger === true)
+  assert.ok(deletePlugin); assert.equal(deletePlugin.props.disabled, false)
   toolsetMode.props.onChange('core')
-  const coreToolCards = descendants(client.renderDashboard()).filter(node => node?.props?.className === 'pf-tool-option')
-  const systemCoreInput = descendants(coreToolCards[0]).find(node => node?.type === 'input')
-  const personalCoreInput = descendants(coreToolCards[1]).find(node => node?.type === 'input')
+  const corePlugins = descendants(client.renderDashboard()).filter(node => node?.props?.className?.split?.(' ').includes('pf-plugin-card'))
+  const systemCoreInput = descendants(corePlugins[0]).find(node => node?.type === 'input')
+  const personalCoreInput = descendants(corePlugins[1]).find(node => node?.type === 'input')
   assert.equal(systemCoreInput.props.checked, true)
   assert.equal(personalCoreInput.props.checked, false)
   assert.equal(personalCoreInput.props.disabled, true)
@@ -252,10 +360,28 @@ test('toolset page exposes write-only image endpoint, model, size, encoding, and
   const personalSkillInput = descendants(coreSkillCards[1]).find(node => node?.type === 'input')
   assert.equal(systemSkillInput.props.checked, true)
   assert.equal(personalSkillInput.props.checked, false)
-  assert.match(client.appendedStyle.textContent, /\.pf-tool-option\{display:grid;grid-template-columns:auto minmax\(0,1fr\) auto/u)
+  assert.equal(systemSkillInput.props.disabled, true)
+  assert.equal(personalSkillInput.props.disabled, true)
+  assert.match(client.appendedStyle.textContent, /\.pf-plugin-grid\{display:grid;grid-template-columns:repeat\(auto-fit,minmax\(300px,1fr\)\)/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-tool-option\{display:grid;grid-template-columns:auto minmax\(0,1fr\)/u)
   assert.match(client.appendedStyle.textContent, /\.pf-origin-badge\{white-space:nowrap/u)
   assert.match(client.appendedStyle.textContent, /\.pf-image-settings-grid\{display:grid;grid-template-columns:repeat\(12,minmax\(0,1fr\)\)/u)
   assert.match(client.appendedStyle.textContent, /\.pf-image-credential-row\{display:grid;grid-template-columns:minmax\(260px,1fr\) auto/u)
+})
+
+test('personal Skills expose direct deletion while bundled Skills remain non-removable', async () => {
+  const toolset = { mode: 'custom', version: 2, sha256: '8'.repeat(64), enabledPlugins: [], enabledTools: [], enabledSkills: [] }
+  const personal = { skillId: 'prismflow-my-skill', name: 'My Skill', description: 'Personal', whenToUse: '', content: '# Personal', enabled: true, origin: 'personal-custom', removable: true, version: 2, sha256: '9'.repeat(64) }
+  const personalClient = await loadClient(new Map([[0, 'toolsets'], [3, status], [37, toolset], [38, []], [39, [personal]], [40, { ...personal, isNew: false }]]))
+  const personalValues = descendants(personalClient.renderDashboard())
+  assert.ok(personalValues.includes('删除个人 Skill')); assert.ok(personalValues.includes('永久删除'))
+  const skillCard = personalValues.find(node => node?.props?.className === 'pf-skill-card')
+  const dangerZone = personalValues.find(node => node?.props?.className === 'pf-skill-danger')
+  assert.ok(dangerZone); assert.equal(descendants(skillCard).includes('永久删除'), false)
+
+  const bundled = { ...personal, skillId: 'prismflow-source-ingestion', origin: 'personal-custom', removable: false }
+  const bundledClient = await loadClient(new Map([[0, 'toolsets'], [3, status], [37, toolset], [38, []], [39, [bundled]], [40, { ...bundled, isNew: false }]]))
+  assert.equal(descendants(bundledClient.renderDashboard()).includes('删除个人 Skill'), false)
 })
 
 test('dashboard client renders original Adapter + Items source configuration without execution controls', async () => {
@@ -724,7 +850,8 @@ test('dashboard review shows exact markdown and only version/hash review plus co
   assert.equal(collapsedValues.includes('安全渲染预览（Markdown）'), false)
   assert.equal(collapsedValues.some(node => node?.type === 'input' && node?.props?.maxLength === 300), false)
   assert.equal(collapsedValues.some(node => node?.type === 'textarea' && node?.props?.maxLength === 100000), false)
-  assert.ok(collapsedValues.includes(`draft-1 · 修订 2 · SHA-256 ${'a'.repeat(12)}…`))
+  assert.equal(collapsedValues.some(value => typeof value === 'string' && value.includes('SHA-256')), false)
+  for (const label of ['搜索', '状态', '每页']) assert.ok(collapsedValues.some(node => node?.props?.label === label), label)
 
   expand.props.onClick()
   const values = descendants(client.renderDashboard())
@@ -734,9 +861,15 @@ test('dashboard review shows exact markdown and only version/hash review plus co
   assert.ok(values.includes('批准显示的版本与哈希'))
   assert.ok(values.includes('拒绝显示的版本与哈希'))
   assert.ok(values.includes('安全渲染预览（Markdown）')); assert.ok(values.includes('保存新版本')); assert.ok(values.includes('删除草稿'))
-  for (const emphasis of ['待审核', '当前阶段：', '需要确认内容并作出审批决定', '内容编辑', '审核决定']) assert.ok(values.includes(emphasis))
+  assert.ok(values.includes('展开预览')); assert.equal(values.some(node => node?.props?.className === 'pf-preview'), false)
+  const expandPreview = values.find(node => node?.type === 'button' && childrenOf(node).includes('展开预览'))
+  assert.equal(expandPreview.props['aria-expanded'], false); expandPreview.props.onClick()
+  const previewValues = descendants(client.renderDashboard())
+  assert.ok(previewValues.includes('收起预览')); assert.ok(previewValues.some(node => node?.props?.className === 'pf-preview'))
+  for (const emphasis of ['待审核', '内容编辑', '审核决定']) assert.ok(values.includes(emphasis))
+  assert.ok(values.includes(`draft-1 · 修订 2 · SHA-256 ${'a'.repeat(64)}`))
   assert.match(client.appendedStyle.textContent, /\.pf-draft-card\.pf-draft-status-draft\{border-left-color:/u)
-  assert.match(client.appendedStyle.textContent, /\.pf-review-summary\{display:grid/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-review-filter-form\{display:grid/u)
   assert.equal(values.includes('源文预览'), false); assert.equal(values.includes('渲染预览'), false)
   assert.equal(values.some(node => node?.type === 'pre'), false)
   assert.doesNotMatch(client.source, /draftPreviewModes|setDraftPreviewModes|pf-preview-raw/)
@@ -754,8 +887,27 @@ test('dashboard review shows exact markdown and only version/hash review plus co
   ]))
   const approvedValues = descendants(approvedClient.renderDashboard())
   assert.ok(approvedValues.includes('首次发布到本地 Markdown')); assert.ok(approvedValues.includes('本地 Markdown')); assert.ok(approvedValues.includes('Daily'))
-  assert.ok(approvedValues.includes('未发布')); assert.ok(approvedValues.includes('可用发布目标')); assert.equal(approvedValues.includes('删除草稿'), false)
+  assert.ok(approvedValues.includes('未发布')); assert.ok(approvedValues.includes('可用发布目标')); assert.ok(approvedValues.includes('删除草稿'))
   assert.match(approvedClient.appendedStyle.textContent, /\.pf-publish-grid\{display:grid/u)
+})
+
+test('dashboard review sends bounded server-side filters and page offsets from the compact pagination controls', async () => {
+  const draft = { draftId: 'draft-page', requestId: 'request-page', generatorId: 'brief', generatorPromptVersion: 1, generatorPromptSha256: 'b'.repeat(64), title: 'Paged draft', markdown: '# Paged', sha256: 'a'.repeat(64), version: 1, status: 'draft', publishedPublisherIds: [], createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z' }
+  const client = await loadClient(new Map([
+    [0, 'review'], [3, status], [5, [draft]],
+    [48, { status: 'approved', query: 'Brief', page: 2, pageSize: 10 }],
+    [49, { total: 25, statusCounts: { draft: 5, approved: 20 } }],
+  ]))
+  const values = descendants(client.renderDashboard())
+  assert.ok(values.includes('找到 25 份草稿 · 第 2 / 3 页'))
+  const next = values.find(node => typeof node?.type === 'function' && node.type.name === 'Button' && childrenOf(node).includes('下一页'))
+  assert.ok(next); assert.equal(next.props.disabled, false)
+  const pending = next.props.onClick()
+  assert.equal(client.fetchCalls.length, 2)
+  assert.deepEqual(JSON.parse(client.fetchCalls[0].body), { status: 'approved', query: 'Brief', offset: 20, limit: 10 })
+  client.pendingFetches[0]({ ok: true, async json() { return { total: 25, statusCounts: { approved: 25 }, records: [] } } })
+  client.pendingFetches[1]({ ok: true, async json() { return [] } })
+  await pending
 })
 
 test('dashboard review displays locally persisted RSS XML and content-encoded HTML for its bound Draft', async () => {
@@ -849,25 +1001,38 @@ test('dashboard persisted reconciliation-required drafts show an explicit warnin
   assert.equal(values.includes('已批准稿件发布完成'), false)
 })
 
-test('draft list exposes a cover-view action and opens the exact bound Production Media preview without expanding', async () => {
-  const assetId = '2'.repeat(64)
+test('draft list previews every non-body presentation image in upload order with the first marked as cover', async () => {
+  const assetId = '2'.repeat(64); const secondAssetId = '3'.repeat(64)
   const publisher = { id: 'wechat-draft:newspic', name: '微信图文', description: '', kind: 'wechat-draft', articleType: 'newspic', hasDeploymentDefaultCover: false }
   const draft = { draftId: 'draft-cover', requestId: 'request-cover', generatorId: 'brief', title: '带封面的修订稿', markdown: '# Draft',
     sha256: 'a'.repeat(64), artifactBindingSha256: 'b'.repeat(64), version: 1, status: 'draft', createdAt: '2026-01-01T00:00:00.000Z',
-    updatedAt: '2026-01-01T00:00:00.000Z', publishedPublisherIds: [], mediaAssets: [{ assetId, sha256: assetId, bytes: 10, mime: 'image/png', width: 10, height: 10 }],
-    destinationPresentations: [{ publisherId: publisher.id, cover: { assetId }, imageOrder: [assetId] }] }
+    updatedAt: '2026-01-01T00:00:00.000Z', publishedPublisherIds: [], mediaAssets: [{ assetId, sha256: assetId, bytes: 10, mime: 'image/png', width: 10, height: 10 }, { assetId: secondAssetId, sha256: secondAssetId, bytes: 11, mime: 'image/png', width: 11, height: 11 }],
+    destinationPresentations: [
+      { publisherId: 'wechat-draft:removed-historical-target', cover: { assetId }, imageOrder: [assetId] },
+      { publisherId: publisher.id, cover: { assetId }, imageOrder: [secondAssetId, assetId] },
+    ] }
   const client = await loadClient(new Map([[0, 'review'], [3, status], [4, [publisher]], [5, [draft]], [14, {}]]))
   let tree = client.renderDashboard()
-  const coverButton = descendants(tree).find(node => typeof node?.type === 'function' && node.type.name === 'Button' && childrenOf(node).includes('查看封面'))
-  assert.ok(coverButton, 'collapsed Draft list must expose the cover action')
-  assert.equal(descendants(tree).includes('已绑定封面'), false)
-  coverButton.props.onClick()
+  const imageListButton = descendants(tree).find(node => typeof node?.type === 'function' && node.type.name === 'Button' && childrenOf(node).includes('非正文图片 (2)'))
+  assert.ok(imageListButton, 'collapsed Draft list must expose the non-body image list action')
+  assert.equal(descendants(tree).includes('不在正文中的图片'), false)
+  imageListButton.props.onClick()
   tree = client.renderDashboard()
   const values = descendants(tree)
-  assert.ok(values.includes('已绑定封面')); assert.ok(values.includes('带封面的修订稿'))
-  const image = values.find(node => node?.type === 'img' && node.props?.className === 'pf-cover-image')
-  assert.equal(image.props.src, `/api/prismflow/production/media?draftId=draft-cover&assetId=${assetId}`)
-  assert.equal(image.props.referrerPolicy, 'no-referrer')
+  assert.ok(values.includes('不在正文中的图片')); assert.ok(values.includes('带封面的修订稿 · 按微信上传顺序排列，第一张作为封面上传。点击图片查看原图。'))
+  const images = values.filter(node => node?.type === 'img' && node.props?.className === 'pf-cover-image')
+  assert.deepEqual(images.map(image => image.props.src), [`/api/prismflow/production/media?draftId=draft-cover&assetId=${assetId}`, `/api/prismflow/production/media?draftId=draft-cover&assetId=${secondAssetId}`])
+  assert.equal(images[0].props.alt.endsWith('（封面）'), true); assert.equal(images[1].props.alt.endsWith('（封面）'), false)
+  assert.equal(images.every(image => image.props.referrerPolicy === 'no-referrer'), true)
+  const imageButtons = values.filter(node => node?.type === 'button' && node.props?.className === 'pf-cover-image-button')
+  assert.equal(imageButtons.length, 2); assert.equal(imageButtons[0].props.title, '点击查看原图')
+  imageButtons[0].props.onClick()
+  const originalValues = descendants(client.renderDashboard())
+  assert.ok(originalValues.includes('查看原图')); assert.ok(originalValues.includes('在新窗口打开'))
+  const original = originalValues.find(node => node?.type === 'img' && node.props?.className === 'pf-original-image')
+  assert.equal(original.props.src, `/api/prismflow/production/media?draftId=draft-cover&assetId=${assetId}`)
+  assert.equal(original.props.referrerPolicy, 'no-referrer')
+  assert.match(client.source, /\.pf-cover-image-button\{[^}]*width:216px;height:288px/u)
 })
 
 test('dashboard renders unknown external publication as an error and never shows the success notice', async () => {
@@ -963,6 +1128,25 @@ test('dashboard deletes an exact clean unapproved Draft and removes its editor s
   const rendered = descendants(client.renderDashboard())
   assert.equal(rendered.includes('Delete me'), false)
   assert.ok(rendered.includes('草稿已从审核列表中删除；Generation Request 与来源审计仍然保留'))
+})
+
+test('dashboard deletes approved and published Drafts with status-specific irreversible warnings', async () => {
+  for (const [draftStatusValue, warning] of [
+    ['approved', '删除后该已审批 Artifact 将不能再发布'],
+    ['published', '已经写入外部平台的内容不会被撤回'],
+  ]) {
+    const draft = { draftId: `draft-delete-${draftStatusValue}`, requestId: 'request-1', generatorId: 'brief', title: `Delete ${draftStatusValue}`,
+      markdown: '# Delete', sha256: 'a'.repeat(64), version: 3, status: draftStatusValue, publishedPublisherIds: draftStatusValue === 'published' ? ['local-markdown:daily'] : [] }
+    const client = await loadClient(new Map([[0, 'review'], [3, status], [4, []], [5, [draft]], [14, { [draft.draftId]: true }]]))
+    const deleteButton = descendants(client.renderDashboard()).find(node => typeof node?.type === 'function' && node.type.name === 'Button' && childrenOf(node).includes('删除草稿'))
+    assert.ok(deleteButton)
+    const active = deleteButton.props.onClick()
+    assert.match(client.confirmCalls[0], new RegExp(warning, 'u'))
+    assert.equal(client.fetchCalls[0].url, '/api/prismflow/production/delete-draft')
+    client.pendingFetches[0]({ ok: true, status: 200, async json() { return { deletion: { draftId: draft.draftId, version: 3, sha256: draft.sha256, deletedFromStatus: draftStatusValue, replay: false } } } })
+    await active
+    assert.equal(descendants(client.renderDashboard()).includes(draft.title), false)
+  }
 })
 
 test('dashboard blocks publication when any other draft editor is dirty and preserves every editor', async () => {
@@ -1104,7 +1288,7 @@ test('dashboard audit renders immutable draft provenance', async () => {
 
 test('dashboard aborts a previous review refresh before starting another', async () => {
   const client = await loadClient(new Map([[0, 'review'], [3, status]]))
-  const button = descendants(client.renderDashboard()).find(node => typeof node?.type === 'function' && node.type.name === 'Button' && childrenOf(node).includes('刷新草稿'))
+  const button = descendants(client.renderDashboard()).find(node => typeof node?.type === 'function' && node.type.name === 'Button' && childrenOf(node).includes('刷新'))
   assert.ok(button)
   const first = button.props.onClick()
   assert.equal(client.fetchCalls.length, 2)

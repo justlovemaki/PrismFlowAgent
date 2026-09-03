@@ -8,6 +8,7 @@ import sharp from 'sharp'
 import { createManagedMediaFetch } from './secure-rss-fetch.js'
 import { isPublisherOutcomeError, PublisherOutcomeError } from './shared/publisher-outcome.js'
 import { normalizePublisherConfig, publisherConfigRevision } from './shared/publisher-profile.js'
+import { resolveFfmpegPath } from './ffmpeg-runtime.js'
 import {
   destinationPresentation, orderedNewspicAssetIds, renderNewspicContent, renderWechatMarkdown, replaceWechatImageUrls,
   resolveWechatText, validateWechatContent, validateWechatCrops,
@@ -79,11 +80,12 @@ function assertDestination(destination, seen) {
   }
   if (typeof destination.defaultAuthor !== 'string' || Array.from(destination.defaultAuthor).length > destination.limits.authorChars
     || /[\u0000-\u001f\u007f]/u.test(destination.defaultAuthor)) throw new Error(`WeChat destination ${destination.id} default author is invalid`)
-  if (destination.ffmpegPath !== undefined && (typeof destination.ffmpegPath !== 'string' || destination.ffmpegPath.length < 1 || destination.ffmpegPath.length > 1_024
+  if (destination.ffmpegPath !== undefined && (typeof destination.ffmpegPath !== 'string' || destination.ffmpegPath.length > 1_024
     || /[\u0000-\u001f\u007f]/u.test(destination.ffmpegPath))) throw new Error(`WeChat destination ${destination.id} FFmpeg path is invalid`)
   seen.add(destination.id)
 }
 
+function presentationCoverAssetId(presentation) { return presentation?.cover?.assetId ?? presentation?.imageOrder?.[0] }
 function configuredCoverUrl(value) {
   if (typeof value !== 'string' || !value.startsWith('https://')) return undefined
   try {
@@ -375,7 +377,8 @@ async function convertVideoToGif(source, destination, execution, fetchMedia) {
     const input = join(directory, 'input-video')
     const output = join(directory, 'output.gif')
     await writeFile(input, Buffer.from(await response.arrayBuffer()), { flag: 'wx' })
-    await runFfmpegGif(destination.ffmpegPath ?? 'ffmpeg', input, output, destination.limits.requestTimeoutMs, execution.signal)
+    const configuredFfmpeg = destination.ffmpegPath?.trim() || execution.ffmpegPath || ''
+    await runFfmpegGif(await resolveFfmpegPath(configuredFfmpeg), input, output, destination.limits.requestTimeoutMs, execution.signal)
     const bytes = await readFile(output)
     if (!bytes.length || bytes.length > destination.limits.permanentImageBytes) throw new Error('GIF size')
     const metadata = await sharp(bytes, { animated: true, limitInputPixels: destination.limits.maxPixels }).metadata()
@@ -424,7 +427,13 @@ export function createWechatDraftProvider(ctx, destination, dependencies = {}) {
     requestTimeoutMs: destination.limits.fetchTimeoutMs, rejectFragments: true, requireHttps: false,
     // Match the original Axios source download request semantics while retaining DNS validation and socket pinning.
     originReferer: false, userAgent: 'axios/1.13.5', accept: 'application/json, text/plain, */*' })
-  const videoConverter = dependencies.convertVideoToGif ?? ((source, execution) => convertVideoToGif(source, destination, execution, fetchMedia))
+  const videoConverter = (source, execution) => {
+    const ffmpegPath = ctx.get?.('prismImageGenerationSettings')?.runtime?.().ffmpegPath ?? ''
+    const effectiveExecution = { ...execution, ffmpegPath }
+    return dependencies.convertVideoToGif
+      ? dependencies.convertVideoToGif(source, effectiveExecution)
+      : convertVideoToGif(source, destination, effectiveExecution, fetchMedia)
+  }
   const tokenCache = new Map()
   let tail = Promise.resolve()
   const shutdownController = new AbortController()
@@ -448,7 +457,7 @@ export function createWechatDraftProvider(ctx, destination, dependencies = {}) {
     }
     if (text.presentation?.cover?.crops?.length) throw new PublisherOutcomeError('not-committed', 'draft-create', 'WeChat cover crops are not enabled until the official payload is attested')
     if (destination.articleType === 'news') {
-      const coverId = text.presentation?.cover?.assetId
+      const coverId = presentationCoverAssetId(text.presentation)
       const claimedCover = coverId && artifact.mediaAssets?.some(asset => asset.assetId === coverId)
       const deploymentCover = configuredCoverUrl(destination.defaultCoverAssetRef)
         || destination.defaultCoverAssetRef && ctx.prismProductionMedia?.hasDeploymentAsset?.(destination.defaultCoverAssetRef)
@@ -461,7 +470,7 @@ export function createWechatDraftProvider(ctx, destination, dependencies = {}) {
 
   async function operationInner(artifact, records, execution, mutationState) {
     throwIfAborted(execution.signal, 'token', mutationState)
-    if (!records.length || records.length !== artifact.sourceContentStoreIds.length) throw new PublisherOutcomeError('not-committed', 'token', 'WeChat publisher received invalid approved records')
+    if (records.length !== artifact.sourceContentStoreIds.length || records.length === 0 && !artifact.workflowInputSha256) throw new PublisherOutcomeError('not-committed', 'token', 'WeChat publisher received invalid approved records or direct-input provenance')
     let credential
     try { credential = await ctx.credentials.resolve(destination.appSecretCredential) }
     catch { throw new PublisherOutcomeError('not-committed', 'token', 'WeChat credential resolution failed') }
@@ -529,7 +538,7 @@ export function createWechatDraftProvider(ctx, destination, dependencies = {}) {
       omittedMedia += 1
     }
     if (destination.articleType === 'news') {
-      const coverId = text.presentation?.cover?.assetId
+      const coverId = presentationCoverAssetId(text.presentation)
       let thumbMediaId
       const resolvedByDigest = new Map()
       const bodyUrls = Array(rendered.images.length)

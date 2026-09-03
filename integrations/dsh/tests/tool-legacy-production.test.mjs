@@ -4,6 +4,7 @@ import test from 'node:test'
 import sharp from 'sharp'
 import Parser from 'rss-parser'
 import { apply, resolveFfmpegPath } from '../lib/tool-legacy-production.js'
+import { ffmpegCandidatePaths } from '../lib/ffmpeg-runtime.js'
 import { ManagedRssFetchError } from '../lib/secure-rss-fetch.js'
 
 const config = { imageApiKeyCredential: 'IMAGE_API_KEY', imageApiUrl: 'https://images.example/v1/images/generations', imageApiProtocol: 'auto', imageModel: 'fixed-model', imageSize: '2K', avifQuality: 70, avifEffort: 5, ffmpegPath: 'ffmpeg', videoCrf: 28, videoPreset: 'slow', maxVideoBytes: 25 * 1024 * 1024, githubCredential: 'GH', workflowOwner: 'owner', workflowRepository: 'repo', workflowId: 'build.yml', workflowRef: 'main', rssSiteUrl: 'https://example.com/docs/', rssFeedUrl: 'https://feeds.example.com/rss.xml', rssMaxItems: 7 }
@@ -20,24 +21,30 @@ function harness(runtimeConfig = config, services = {}) {
     get(outputId) { return persistedRss.find(item => item.outputId === outputId) },
   }
   const ctx = { get: key => key === 'prismToolsets' ? toolsets : services[key], prismRssOutputs,
-    prismImageGenerationSettings: services.prismImageGenerationSettings ?? { runtime() { return { imageApiUrl: runtimeConfig.imageApiUrl, imageApiProtocol: runtimeConfig.imageApiProtocol, imageModel: runtimeConfig.imageModel, imageSize: runtimeConfig.imageSize, avifQuality: runtimeConfig.avifQuality, avifEffort: runtimeConfig.avifEffort } }, async resolveCredential() { return { value: 'secret' } } },
+    prismImageGenerationSettings: services.prismImageGenerationSettings ?? { runtime() { return { imageApiUrl: runtimeConfig.imageApiUrl, imageApiProtocol: runtimeConfig.imageApiProtocol, imageModel: runtimeConfig.imageModel, imageSize: runtimeConfig.imageSize, avifQuality: runtimeConfig.avifQuality, avifEffort: runtimeConfig.avifEffort, ffmpegPath: runtimeConfig.ffmpegPath } }, async resolveCredential() { return { value: 'secret' } } },
     prismPublishers: { resolveMediaUploaderId() { throw new Error('R2 media destination is not configured') }, list() { return [{ id: 'github-markdown:daily', name: 'GitHub Daily', kind: 'github-markdown', description: 'Daily' }] } }, tools: { register(tool) { tools.set(tool.name, tool); return () => {} } }, credentials: { async resolve() { return { value: 'secret' } } }, prismProductionMedia: { async ingest() { throw new Error('not used') } }, prismProduction: { getDraft: id => drafts.find(item => item.draftId === id), listDrafts: ({ status, limit }) => drafts.filter(item => !status || item.status === status).slice(0, limit), async publish(...args) { calls.push(args); return { status: 'created', receiptId: 'receipt-1' } }, async republishExact(...args) { calls.push(args); return { status: 'created', receiptId: 'receipt-2' } } } }
   apply(ctx, runtimeConfig); return { tools, calls, persistedRss }
 }
 const execution = { signal: new AbortController().signal }
 
-test('FFmpeg supports manual absolute configuration, PATH executable names, and automatic discovery', async () => {
-  assert.equal(await resolveFfmpegPath('ffmpeg'), 'ffmpeg')
-  await assert.rejects(resolveFfmpegPath('./relative/ffmpeg'), /must be absolute/)
-  assert.match(await resolveFfmpegPath(''), /ffmpeg(?:\.exe)?$/iu)
+test('FFmpeg supports cross-system defaults, manual paths, PATH executable names, and deterministic discovery', async () => {
+  const windows = ffmpegCandidatePaths('', { platform: 'win32', home: 'C:/Users/person', env: { PATH: 'C:/tools;D:/bin', LOCALAPPDATA: 'C:/Users/person/AppData/Local' } })
+  assert.ok(windows.includes('C:\\tools\\ffmpeg.exe')); assert.ok(windows.some(path => path.includes('WinGet'))); assert.ok(windows.some(path => path.includes('scoop')))
+  const mac = ffmpegCandidatePaths('', { platform: 'darwin', home: '/Users/person', env: { PATH: '/custom/bin' } })
+  assert.ok(mac.includes('/opt/homebrew/bin/ffmpeg')); assert.ok(mac.includes('/opt/local/bin/ffmpeg'))
+  const linux = ffmpegCandidatePaths('', { platform: 'linux', home: '/home/person', env: { PATH: '/custom/bin' } })
+  assert.ok(linux.includes('/usr/bin/ffmpeg')); assert.ok(linux.includes('/snap/bin/ffmpeg')); assert.ok(linux.includes('/home/person/.nix-profile/bin/ffmpeg'))
+  const selected = await resolveFfmpegPath('ffmpeg', { platform: 'linux', env: { PATH: '/custom/bin:/usr/bin' }, home: '/home/person', access: async path => { if (path !== '/usr/bin/ffmpeg') throw new Error('missing') } })
+  assert.equal(selected, '/usr/bin/ffmpeg')
+  await assert.rejects(resolveFfmpegPath('./relative/ffmpeg', { platform: 'linux', env: {}, home: '/home/person' }), /must be absolute/)
+  await assert.rejects(resolveFfmpegPath('/missing/ffmpeg', { platform: 'linux', env: {}, home: '/home/person', access: async () => { throw new Error('missing') } }), error => error.code === 'PRISMFLOW_FFMPEG_CONFIGURATION')
 })
 
 test('compatibility and publication tools are native, and RSS generation converts and locally persists exact-approved HTML', async () => {
   const { tools, persistedRss } = harness()
   assert.deepEqual([...tools.keys()], ['prismflow_process_markdown_media', 'prismflow_image_generation', 'prismflow_trigger_insight_daily_build', 'prismflow_generate_rss_content', 'prismflow_publishers', 'prismflow_publish', 'prismflow_github_push'])
-  assert.deepEqual(tools.get('prismflow_github_push').parameters.properties.targets.items.enum, [
-    'justlovemaki/Hex2077-Site:content/blog/weekly', 'justlovemaki/Hex2077-Site:content/blog', 'justlovemaki/Hex2077-Site:rss-t.xml',
-  ])
+  assert.equal(tools.get('prismflow_github_push').parameters.properties.targets.items.type, 'string')
+  assert.equal(tools.get('prismflow_github_push').parameters.properties.targets.items.enum, undefined)
   const rss = await tools.get('prismflow_generate_rss_content').execute({ draftId: 'draft-1', draftVersion: 2, artifactSha256: 'a'.repeat(64) }, execution)
   assert.equal(rss.rssOutputId, 'd'.repeat(64)); assert.equal(persistedRss.length, 1); assert.equal(persistedRss[0].xml, rss.content)
   assert.equal(rss.xmlBytes, Buffer.byteLength(rss.content, 'utf8')); assert.equal(rss.xmlSha256, createHash('sha256').update(rss.content).digest('hex'))
@@ -174,7 +181,7 @@ test('prismflow_github_push extracts missing metadata once for a multi-target pu
   } finally { globalThis.fetch = originalFetch }
 })
 
-test('prismflow_github_push resolves a persisted RSS output and writes its XML byte-for-byte to repository-root rss-t.xml', async () => {
+test('prismflow_github_push publishes rss.xml from either a persisted RSS output or direct raw XML without Markdown rewriting', async () => {
   const { tools } = harness(); const tool = tools.get('prismflow_github_push'); const requests = []
   const generated = await tools.get('prismflow_generate_rss_content').execute({ draftId: 'draft-1', draftVersion: 2, artifactSha256: 'a'.repeat(64) }, execution)
   const xml = generated.content
@@ -185,17 +192,58 @@ test('prismflow_github_push resolves a persisted RSS output and writes its XML b
     return new Response(JSON.stringify({ commit: { sha: '5'.repeat(40) }, content: { sha: '6'.repeat(40) } }), { status: 201 })
   }
   try {
-    const result = await tool.execute({ targets: ['justlovemaki/Hex2077-Site:rss-t.xml'], rssOutputId: generated.rssOutputId, filename: 'rss-t.xml', branch: 'book', message: 'Update rss-t.xml' }, execution)
+    const result = await tool.execute({ targets: ['justlovemaki/Hex2077-Site:rss.xml'], rssOutputId: generated.rssOutputId, filename: 'rss.xml', branch: 'book', message: 'Update rss.xml' }, execution)
     assert.equal(result.success, true); assert.equal(result.details[0].repo, 'justlovemaki/Hex2077-Site')
-    assert.equal(result.details[0].branch, 'book'); assert.equal(result.details[0].path, 'rss-t.xml')
-    assert.match(result.details[0].url, /Hex2077-Site\/blob\/book\/rss-t\.xml$/u)
+    assert.equal(result.details[0].branch, 'book'); assert.equal(result.details[0].path, 'rss.xml')
+    assert.match(result.details[0].url, /Hex2077-Site\/blob\/book\/rss\.xml$/u)
     const body = JSON.parse(requests[1].init.body)
-    assert.equal(body.branch, 'book'); assert.equal(body.message, 'Update rss-t.xml')
+    assert.equal(body.branch, 'book'); assert.equal(body.message, 'Update rss.xml')
     assert.equal(Buffer.from(body.content, 'base64').toString('utf8'), xml)
     assert.doesNotMatch(Buffer.from(body.content, 'base64').toString('utf8'), /^---/u)
-    await assert.rejects(tool.execute({ targets: ['justlovemaki/Hex2077-Site:rss-t.xml'], rssOutputId: generated.rssOutputId, branch: 'main' }, execution), /requires branch book/u)
-    await assert.rejects(tool.execute({ targets: ['justlovemaki/Hex2077-Site:rss-t.xml'], content: xml }, execution), /rejects raw content/u)
-    await assert.rejects(tool.execute({ targets: ['justlovemaki/Hex2077-Site:rss-t.xml'], rssOutputId: 'f'.repeat(64) }, execution), /Unknown persisted RSS output/u)
+    const directXml = xml.replace('AI资讯日报 RSS Feed', 'Direct RSS Feed')
+    const directResult = await tool.execute({ targets: ['justlovemaki/Hex2077-Site:rss.xml'], content: directXml, branch: 'book', filename: 'rss.xml' }, execution)
+    assert.equal(directResult.success, true)
+    const directBody = JSON.parse(requests.at(-1).init.body)
+    assert.equal(Buffer.from(directBody.content, 'base64').toString('utf8'), directXml)
+    assert.doesNotMatch(Buffer.from(directBody.content, 'base64').toString('utf8'), /^---/u)
+    await assert.rejects(tool.execute({ targets: ['justlovemaki/Hex2077-Site:rss.xml'], rssOutputId: generated.rssOutputId, branch: 'main' }, execution), /requires branch book/u)
+    await assert.rejects(tool.execute({ targets: ['justlovemaki/Hex2077-Site:rss.xml'], content: directXml, rssOutputId: generated.rssOutputId }, execution), /exactly one of content or rssOutputId/u)
+    await assert.rejects(tool.execute({ targets: ['justlovemaki/Hex2077-Site:rss.xml'], content: '<not-rss />' }, execution), /requires an RSS 2\.0 XML document/u)
+    await assert.rejects(tool.execute({ targets: ['justlovemaki/Hex2077-Site:rss.xml'], rssOutputId: 'f'.repeat(64) }, execution), /Unknown persisted RSS output/u)
+  } finally { globalThis.fetch = originalFetch }
+})
+
+test('prismflow_github_push Profile opt-in admits arbitrary repositories, exact raw files, and exact Markdown files', async () => {
+  const locked = harness().tools.get('prismflow_github_push')
+  await assert.rejects(locked.execute({ targets: ['other-owner/other-repo:data/config.json'], content: '{"safe":true}' }, execution), /Unsupported GitHub push target/u)
+  await assert.rejects(locked.execute({ targets: ['justlovemaki/Hex2077-Site:content/blog'], targetType: 'raw-file', content: 'unsafe override' }, execution), /requires targetType markdown-directory/u)
+  const { tools } = harness({ ...config, githubAllowArbitraryTargets: true }); const tool = tools.get('prismflow_github_push'); const requests = []
+  const generated = await tools.get('prismflow_generate_rss_content').execute({ draftId: 'draft-1', draftVersion: 2, artifactSha256: 'a'.repeat(64) }, execution)
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (url, init) => {
+    requests.push({ url: String(url), init })
+    if (init.method === 'GET') return new Response('', { status: 404 })
+    return new Response(JSON.stringify({ commit: { sha: '7'.repeat(40) }, content: { sha: '8'.repeat(40) } }), { status: 201 })
+  }
+  try {
+    const raw = await tool.execute({ targets: ['other-owner/other-repo:data/config.json'], content: '{"safe":true}\n', branch: 'release', message: 'Update config' }, execution)
+    assert.equal(raw.details[0].repo, 'other-owner/other-repo'); assert.equal(raw.details[0].branch, 'release'); assert.equal(raw.details[0].path, 'data/config.json')
+    let body = JSON.parse(requests.at(-1).init.body)
+    assert.equal(Buffer.from(body.content, 'base64').toString('utf8'), '{"safe":true}\n')
+    const extensionless = await tool.execute({ targets: ['other-owner/other-repo:CNAME'], targetType: 'raw-file', content: 'docs.example.com\n', branch: 'release' }, execution)
+    assert.equal(extensionless.details[0].path, 'CNAME')
+    body = JSON.parse(requests.at(-1).init.body)
+    assert.equal(Buffer.from(body.content, 'base64').toString('utf8'), 'docs.example.com\n')
+    const markdown = await tool.execute({ targets: ['other-owner/other-repo:docs/guide.md'], content: '# Guide', branch: 'docs', title: 'Guide', description: 'Guide description', slug: 'guide', tags: ['docs'], date: '2026-03-08' }, execution)
+    assert.equal(markdown.details[0].branch, 'docs'); assert.equal(markdown.details[0].path, 'docs/guide.md')
+    body = JSON.parse(requests.at(-1).init.body)
+    const markdownBody = Buffer.from(body.content, 'base64').toString('utf8')
+    assert.match(markdownBody, /^---\ntitle: Guide\nslug: guide/u); assert.match(markdownBody, /\n---\n\n# Guide$/u)
+    assert.equal(markdown.details[0].url, 'https://github.com/other-owner/other-repo/blob/docs/docs/guide.md')
+    const rss = await tool.execute({ targets: ['other-owner/other-repo:feeds/custom.xml'], rssOutputId: generated.rssOutputId, branch: 'syndication' }, execution)
+    assert.equal(rss.details[0].branch, 'syndication'); assert.equal(rss.details[0].path, 'feeds/custom.xml')
+    body = JSON.parse(requests.at(-1).init.body)
+    assert.equal(Buffer.from(body.content, 'base64').toString('utf8'), generated.content)
   } finally { globalThis.fetch = originalFetch }
 })
 

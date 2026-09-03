@@ -4,8 +4,9 @@ import { Service } from '@deepseek-ai/cordis'
 import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { z } from 'zod'
 import {
-  approveDraft, approvedArtifact, artifactSha256, createGenerationRequest, createGenerationRequestFromMaterials,
-  generatorWorkflowSha256, hasInvalidGeneratedUnicode, normalizeGeneratedDraft, normalizeProductionArtifactV2, normalizeWorkflowSnapshot, pinGenerationRequestPrompt,
+  approveDraft, approvedArtifact, artifactSha256, bindGenerationRequestWorkflowInput, createGenerationRequest, createGenerationRequestFromMaterials,
+  generatorWorkflowSha256, hasInvalidGeneratedUnicode, normalizeGeneratedDraft, normalizeProductionArtifactV2, normalizeProductionWorkflowInput, normalizeWorkflowSnapshot, pinGenerationRequestPrompt,
+  productionWorkflowInputSha256,
   productionArtifactBindingSha256,
   pinGenerationRequestWorkflow, sameGenerationProvenance, storedRecordMedia,
 } from './shared/content-production.js'
@@ -49,6 +50,10 @@ function exactRequestDraftLink(request, draft) {
     && sameGenerationProvenance(request, draft)
     && JSON.stringify(request.contentStoreIds) === JSON.stringify(draft.sourceContentStoreIds)
     && request.selectionId === draft.selectionId && request.selectionSha256 === draft.selectionSha256
+    && request.workflowInputSha256 === draft.workflowInputSha256
+    && (request.workflowInput === undefined
+      ? request.workflowInputSha256 === undefined
+      : productionWorkflowInputSha256(request.workflowInput) === request.workflowInputSha256)
     && JSON.stringify(request.sourceContentClaims) === JSON.stringify(draft.sourceContentClaims)
 }
 
@@ -66,14 +71,19 @@ function validateRevisionInput(draftId, expectedVersion, expectedSha256, title, 
   }
 }
 
+const workflowInputSchema = z.object({ format: z.enum(['text', 'markdown', 'json']), content: z.string().min(1).max(100000) }).strict()
 const contentClaimSchema = z.object({ storeId: z.string(), contentHash: z.string() }).strict()
 const materialExcerptSchema = z.object({ field: z.enum(['description', 'content']), start: z.number().int(), end: z.number().int(), text: z.string(), sha256: z.string() }).strict()
 const materialMediaSchema = z.object({ kind: z.enum(['image', 'video']), url: z.string().url().max(2048).regex(/^https?:\/\/[^\u0000-\u001f\u007f]+$/iu) }).strict()
 const packedMaterialSchema = z.object({
   storeId: z.string(), title: z.string(), url: z.string(), source: z.string(), author: z.string(), publishedDate: z.string(), category: z.string(),
+  aiSummary: z.string().min(1).max(4000).optional(), aiScore: z.number().int().min(0).max(100).optional(), scoreReason: z.string().min(1).max(2000).optional(),
   excerpts: z.array(materialExcerptSchema).max(32), media: z.array(materialMediaSchema).max(64).optional(),
   materialChars: z.number().int(), estimatedTokens: z.number().int(), materialSha256: z.string(),
-}).strict()
+}).strict().superRefine((value, ctx) => {
+  const editorial = [value.aiSummary, value.aiScore, value.scoreReason]
+  if (editorial.some(item => item !== undefined) && editorial.some(item => item === undefined)) ctx.addIssue({ code: 'custom', message: 'Packed editorial fields must be complete' })
+})
 const promptVersionSchema = z.number().int().min(0).max(1_000_000_000)
 const promptShaSchema = z.string().regex(/^[a-f0-9]{64}$/u)
 const workflowStepSchema = z.object({
@@ -109,6 +119,7 @@ const requestSchema = z.object({
   contentStoreIds: z.array(z.string()),
   selectionId: z.string().optional(), selectionSha256: z.string().optional(), sourceContentClaims: z.array(contentClaimSchema).max(100).optional(),
   packedMaterials: z.array(packedMaterialSchema).max(100).optional(),
+  workflowInput: workflowInputSchema.optional(), workflowInputSha256: promptShaSchema.optional(),
   status: z.enum(['pending', 'running', 'completed', 'failed', 'cancelled']),
   createdAt: z.string(), updatedAt: z.string(), draftId: z.string().optional(), errorCode: z.string().optional(),
   derivation: presentationDerivationSchema.optional(),
@@ -124,6 +135,15 @@ const requestSchema = z.object({
     } catch { ctx.addIssue({ code: 'custom', message: 'Workflow request snapshot is invalid' }) }
   } else if ((value.generatorPromptVersion === undefined) !== (value.generatorPromptSha256 === undefined)) {
     ctx.addIssue({ code: 'custom', message: 'Legacy request prompt provenance is incomplete' })
+  }
+  if ((value.workflowInput === undefined) !== (value.workflowInputSha256 === undefined)
+    || value.contentStoreIds.length === 0 && value.workflowInput === undefined) {
+    ctx.addIssue({ code: 'custom', message: 'Request input provenance is incomplete' })
+  } else if (value.workflowInput) {
+    try {
+      normalizeProductionWorkflowInput(value.workflowInput)
+      if (productionWorkflowInputSha256(value.workflowInput) !== value.workflowInputSha256) ctx.addIssue({ code: 'custom', message: 'Request workflowInput hash is invalid' })
+    } catch { ctx.addIssue({ code: 'custom', message: 'Request workflowInput is invalid' }) }
   }
 })
 const mediaAssetClaimSchema = z.object({
@@ -152,6 +172,7 @@ const draftSchema = z.object({
   artifactBindingSha256: promptShaSchema.optional(), approvedArtifactBindingSha256: promptShaSchema.optional(),
   mediaAssets: z.array(mediaAssetClaimSchema).max(100).optional(), destinationPresentations: z.array(presentationSchema).max(50).optional(),
   selectionId: z.string().optional(), selectionSha256: z.string().optional(), sourceContentClaims: z.array(contentClaimSchema).max(100).optional(),
+  workflowInputSha256: promptShaSchema.optional(),
   derivation: presentationDerivationSchema.optional(),
 }).strict().superRefine((value, ctx) => {
   const workflowFields = [value.executionKind, value.generatorWorkflowVersion, value.generatorWorkflowSha256]
@@ -162,13 +183,16 @@ const draftSchema = z.object({
   } else if ((value.generatorPromptVersion === undefined) !== (value.generatorPromptSha256 === undefined)) {
     ctx.addIssue({ code: 'custom', message: 'Legacy draft prompt provenance is incomplete' })
   }
+  if (value.sourceContentStoreIds.length === 0 && value.workflowInputSha256 === undefined) {
+    ctx.addIssue({ code: 'custom', message: 'Draft input provenance is incomplete' })
+  }
   const presentationFields = [value.artifactBindingSha256, value.mediaAssets, value.destinationPresentations]
   if (presentationFields.some(item => item !== undefined)) {
     if (value.artifactBindingSha256 === undefined) ctx.addIssue({ code: 'custom', message: 'Draft presentation binding is incomplete' })
     else {
       try { normalizeProductionArtifactV2({ draftId: value.draftId, draftVersion: value.version, artifactSha256: value.sha256,
         title: value.title, markdown: value.markdown, sourceContentStoreIds: value.sourceContentStoreIds,
-        artifactBindingSha256: value.artifactBindingSha256, mediaAssets: value.mediaAssets, destinationPresentations: value.destinationPresentations }) }
+        ...(value.workflowInputSha256 ? { workflowInputSha256: value.workflowInputSha256 } : {}), artifactBindingSha256: value.artifactBindingSha256, mediaAssets: value.mediaAssets, destinationPresentations: value.destinationPresentations }) }
       catch { ctx.addIssue({ code: 'custom', message: 'Draft presentation binding is invalid' }) }
     }
   }
@@ -264,7 +288,7 @@ export function publicationReconciliationResult(error) {
 const draftDeletionSchema = z.object({
   draftId: z.string().min(1).max(128), requestId: z.string().min(1).max(128),
   version: z.number().int().min(1).max(1_000_000_000), sha256: promptShaSchema,
-  deletedAt: z.string(),
+  deletedAt: z.string(), deletedFromStatus: z.enum(['draft', 'rejected', 'approved', 'published']).optional(),
 }).strict()
 
 export const prismProductionDomain = defineDomain({
@@ -455,6 +479,23 @@ export class PrismProductionService extends Service {
     })
   }
 
+  async createRequestFromDirectInput(generatorId, workflowInput, selectionId) {
+    let candidate
+    if (selectionId !== undefined) {
+      if (typeof selectionId !== 'string' || selectionId.length < 1 || selectionId.length > 128) throw new Error('selectionId is invalid')
+      const provider = this.materialProviders.get('ai-selection')
+      if (!provider) throw new Error('AI selection material provider is unavailable')
+      candidate = bindGenerationRequestWorkflowInput(createGenerationRequestFromMaterials(generatorId, await provider.resolve(selectionId)), workflowInput)
+    } else {
+      candidate = createGenerationRequest(generatorId, [], new Date(), workflowInput)
+    }
+    return this.mutate(async () => {
+      const request = await this.pinNewRequest(candidate)
+      await this.requireRequests().put(request.requestId, request)
+      return request
+    })
+  }
+
   async createRequest(generatorId, contentStoreIds) {
     const candidate = createGenerationRequest(generatorId, contentStoreIds)
     return this.mutate(async () => {
@@ -528,12 +569,20 @@ export class PrismProductionService extends Service {
     return parsed.data
   }
 
-  listDrafts({ status, limit = 50 } = {}) {
-    return Array.from(this.requireDrafts().entries(), ([draftId, value]) => ({ draftId, value }))
+  queryDrafts({ status, query = '', offset = 0, limit = 50 } = {}) {
+    const normalizedQuery = typeof query === 'string' ? query.trim().toLowerCase() : ''
+    const searchable = Array.from(this.requireDrafts().entries(), ([draftId, value]) => ({ draftId, value }))
       .filter(item => !this.draftDeletionSync(item.draftId))
-      .map(item => item.value).filter(item => !status || item.status === status)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit)
+      .map(item => item.value)
+      .filter(item => !normalizedQuery || [item.draftId, item.title, item.generatorId, item.requestId]
+        .some(value => typeof value === 'string' && value.toLowerCase().includes(normalizedQuery)))
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    const statusCounts = searchable.reduce((counts, item) => ({ ...counts, [item.status]: (counts[item.status] ?? 0) + 1 }), {})
+    const filtered = searchable.filter(item => !status || item.status === status)
+    return { records: filtered.slice(offset, offset + limit), total: filtered.length, statusCounts }
   }
+
+  listDrafts({ status, limit = 50 } = {}) { return this.queryDrafts({ status, limit }).records }
 
   getDraft(draftId) { return this.draftDeletionSync(draftId) ? undefined : this.requireDrafts().get(draftId) }
 
@@ -551,11 +600,12 @@ export class PrismProductionService extends Service {
       }
       const draft = this.requireDrafts().get(draftId)
       if (!draft) revisionValidation(`Unknown production draft: ${draftId}`)
-      if (!['draft', 'rejected'].includes(draft.status)) revisionConflict(`Production draft cannot be deleted in status: ${draft.status}`)
+      if (!['draft', 'rejected', 'approved', 'published'].includes(draft.status)) revisionConflict(`Production draft cannot be deleted in status: ${draft.status}`)
       if (draft.version !== expectedVersion || draft.sha256 !== expectedSha256) revisionConflict('Draft version or hash changed before deletion')
       const request = this.requireRequests().get(draft.requestId)
       if (!exactRequestDraftLink(request, draft)) revisionConflict('Draft generation request provenance is unavailable or inconsistent')
-      const tombstone = { draftId, requestId: draft.requestId, version: draft.version, sha256: draft.sha256, deletedAt: new Date().toISOString() }
+      const tombstone = { draftId, requestId: draft.requestId, version: draft.version, sha256: draft.sha256,
+        deletedAt: new Date().toISOString(), deletedFromStatus: draft.status }
       await this.requireDraftDeletions().put(draftId, tombstone)
       const verified = this.draftDeletionSync(draftId)
       if (!verified || verified.version !== draft.version || verified.sha256 !== draft.sha256) throw new Error('Draft deletion tombstone could not be verified')
@@ -640,7 +690,8 @@ export class PrismProductionService extends Service {
       if (draft.artifactBindingSha256 !== undefined) {
         const candidate = {
           draftId, draftVersion: nextVersion, artifactSha256: nextSha256, title, markdown,
-          sourceContentStoreIds: draft.sourceContentStoreIds, artifactBindingSha256: '',
+          sourceContentStoreIds: draft.sourceContentStoreIds,
+          ...(draft.workflowInputSha256 ? { workflowInputSha256: draft.workflowInputSha256 } : {}), artifactBindingSha256: '',
           mediaAssets: draft.mediaAssets, destinationPresentations: draft.destinationPresentations,
         }
         candidate.artifactBindingSha256 = productionArtifactBindingSha256(candidate)
@@ -854,7 +905,8 @@ export class PrismProductionService extends Service {
       }
       const candidate = {
         draftId, draftVersion: 1, artifactSha256: source.sha256, title: source.title, markdown: source.markdown,
-        sourceContentStoreIds: source.sourceContentStoreIds, artifactBindingSha256: '', mediaAssets, destinationPresentations: presentations,
+        sourceContentStoreIds: source.sourceContentStoreIds,
+        ...(source.workflowInputSha256 ? { workflowInputSha256: source.workflowInputSha256 } : {}), artifactBindingSha256: '', mediaAssets, destinationPresentations: presentations,
       }
       candidate.artifactBindingSha256 = productionArtifactBindingSha256(candidate)
       const normalized = normalizeProductionArtifactV2(candidate)
@@ -872,7 +924,8 @@ export class PrismProductionService extends Service {
         ...(source.executionKind === 'workflow-v1' ? { executionKind: source.executionKind, generatorWorkflowVersion: source.generatorWorkflowVersion,
           generatorWorkflowSha256: source.generatorWorkflowSha256 } : {}),
         title: source.title, markdown: source.markdown, sha256: source.sha256, version: 1, status: 'draft',
-        sourceContentStoreIds: [...source.sourceContentStoreIds], createdAt: at, updatedAt: at,
+        sourceContentStoreIds: [...source.sourceContentStoreIds],
+        ...(source.workflowInputSha256 ? { workflowInputSha256: source.workflowInputSha256 } : {}), createdAt: at, updatedAt: at,
         ...(source.selectionId ? { selectionId: source.selectionId, selectionSha256: source.selectionSha256 } : {}),
         ...(source.sourceContentClaims ? { sourceContentClaims: structuredClone(source.sourceContentClaims) } : {}),
         artifactBindingSha256: normalized.artifactBindingSha256, mediaAssets: normalized.mediaAssets,
@@ -899,7 +952,8 @@ export class PrismProductionService extends Service {
       const nextVersion = draft.version + 1
       const candidate = {
         draftId, draftVersion: nextVersion, artifactSha256: draft.sha256, title: draft.title, markdown: draft.markdown,
-        sourceContentStoreIds: draft.sourceContentStoreIds, artifactBindingSha256: '', mediaAssets, destinationPresentations,
+        sourceContentStoreIds: draft.sourceContentStoreIds,
+        ...(draft.workflowInputSha256 ? { workflowInputSha256: draft.workflowInputSha256 } : {}), artifactBindingSha256: '', mediaAssets, destinationPresentations,
       }
       candidate.artifactBindingSha256 = productionArtifactBindingSha256(candidate)
       const normalized = normalizeProductionArtifactV2(candidate)
@@ -1044,6 +1098,11 @@ export class PrismProductionService extends Service {
           || JSON.stringify(current.packedMaterials) !== JSON.stringify(claimed.packedMaterials)) {
           throw new Error('AI selection material no longer matches the generation request')
         }
+      }
+      if ((claimed.workflowInput === undefined) !== (claimed.workflowInputSha256 === undefined)
+        || claimed.workflowInput && productionWorkflowInputSha256(claimed.workflowInput) !== claimed.workflowInputSha256
+        || claimed.contentStoreIds.length === 0 && !claimed.workflowInput) {
+        throw new Error('Generation workflowInput provenance is invalid')
       }
       const records = claimed.contentStoreIds.map(id => this.ctx.prismContentStore.get(id))
       if (records.some(record => !record)) throw new Error('Generation source content is no longer available')
@@ -1583,6 +1642,7 @@ export class PrismProductionService extends Service {
       const artifact = {
         draftId, draftVersion: draft.version, artifactSha256: draft.sha256,
         title: draft.title, markdown: draft.markdown, sourceContentStoreIds: draft.sourceContentStoreIds,
+        ...(draft.workflowInputSha256 ? { workflowInputSha256: draft.workflowInputSha256 } : {}),
         ...(draft.artifactBindingSha256 ? { artifactBindingSha256: draft.artifactBindingSha256,
           mediaAssets: draft.mediaAssets, destinationPresentations: draft.destinationPresentations } : {}),
       }

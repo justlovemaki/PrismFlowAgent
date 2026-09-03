@@ -4,6 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { hostname, tmpdir } from 'node:os'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
+import { performance } from 'node:perf_hooks'
 import test from 'node:test'
 import { Context, Service } from '@deepseek-ai/cordis'
 import {
@@ -299,6 +300,24 @@ test('lease writer lock excludes a subprocess owner, reclaims bounded same-host 
     const releaseRecovered = await acquireWorkflowWriterLock(lockPath, { staleAgeMs: 1 })
     await releaseRecovered()
     await assert.rejects(readFile(ownerPath), error => error.code === 'ENOENT')
+  } finally { await rm(directory, { recursive: true, force: true }) }
+})
+
+test('lease writer lock safely reclaims an abandoned lock after the container reuses the current PID', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'prismflow-workflow-lock-pid-reuse-'))
+  const lockPath = join(directory, 'writer.lock')
+  try {
+    await writeLockOwner(lockPath, deadOwner({
+      pid: process.pid,
+      createdAt: new Date(Math.floor(performance.timeOrigin) - 1).toISOString(),
+    }))
+    const release = await acquireWorkflowWriterLock(lockPath, { staleAgeMs: 24 * 60 * 60 * 1000 })
+    const owner = JSON.parse(await readFile(lockPath, 'utf8'))
+    assert.equal(owner.pid, process.pid)
+    assert.ok(Date.parse(owner.createdAt) >= Math.floor(performance.timeOrigin))
+    await assert.rejects(acquireWorkflowWriterLock(lockPath), /held by PID/)
+    await release()
+    await assert.rejects(readFile(lockPath), error => error.code === 'ENOENT')
   } finally { await rm(directory, { recursive: true, force: true }) }
 })
 

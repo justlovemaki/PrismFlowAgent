@@ -4,7 +4,8 @@ import { isMap, isSeq, parseDocument } from 'yaml'
 import { resolveNamedProfile } from './publisher-profile-cli.js'
 
 const DASHBOARD_ID = 'prismflow-dashboard'
-const DASHBOARD_MODULE = '@prismflow/dsh-dashboard'
+const DASHBOARD_MODULE = '@prismflow/dsh/ui'
+const LEGACY_DASHBOARD_MODULE = '@prismflow/dsh-dashboard'
 const PROFILE_NAME = /^[A-Za-z0-9_-]{1,64}$/u
 
 function fail(message) { throw new Error(`PrismFlow dashboard installer: ${message}`) }
@@ -44,17 +45,17 @@ export function configureDashboardRow(patch, binding) {
       if (!isMap(row)) continue
       const id = row.get('id')
       const name = row.get('name')
-      if (id === DASHBOARD_ID || name === DASHBOARD_MODULE) matches.push({ row, id, name })
+      if (id === DASHBOARD_ID || name === DASHBOARD_MODULE || name === LEGACY_DASHBOARD_MODULE) matches.push({ row, id, name })
     }
   }
   // Detect forbidden occurrences outside the supported top-level insert shape.
   const json = document.toJSON()
   let occurrences = 0, reservedScalars = 0
   const walk = value => {
-    if (value === DASHBOARD_ID || value === DASHBOARD_MODULE) { reservedScalars += 1; return }
+    if (value === DASHBOARD_ID || value === DASHBOARD_MODULE || value === LEGACY_DASHBOARD_MODULE) { reservedScalars += 1; return }
     if (Array.isArray(value)) { for (const item of value) walk(item); return }
     if (!value || typeof value !== 'object') return
-    if (value.id === DASHBOARD_ID || value.name === DASHBOARD_MODULE) occurrences += 1
+    if (value.id === DASHBOARD_ID || value.name === DASHBOARD_MODULE || value.name === LEGACY_DASHBOARD_MODULE) occurrences += 1
     for (const child of Object.values(value)) walk(child)
   }
   walk(json)
@@ -62,8 +63,9 @@ export function configureDashboardRow(patch, binding) {
   if (matches.length === 1) {
     const match = matches[0]
     const allowed = new Set(['id', 'name', 'config'])
-    if (match.id !== DASHBOARD_ID || match.name !== DASHBOARD_MODULE
+    if (match.id !== DASHBOARD_ID || (match.name !== DASHBOARD_MODULE && match.name !== LEGACY_DASHBOARD_MODULE)
       || match.row.items.some(pair => !allowed.has(String(pair.key?.value ?? pair.key)))) fail('Dashboard row conflicts with the exact managed shape')
+    match.row.set('name', DASHBOARD_MODULE)
     match.row.set('config', { dshHome: binding.dshHome, profileName: binding.profileName })
   } else {
     document.contents.add({ insert: [{ id: DASHBOARD_ID, name: DASHBOARD_MODULE,

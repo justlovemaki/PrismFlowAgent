@@ -1,12 +1,20 @@
 import assert from 'node:assert/strict'
 import { createServer, request as httpRequest } from 'node:http'
-import { networkInterfaces } from 'node:os'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { networkInterfaces, tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
+import { DatabaseSync } from 'node:sqlite'
+import AdmZip from 'adm-zip'
+import YAML from 'yaml'
+import { decryptPrismFlowDataBackup, parsePrismFlowDataBackup, PRISMFLOW_DATA_UNITS } from '../lib/data-backup.js'
 import { apply } from '../lib/ui.js'
 import { PublicationReconciliationError } from '../lib/store-production.js'
 import { PublisherOutcomeError } from '../lib/shared/publisher-outcome.js'
 
-async function dashboard(services = {}, listenHost = '127.0.0.1', requestHost = listenHost) {
+const PACKAGE_VERSION = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version
+
+async function dashboard(services = {}, listenHost = '127.0.0.1', requestHost = listenHost, config) {
   let route
   const warnings = []
   const ctx = {
@@ -15,7 +23,7 @@ async function dashboard(services = {}, listenHost = '127.0.0.1', requestHost = 
     effect(factory) { factory() },
     logger: { warn(message) { warnings.push(message) } },
   }
-  apply(ctx)
+  apply(ctx, config)
   assert.equal(route.path, '/api/prismflow')
   assert.equal(route.kind, 'prefix')
   const server = createServer((req, res) => void route.handler(req, res))
@@ -31,6 +39,16 @@ async function request(origin, path, body, headers = {}, method) {
     body: body === undefined ? undefined : JSON.stringify(body),
   })
   return { status: response.status, value: await response.json() }
+}
+
+async function requestZip(origin, path, buffer) {
+  const response = await fetch(`${origin}/api/prismflow${path}`, { method: 'POST', headers: { 'content-type': 'application/zip', origin }, body: buffer })
+  return { status: response.status, value: await response.json() }
+}
+
+async function requestBackupExport(origin, password) {
+  const response = await fetch(`${origin}/api/prismflow/configuration-backup/export`, { method: 'POST', headers: { 'content-type': 'application/json', origin }, body: JSON.stringify({ password }) })
+  return { status: response.status, headers: response.headers, body: Buffer.from(await response.arrayBuffer()) }
 }
 
 async function requestBytes(origin, path, headers = {}) {
@@ -51,6 +69,23 @@ async function requestWithHost(origin, path, host) {
   })
 }
 
+function createBackupDatabase(path, marker) {
+  const db = new DatabaseSync(path)
+  db.exec('PRAGMA user_version = 1; CREATE TABLE units (name TEXT PRIMARY KEY, version INTEGER NOT NULL) STRICT; CREATE TABLE unit_globals (unit TEXT PRIMARY KEY REFERENCES units(name), value TEXT NOT NULL) STRICT')
+  for (const unit of PRISMFLOW_DATA_UNITS) {
+    db.prepare('INSERT INTO units (name, version) VALUES (?, ?)').run(unit.name, unit.version)
+    for (const table of unit.tables) {
+      const physical = `u_${unit.name}_${table}`
+      db.exec(`CREATE TABLE "${physical}" (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT`)
+      db.prepare(`INSERT INTO "${physical}" (key, value) VALUES (?, ?)`).run(`${unit.name}:${table}`, JSON.stringify({ marker }))
+    }
+  }
+  db.prepare('INSERT INTO units (name, version) VALUES (?, ?)').run('prismflow_content', 1)
+  db.exec('CREATE TABLE u_prismflow_content_items (key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT')
+  db.prepare('INSERT INTO u_prismflow_content_items (key, value) VALUES (?, ?)').run('fetched-content', JSON.stringify({ marker: 'fetched' }))
+  db.close()
+}
+
 function services() {
   const markdown = `# Brief\n${'x'.repeat(210_000)}`
   let deletedDraft = false
@@ -64,7 +99,7 @@ function services() {
     itemUrl: 'https://example.com/docs/draft-1/', generatedAt: '2026-01-01T00:00:02.000Z' }
   let prompt = { generatorId: 'brief', generatorName: 'Brief', persona: 'Writer', instruction: 'Write.', reviewPersona: 'Reviewer', reviewInstruction: 'Review.', version: 1, sha256: 'd'.repeat(64), updatedAt: '2026-01-01T00:00:00.000Z', actor: 'deployment', action: 'bootstrap', sourceVersion: 0 }
   const promptHistory = [structuredClone(prompt)]
-  let imageSettings = { id: 'current', version: 1, sha256: '7'.repeat(64), imageApiUrl: 'https://images.example/v1/images/generations', imageApiProtocol: 'auto', imageModel: 'image-model', imageSize: '1024x1024', avifQuality: 70, avifEffort: 5, updatedAt: '2026-01-01T00:00:00.000Z' }
+  let imageSettings = { id: 'current', version: 1, sha256: '7'.repeat(64), imageApiUrl: 'https://images.example/v1/images/generations', imageApiProtocol: 'auto', imageModel: 'image-model', imageSize: '1024x1024', avifQuality: 70, avifEffort: 5, ffmpegPath: '', updatedAt: '2026-01-01T00:00:00.000Z' }
   let imageCredentialConfigured = false
   return {
     markdown,
@@ -87,11 +122,19 @@ function services() {
       setCredential: async () => ({}),
       unsetCredential: async () => ({}),
     },
-    prismContentStore: {},
+    prismContentStore: {
+      count: () => 1,
+      categoryCounts: () => [{ category: 'news', count: 1 }],
+      list: () => [{ storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:02.000Z', fetchedAt: '2026-01-01T00:00:02.000Z', status: 'unread', item: { title: 'AI News', description: 'Summary', url: 'https://example.com/entry-1', published_date: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author', metadata: { ai_summary: 'Source AI summary', secret: 'must-not-project' } } }],
+    },
+    prismContentSelections: {
+      getReview: storeId => storeId === 'a'.repeat(64) ? { aiSummary: 'Reviewer AI summary', aiScore: 85, reason: 'Weighted review reason', reviewedAt: '2026-01-01T00:00:03.000Z', hidden: 'must-not-project-review' } : undefined,
+    },
     prismImageGenerationSettings: {
       get: () => structuredClone(imageSettings),
       async update(settings, expected) { if (expected.version !== imageSettings.version || expected.sha256 !== imageSettings.sha256) { const error = new Error('Image generation settings changed; reload before saving'); error.name = 'ImageGenerationSettingsError'; error.code = 'conflict'; throw error } imageSettings = { id: 'current', ...settings, version: imageSettings.version + 1, sha256: '6'.repeat(64), updatedAt: '2026-01-01T00:00:01.000Z' }; return structuredClone(imageSettings) },
       async describeCredential() { return { configured: imageCredentialConfigured, writable: true, allowDashboardWrite: true, ...(imageCredentialConfigured ? { source: 'file' } : {}) } },
+      async describeFfmpeg() { return { available: true, mode: imageSettings.ffmpegPath ? 'configured' : 'auto', platform: 'win32', resolvedPath: imageSettings.ffmpegPath || 'C:\\ffmpeg\\bin\\ffmpeg.exe' } },
       async setCredential() { imageCredentialConfigured = true; return this.describeCredential() }, async unsetCredential() { imageCredentialConfigured = false; return this.describeCredential() },
     },
     prismRssOutputs: { list: ({ draftId } = {}) => !draftId || draftId === rssOutput.draftId ? [structuredClone(rssOutput)] : [], get: outputId => outputId === rssOutput.outputId ? structuredClone(rssOutput) : undefined },
@@ -176,26 +219,124 @@ const REMOVED_ROUTES = [
   ['POST', '/production/request'],
 ]
 
+test('dashboard exports Follow and other operator configuration while preserving fetched content on restore', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'prismflow-ui-backup-'))
+  let app
+  try {
+    const profile = join(home, 'profiles', 'web'); const storage = join(home, 'storages')
+    await mkdir(profile, { recursive: true }); await mkdir(storage, { recursive: true })
+    await writeFile(join(profile, 'package.json'), '{}\n'); await writeFile(join(profile, 'cordis.patch.yml'), '- id: prismflow-store-source-settings\n  disabled: false\n  config:\n    credentialSlots:\n      - id: follow-cookie\n        name: Follow Cookie\n        usage: follow-cookie\n        credentialRef: PRISMFLOW_FOLLOW_COOKIE\n        allowDashboardWrite: true\n- id: prismflow-publisher-github-markdown\n  disabled: false\n  config:\n    destinations:\n      - id: archive\n        name: GitHub Archive\n        repository: owner/repository\n        tokenCredential: GITHUB_TOKEN\n')
+    const databasePath = join(storage, 'domain.sqlite'); createBackupDatabase(databasePath, 'exported')
+    const maintenanceService = { async beginMaintenanceDrain() {}, maintenanceStatus() { return { active: 0, restartAllowed: true } } }
+    const credentialValues = new Map([['GITHUB_TOKEN', 'github-token-secret'], ['PRISMFLOW_FOLLOW_COOKIE', 'follow-cookie-secret'], ['OPENAI_IMAGE_API_KEY', 'image-api-secret']])
+    const credentials = { async resolve(ref) { const value = credentialValues.get(ref); return value === undefined ? undefined : { value, source: 'file' } }, async describe() { return { configured: true, writable: true, source: 'file' } }, async set(ref, value) { credentialValues.set(ref, value) }, async unset(ref) { credentialValues.delete(ref) } }
+    app = await dashboard({ prismPublishers: maintenanceService, prismProduction: maintenanceService, credentials }, '127.0.0.1', '127.0.0.1', { dshHome: home, profileName: 'web' })
+
+    const password = 'correct horse battery staple'
+    const exported = await requestBackupExport(app.origin, password)
+    assert.equal(exported.status, 200); assert.equal(exported.headers.get('content-type'), 'application/vnd.prismflow.configuration-backup+json')
+    assert.match(exported.headers.get('content-disposition'), /^attachment; filename="prismflow-configuration-backup-\d{4}-\d{2}-\d{2}\.pfbackup"$/u)
+    assert.equal(exported.body.includes('follow-cookie-secret'), false); assert.equal(exported.body.includes('image-api-secret'), false); assert.equal(exported.body.includes('github-token-secret'), false)
+    const parsed = parsePrismFlowDataBackup(decryptPrismFlowDataBackup(exported.body, password))
+    assert.equal(parsed.payload.kind, 'PrismFlowConfigurationBackup/v4'); assert.equal(parsed.payload.sourceCredentialSlots[0].id, 'follow-cookie')
+    assert.equal(parsed.payload.publisherRows[1].disabled, false); assert.equal(parsed.payload.publisherRows[1].config.destinations[0].repository, 'owner/repository')
+    assert.equal(parsed.payload.units.some(unit => unit.name === 'prismflow_content'), false)
+    assert.equal(Number(exported.headers.get('x-prismflow-record-count')), parsed.recordCount)
+    assert.equal(Number(exported.headers.get('x-prismflow-workflow-history-count')), 1); assert.equal(Number(exported.headers.get('x-prismflow-workflow-id-count')), 0)
+    assert.equal(Number(exported.headers.get('x-prismflow-workflow-historical-id-count')), 0); assert.equal(Number(exported.headers.get('x-prismflow-deleted-workflow-id-count')), 0)
+    assert.equal(exported.headers.get('x-prismflow-fingerprint'), parsed.fingerprint)
+    assert.deepEqual(parsed.payload.credentials, [{ ref: 'GITHUB_TOKEN', value: 'github-token-secret' }, { ref: 'OPENAI_IMAGE_API_KEY', value: 'image-api-secret' }, { ref: 'PRISMFLOW_FOLLOW_COOKIE', value: 'follow-cookie-secret' }])
+    assert.equal((await request(app.origin, '/configuration-backup/import', { password: 'wrong password value', document: JSON.parse(exported.body) })).status, 400)
+
+    credentialValues.set('PRISMFLOW_FOLLOW_COOKIE', 'changed-cookie'); credentialValues.delete('OPENAI_IMAGE_API_KEY'); credentialValues.set('GITHUB_TOKEN', 'changed-github-token')
+    const db = new DatabaseSync(databasePath)
+    db.prepare('UPDATE u_prismflow_source_settings_sources SET value = ?').run(JSON.stringify({ marker: 'changed-config' }))
+    db.prepare('UPDATE u_prismflow_content_items SET value = ?').run(JSON.stringify({ marker: 'changed-fetched-content' }))
+    db.close()
+    const restored = await request(app.origin, '/configuration-backup/import', { password, document: JSON.parse(exported.body) })
+    assert.equal(restored.status, 200); assert.equal(restored.value.restored, true); assert.equal(restored.value.restartRequired, true)
+    assert.equal(restored.value.recordCount, parsed.recordCount); assert.equal(restored.value.credentialCount, 3); assert.equal(restored.value.publisherDestinationCount, 1); assert.equal(restored.value.maintenance, true)
+    assert.equal(restored.value.workflowHistoryCount, 1); assert.equal(restored.value.workflowIdCount, 0)
+    assert.equal(restored.value.workflowHistoricalIdCount, 0); assert.equal(restored.value.deletedWorkflowIdCount, 0)
+    assert.equal(credentialValues.get('PRISMFLOW_FOLLOW_COOKIE'), 'follow-cookie-secret'); assert.equal(credentialValues.get('OPENAI_IMAGE_API_KEY'), 'image-api-secret'); assert.equal(credentialValues.get('GITHUB_TOKEN'), 'github-token-secret')
+    assert.equal(YAML.parse(await readFile(join(profile, 'cordis.patch.yml'), 'utf8')).find(row => row.id === 'prismflow-publisher-github-markdown').config.destinations[0].repository, 'owner/repository')
+    const verified = new DatabaseSync(databasePath, { readOnly: true })
+    assert.deepEqual(JSON.parse(verified.prepare('SELECT value FROM u_prismflow_source_settings_sources').get().value), { marker: 'exported' })
+    assert.deepEqual(JSON.parse(verified.prepare('SELECT value FROM u_prismflow_content_items').get().value), { marker: 'changed-fetched-content' })
+    verified.close()
+  } finally { if (app) await app.close(); await rm(home, { recursive: true, force: true }) }
+})
+
+test('dashboard toolset API projects trusted plugin Manifests and accepts plugin-bound CAS selections', async () => {
+  const configured = services(); let savedInput; let savedPrompts
+  const promptRow = { items: [{ id: 'one', text: '候选文案', enabled: true }], version: 2, sha256: 'd'.repeat(64), updatedAt: '2026-01-01T00:00:00.000Z' }
+  const row = { mode: 'custom', enabledPlugins: ['prismflow-system-sources'], enabledTools: ['prismflow_sources'], enabledSkills: [], version: 4, sha256: 'a'.repeat(64), updatedAt: '2026-01-01T00:00:00.000Z' }
+  configured.prismToolsets = {
+    getToolset: () => structuredClone(row),
+    getPromptSuggestions: () => structuredClone(promptRow),
+    async savePromptSuggestions(input) { savedPrompts = structuredClone(input); return { ...promptRow, items: input.items, version: 3, sha256: 'e'.repeat(64) } },
+    listPlugins: () => [{ pluginId: 'prismflow-system-sources', name: '数据源同步', description: 'Sources', origin: 'system', version: 1, configurable: false, tools: ['prismflow_sources'], skills: ['prismflow-source-ingestion'] }],
+    listSkills: () => [{ skillId: 'prismflow-personal', name: 'Personal', description: 'Personal', whenToUse: '', enabled: false, lifecycle: 'disabled', origin: 'personal-custom', removable: true, version: 2, sha256: 'b'.repeat(64), updatedAt: '2026-01-01T00:00:00.000Z', action: 'update', sourceVersion: 1 }],
+    async saveToolset(input) { savedInput = structuredClone(input); return { ...row, enabledPlugins: input.enabledPlugins, enabledTools: input.enabledTools, version: 5, sha256: 'c'.repeat(64) } },
+    async installPersonalPlugin(files) { assert.equal(files.some(file => file.path === 'index.mjs'), true); return { pluginId: 'prismflow-personal-upload', name: 'Upload', description: 'Uploaded', origin: 'personal', version: '1.0.0', configurable: false, uploaded: true, removable: true, tools: ['prismflow_upload'], skills: [], directory: 'SECRET' } },
+    async deletePersonalPlugin(input) { return { pluginId: input.pluginId, version: '1.0.0', tools: ['prismflow_upload'], deletedAt: '2026-01-01T00:00:00.000Z', manifestSha256: 'd'.repeat(64) } },
+  }
+  const app = await dashboard(configured)
+  try {
+    const catalog = await request(app.origin, '/toolsets')
+    assert.equal(catalog.status, 200); assert.equal(catalog.value.plugins[0].origin, 'system')
+    assert.deepEqual(catalog.value.toolset.enabledPlugins, ['prismflow-system-sources'])
+    assert.equal(catalog.value.skills[0].removable, true)
+    const prompts = await request(app.origin, '/prompt-suggestions')
+    assert.equal(prompts.status, 200); assert.equal(prompts.value.suggestions.items[0].text, '候选文案')
+    const promptBody = { items: [{ id: 'one', text: '已修改', enabled: false }], expected: { version: 2, sha256: 'd'.repeat(64) } }
+    const promptsSaved = await request(app.origin, '/prompt-suggestions', promptBody)
+    assert.equal(promptsSaved.status, 200); assert.deepEqual(savedPrompts, promptBody); assert.equal(promptsSaved.value.suggestions.version, 3)
+    assert.equal((await request(app.origin, '/toolsets/configuration/export')).status, 404)
+    assert.equal((await request(app.origin, '/toolsets/configuration/import', { document: {}, expected: {} })).status, 404)
+    const body = { mode: 'custom', enabledPlugins: ['prismflow-system-sources'], enabledTools: ['prismflow_sources'], enabledSkills: [], expected: { version: 4, sha256: 'a'.repeat(64) } }
+    const saved = await request(app.origin, '/toolsets', body)
+    assert.equal(saved.status, 200); assert.deepEqual(savedInput, body); assert.equal(saved.value.toolset.version, 5)
+    const zip = new AdmZip(); zip.addFile('prismflow-plugin.json', Buffer.from(JSON.stringify({ format: 'prismflow-personal-plugin/v1', pluginId: 'prismflow-personal-upload', name: 'Upload', description: 'Uploaded', version: '1.0.0', entry: 'index.mjs', tools: ['prismflow_upload'] }))); zip.addFile('index.mjs', Buffer.from('export default () => {}'))
+    const uploaded = await requestZip(app.origin, '/toolsets/plugin/import-zip', zip.toBuffer())
+    assert.equal(uploaded.status, 201); assert.equal(uploaded.value.plugin.uploaded, true); assert.equal(JSON.stringify(uploaded.value).includes('SECRET'), false)
+    const removed = await request(app.origin, '/toolsets/plugin/delete', { pluginId: 'prismflow-personal-upload', expected: { version: 4, sha256: 'a'.repeat(64) } })
+    assert.equal(removed.status, 200); assert.equal(removed.value.deleted.pluginId, 'prismflow-personal-upload'); assert.equal(removed.value.restartRequired, false)
+  } finally { await app.close() }
+})
+
 test('dashboard API exposes only configuration, immutable draft review/publication, and receipts', async () => {
   const configured = services()
   const app = await dashboard(configured)
   try {
     const status = await request(app.origin, '/status')
     assert.equal(status.status, 200)
-    assert.equal(status.value.pluginVersion, '0.19.23')
+    assert.equal(status.value.pluginVersion, PACKAGE_VERSION)
     assert.deepEqual(status.value.services, { sources: true, sourceSettings: true, contentStore: true, publishers: true, receipts: true, production: true, generatorWorkflows: true, toolsets: false, imageGenerationSettings: true, rssOutputs: true })
-    assert.deepEqual(status.value.counts, { sources: 1, sourceSettings: 1, publishers: 1, generators: 1, generatorWorkflows: 1, rssOutputs: 1 })
+    assert.deepEqual(status.value.counts, { sources: 1, sourceSettings: 1, contents: 1, publishers: 1, generators: 1, generatorWorkflows: 1, rssOutputs: 1 })
 
     const image = await request(app.origin, '/image-generation/settings')
-    assert.equal(image.value.settings.imageModel, 'image-model'); assert.equal(image.value.credential.configured, false)
-    const imageSaved = await request(app.origin, '/image-generation/settings', { settings: { imageApiUrl: 'https://new.example/v1/chat/completions', imageApiProtocol: 'chat-completions', imageModel: 'new-image', imageSize: '1536x1024', avifQuality: 75, avifEffort: 6 }, expected: { version: 1, sha256: '7'.repeat(64) } })
-    assert.equal(imageSaved.value.settings.version, 2); assert.equal(imageSaved.value.settings.imageModel, 'new-image')
+    assert.equal(image.value.settings.imageModel, 'image-model'); assert.equal(image.value.settings.ffmpegPath, ''); assert.equal(image.value.credential.configured, false)
+    assert.deepEqual(image.value.ffmpeg, { available: true, mode: 'auto', platform: 'win32', resolvedPath: 'C:\\ffmpeg\\bin\\ffmpeg.exe' })
+    const imageSaved = await request(app.origin, '/image-generation/settings', { settings: { imageApiUrl: 'https://new.example/v1/chat/completions', imageApiProtocol: 'chat-completions', imageModel: 'new-image', imageSize: '1536x1024', avifQuality: 75, avifEffort: 6, ffmpegPath: 'C:\\ffmpeg\\bin\\ffmpeg.exe' }, expected: { version: 1, sha256: '7'.repeat(64) } })
+    assert.equal(imageSaved.value.settings.version, 2); assert.equal(imageSaved.value.settings.imageModel, 'new-image'); assert.equal(imageSaved.value.ffmpeg.mode, 'configured')
     const imageCredential = await request(app.origin, '/image-generation/credential/set', { value: 'write-only-secret' })
     assert.equal(imageCredential.value.credential.configured, true); assert.equal(JSON.stringify(imageCredential.value).includes('write-only-secret'), false)
     assert.equal((await request(app.origin, '/image-generation/credential/unset', {})).value.credential.configured, false)
-    assert.equal((await request(app.origin, '/image-generation/settings', { settings: { imageApiUrl: 'https://new.example/v1/chat/completions', imageApiProtocol: 'chat-completions', imageModel: 'new-image', imageSize: '1536x1024', avifQuality: 75, avifEffort: 6 }, expected: { version: 1, sha256: '7'.repeat(64) } })).status, 409)
-    assert.equal((await request(app.origin, '/image-generation/settings', { settings: { imageApiUrl: 'http://unsafe.example/v1/images/generations', imageApiProtocol: 'auto', imageModel: 'x', imageSize: '1024x1024', avifQuality: 70, avifEffort: 5 }, expected: { version: 2, sha256: '6'.repeat(64) }, apiKey: 'forbidden' })).status, 400)
+    assert.equal((await request(app.origin, '/image-generation/settings', { settings: { imageApiUrl: 'https://new.example/v1/chat/completions', imageApiProtocol: 'chat-completions', imageModel: 'new-image', imageSize: '1536x1024', avifQuality: 75, avifEffort: 6, ffmpegPath: 'C:\\ffmpeg\\bin\\ffmpeg.exe' }, expected: { version: 1, sha256: '7'.repeat(64) } })).status, 409)
+    assert.equal((await request(app.origin, '/image-generation/settings', { settings: { imageApiUrl: 'http://unsafe.example/v1/images/generations', imageApiProtocol: 'auto', imageModel: 'x', imageSize: '1024x1024', avifQuality: 70, avifEffort: 5, ffmpegPath: '' }, expected: { version: 2, sha256: '6'.repeat(64) }, apiKey: 'forbidden' })).status, 400)
     assert.equal((await request(app.origin, '/image-generation/credential/set', { value: 'bad\nkey' })).status, 400)
+
+    const content = await request(app.origin, '/content?search=AI&category=news&status=unread&sortBy=title&sortOrder=asc&limit=20&offset=0')
+    assert.equal(content.status, 200); assert.equal(content.value.total, 1); assert.equal(content.value.records[0].title, 'AI News')
+    assert.deepEqual(content.value.records[0], { storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', status: 'unread',
+      firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:02.000Z', fetchedAt: '2026-01-01T00:00:02.000Z',
+      title: 'AI News', description: 'Summary', url: 'https://example.com/entry-1', publishedAt: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author',
+      sourceAiSummary: 'Source AI summary', aiSummary: 'Reviewer AI summary', aiScore: 85, aiReason: 'Weighted review reason', aiReviewedAt: '2026-01-01T00:00:03.000Z' })
+    assert.deepEqual(content.value.categories, [{ category: 'news', count: 1 }]); assert.equal(JSON.stringify(content.value).includes('must-not-project'), false)
+    assert.equal((await request(app.origin, '/content?sortBy=secret')).status, 400)
+    assert.equal((await request(app.origin, '/content?limit=20&limit=30')).status, 400)
+    assert.equal((await request(app.origin, '/content?unknown=1')).status, 400)
 
     const settings = await request(app.origin, '/source-settings')
     assert.equal(settings.value.sources[0].settingsId, 'rss:news')
@@ -398,7 +539,7 @@ test('dashboard draft revision API is exact, bounded, same-origin, and reports o
   } finally { await app.close() }
 })
 
-test('dashboard deletes only an exact unapproved Draft tombstone through a strict same-origin DTO', async () => {
+test('dashboard deletes an exact Draft tombstone through a strict same-origin DTO', async () => {
   const app = await dashboard(services())
   try {
     const body = { draftId: 'draft-1', expectedVersion: 1, expectedSha256: 'c'.repeat(64) }
@@ -553,7 +694,7 @@ test('dashboard data-plane and generation invocation routes are absent and retur
 })
 
 test('dashboard control plane keeps origin checks and strict secret-free DTOs', async () => {
-  let publishArgs
+  let publishArgs; let draftQueryOptions
   const configured = services()
   configured.prismSourceSettings.list = () => [{ settingsId: 'follow:papers', type: 'follow', id: 'papers', name: 'Papers', category: 'paper', enabled: true, limit: 20, listId: '123', credentialSlotId: 'follow', credentialRef: 'SOURCE_SETTINGS_SECRET', cookie: 'COOKIE_SECRET' }]
   configured.prismSourceSettings.describeCredentialSlots = async () => [{ id: 'follow', name: 'Follow Login', usage: 'follow-cookie', configured: true, source: 'file', writable: true, allowDashboardWrite: true, credentialRef: 'SLOT_SECRET', value: 'COOKIE_SECRET' }]
@@ -564,6 +705,7 @@ test('dashboard control plane keeps origin checks and strict secret-free DTOs', 
     sha256: 'c'.repeat(64), version: 1, status: 'approved', sourceContentStoreIds: ['a'.repeat(64)], publishedPublisherIds: [],
     createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', credentialRef: 'DRAFT_SECRET',
   }]
+  configured.prismProduction.queryDrafts = options => { draftQueryOptions = options; const records = configured.prismProduction.listDrafts(); return { records, total: 37, statusCounts: { approved: 37 } } }
   configured.prismProduction.publish = async (...args) => { publishArgs = args; return { status: 'created', publisherId: args[1], draftId: args[0], providerSecret: 'PUBLISH_SECRET' } }
   const app = await dashboard(configured)
   try {
@@ -571,7 +713,9 @@ test('dashboard control plane keeps origin checks and strict secret-free DTOs', 
     assert.deepEqual(settings.value.credentialSlots, [{ id: 'follow', name: 'Follow Login', usage: 'follow-cookie', configured: true, source: 'file', writable: true, allowDashboardWrite: true }])
     assert.equal(JSON.stringify(settings.value).includes('SECRET'), false)
     assert.equal(JSON.stringify((await request(app.origin, '/publishers')).value).includes('SECRET'), false)
-    const drafts = await request(app.origin, '/production/drafts', { limit: 20 })
+    const drafts = await request(app.origin, '/production/drafts', { status: 'approved', query: 'Brief', offset: 20, limit: 10 })
+    assert.deepEqual(draftQueryOptions, { status: 'approved', query: 'Brief', offset: 20, limit: 10 })
+    assert.equal(drafts.value.total, 37); assert.deepEqual(drafts.value.statusCounts, { approved: 37 })
     assert.equal(drafts.value.records[0].markdown, configured.markdown)
     assert.equal(JSON.stringify(drafts.value).includes('DRAFT_SECRET'), false)
     const receipts = await request(app.origin, '/receipts/query', { limit: 20 })

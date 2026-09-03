@@ -6,6 +6,7 @@ import {
   buildPackedMaterial,
   canonicalSelectionUrl,
   clusterAIEvents,
+  clusterAIEventsFromGroups,
   estimateMaterialTokens,
   extractSelectionMedia,
   normalizedTitleTokens,
@@ -15,7 +16,7 @@ import {
   type SelectionCandidate,
 } from '../core/content/AIContentSelection.js';
 
-function candidate(id: string, title: string, options: { url?: string; source?: string; topics?: string[]; body?: string; origin?: 'local-match' | 'reviewed-ambiguous' } = {}): SelectionCandidate {
+function candidate(id: string, title: string, options: { url?: string; source?: string; topics?: string[]; body?: string; origin?: 'local-match' | 'reviewed-ambiguous' | 'ai-editorial'; aiScore?: number } = {}): SelectionCandidate {
   const body = options.body ?? `${title} details and factual evidence. `.repeat(20);
   return {
     record: {
@@ -25,6 +26,7 @@ function candidate(id: string, title: string, options: { url?: string; source?: 
     contentHash: id.repeat(64).slice(0, 64),
     assessment: { verdict: 'matched-ai', topics: (options.topics ?? ['foundation-models']) as never[], reasonCodes: [], evidence: [], scannedChars: body.length, truncated: false },
     relevanceOrigin: options.origin ?? 'local-match', effectiveTimestamp: Date.parse('2026-08-20T00:00:00.000Z'),
+    ...(options.aiScore !== undefined ? { editorial: { aiSummary: `Summary ${id}`, aiScore: options.aiScore, reason: `Score ${options.aiScore}` } } : {}),
   };
 }
 
@@ -49,6 +51,16 @@ test('clusters duplicate English/Chinese events conservatively and is permutatio
   assert.equal(first.some(item => item.members.some(member => member.record.storeId.endsWith('4')) && item.members.length > 1), false);
 });
 
+test('builds complete hash-bound clusters only from AI-decided semantic groups', () => {
+  const values = [candidate('1', '措辞完全不同的Hy4发布报道'), candidate('2', '腾讯公布新一代基础模型'), candidate('3', '独立的框架适配进展')];
+  const groups = [[values[0].record.storeId, values[1].record.storeId], [values[2].record.storeId]];
+  const clusters = clusterAIEventsFromGroups(values, groups);
+  assert.deepEqual(clusters.map(cluster => cluster.members.length).sort(), [1, 2]);
+  assert.equal(clusters.find(cluster => cluster.members.length === 2)?.signals.distinctSourceCount, 2);
+  assert.throws(() => clusterAIEventsFromGroups(values, [[values[0].record.storeId], [values[0].record.storeId, values[1].record.storeId]]), /duplicate|omitted/u);
+  assert.throws(() => clusterAIEventsFromGroups(values, [[values[0].record.storeId], [values[1].record.storeId]]), /omitted/u);
+});
+
 test('enforces clustering comparison limits and deterministic diverse ranking', () => {
   const values = Array.from({ length: 20 }, (_, index) => candidate(String(index + 1), `Machine learning model release ${index}`, { source: index < 10 ? 'rss:bulk' : `rss:${index}`, topics: [index % 2 ? 'machine-learning' : 'ai-compute'] }));
   assert.throws(() => clusterAIEvents(values, { maxBucketSize: 100, maxPairComparisons: 1 }), /comparison limit/);
@@ -57,6 +69,14 @@ test('enforces clustering comparison limits and deterministic diverse ranking', 
   assert.ok(ranked.length <= 8);
   assert.ok(ranked.filter(item => item.cluster.representative.record.sourceId === 'rss:bulk').length <= 2);
   assert.deepEqual(ranked.map(item => item.cluster.clusterId), rankDiverseEvents([...clusters].reverse(), { maxItems: 8, maxPerSource: 2, longTailPercent: 25 }).map(item => item.cluster.clusterId));
+});
+
+test('AI editorial score is the primary general ranking signal', () => {
+  const lower = candidate('score-low', 'Lower scored AI event', { origin: 'ai-editorial', aiScore: 70, topics: ['machine-learning'] });
+  const higher = candidate('score-high', 'Higher scored AI event', { origin: 'ai-editorial', aiScore: 95, topics: ['machine-learning'] });
+  const ranked = rankDiverseEvents(clusterAIEvents([lower, higher]), { maxItems: 1, maxPerSource: 1 });
+  assert.equal(ranked[0].cluster.representative.record.storeId, higher.record.storeId);
+  assert.ok(ranked[0].reasons.includes('ai-editorial-score-95'));
 });
 
 test('enforces a bounded source quota before general diversity ranking', () => {
@@ -155,7 +175,9 @@ test('packs bounded verbatim materials with stable hashes and conservative token
   assert.ok(material.excerpts.length > 0);
   assert.deepEqual(material.media, [{ kind: 'image', url: mediaUrl }]);
   const encoded = JSON.stringify({ storeId: material.storeId, title: material.title, url: material.url, source: material.source,
-    author: material.author, publishedDate: material.publishedDate, category: material.category, excerpts: material.excerpts, media: material.media });
+    author: material.author, publishedDate: material.publishedDate, category: material.category,
+    aiSummary: material.aiSummary, aiScore: material.aiScore, scoreReason: material.scoreReason,
+    excerpts: material.excerpts, media: material.media });
   assert.equal(material.materialChars, encoded.length);
   assert.equal(material.materialSha256, createHash('sha256').update(encoded).digest('hex'));
   for (const item of material.excerpts) assert.equal((input.record.item.description as string).slice(item.start, item.end).replace(/[\u0000\u007f]/gu, '').trim(), item.text);

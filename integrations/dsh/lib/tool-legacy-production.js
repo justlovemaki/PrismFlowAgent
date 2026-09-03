@@ -1,8 +1,7 @@
 import { spawn } from 'node:child_process'
-import { constants as fsConstants } from 'node:fs'
-import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { delimiter, isAbsolute, join } from 'node:path'
+import { join } from 'node:path'
 import Schema from '@deepseek-ai/schemastery'
 import { defineTool } from '@deepseek-ai/dsh-tools'
 import sharp from 'sharp'
@@ -14,6 +13,8 @@ import { publishGitHubFile } from './publisher-github-markdown.js'
 import { parseGitHubRepository, validateGitHubBranch, validateGitHubPathPrefix } from './shared/github-publisher.js'
 import { createManagedMediaFetch } from './secure-rss-fetch.js'
 import { registerPrismFlowTool } from './store-prismflow-toolsets.js'
+import { resolveFfmpegPath } from './ffmpeg-runtime.js'
+export { resolveFfmpegPath } from './ffmpeg-runtime.js'
 
 export const name = 'prismflow-tool-legacy-production'
 export const inject = ['tools', 'credentials', 'prismToolsets', 'prismProduction', 'prismProductionMedia', 'prismPublishers', 'prismRssOutputs', 'prismImageGenerationSettings']
@@ -30,6 +31,7 @@ export const Config = Schema.object({
   videoPreset: Schema.string().default('slow'),
   maxVideoBytes: Schema.number().step(1).min(1_048_576).max(32 * 1024 * 1024).default(25 * 1024 * 1024),
   githubCredential: Schema.string().role('credential-ref').default('PRISMFLOW_GITHUB_TOKEN'),
+  githubAllowArbitraryTargets: Schema.boolean().default(false),
   workflowOwner: Schema.string().default('justlovemaki'), workflowRepository: Schema.string().default('Hex2077-Site'),
   workflowId: Schema.string().default('sync-notes.yml'), workflowRef: Schema.string().default('main'),
   r2PublisherId: Schema.string().default(''),
@@ -44,9 +46,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const GITHUB_PUSH_TARGETS = Object.freeze([
   'justlovemaki/Hex2077-Site:content/blog/weekly',
   'justlovemaki/Hex2077-Site:content/blog',
-  'justlovemaki/Hex2077-Site:rss-t.xml',
+  'justlovemaki/Hex2077-Site:rss.xml',
 ])
-const GITHUB_RAW_RSS_TARGET = 'justlovemaki/Hex2077-Site:rss-t.xml'
+const GITHUB_RAW_RSS_TARGET = 'justlovemaki/Hex2077-Site:rss.xml'
 const mediaClaimSchema = { type: 'object', additionalProperties: false, properties: { assetId: { type: 'string', required: true }, sha256: { type: 'string', required: true }, bytes: { type: 'integer', required: true }, mime: { type: 'string', required: true }, width: { type: 'integer', required: true }, height: { type: 'integer', required: true } } }
 function bounded(value, name, max) { if (typeof value !== 'string' || !value.trim() || value.length > max || /\u0000/u.test(value)) throw new Error(`${name} is invalid`); return value.trim() }
 function approvedDraft(ctx, args) {
@@ -90,27 +92,6 @@ function cleanMediaBreaks(content) {
     if (!/^(<br\s*\/?>[\s]*)+$/iu.test(line.trim())) return true
     return /<img[^>]*>|<video[^>]*>/iu.test(lines[index - 1] ?? '') || /<img[^>]*>|<video[^>]*>/iu.test(lines[index + 1] ?? '')
   }).join('\n')
-}
-export async function resolveFfmpegPath(configured = '') {
-  const explicit = String(configured ?? '').trim()
-  const candidates = []
-  if (explicit) {
-    if (explicit.length > 1_024 || /[\u0000-\u001f\u007f]/u.test(explicit)) throw Object.assign(new Error('Configured FFmpeg path is invalid'), { code: 'PRISMFLOW_FFMPEG_CONFIGURATION' })
-    if (!explicit.includes('/') && !explicit.includes('\\')) return explicit
-    if (!isAbsolute(explicit)) throw Object.assign(new Error('Configured FFmpeg path must be absolute or an executable name'), { code: 'PRISMFLOW_FFMPEG_CONFIGURATION' })
-    candidates.push(explicit)
-  } else {
-    const fromEnvironment = String(process.env.FFMPEG_PATH ?? '').trim()
-    if (fromEnvironment && isAbsolute(fromEnvironment)) candidates.push(fromEnvironment)
-    const executable = process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'
-    for (const directory of String(process.env.PATH ?? '').split(delimiter).filter(Boolean)) candidates.push(join(directory.replace(/^"|"$/gu, ''), executable))
-    if (process.platform === 'win32') candidates.push('D:/ai/ffmpeg/bin/ffmpeg.exe', 'C:/ffmpeg/bin/ffmpeg.exe')
-    else candidates.push('/usr/local/bin/ffmpeg', '/usr/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg')
-  }
-  for (const candidate of [...new Set(candidates)]) {
-    try { await access(candidate, process.platform === 'win32' ? fsConstants.F_OK : fsConstants.X_OK); return candidate } catch {}
-  }
-  throw Object.assign(new Error(explicit ? `Configured FFmpeg executable is unavailable: ${explicit}` : 'FFmpeg was not found automatically; configure ffmpegPath or FFMPEG_PATH'), { code: 'PRISMFLOW_FFMPEG_CONFIGURATION' })
 }
 async function convertVideoForR2(bytes, config, signal, ffmpegPath) {
   if (bytes.length > config.maxVideoBytes) return undefined
@@ -227,11 +208,23 @@ function githubPushCommitMessage(value, fallback) {
   if (/\r|\n/u.test(message)) throw new Error('message must be a single line')
   return message
 }
-function githubPushTarget(value) {
-  if (!GITHUB_PUSH_TARGETS.includes(value)) throw new Error(`Unsupported GitHub push target: ${value}`)
-  const separator = value.indexOf(':'); const repo = value.slice(0, separator); const path = value.slice(separator + 1)
+function githubPushTarget(value, allowArbitraryTargets, requestedType = 'auto') {
+  const target = githubPushText(value, 'target', 768)
+  if (!allowArbitraryTargets && !GITHUB_PUSH_TARGETS.includes(target)) throw new Error(`Unsupported GitHub push target: ${target}`)
+  const separator = target.indexOf(':')
+  if (separator < 1 || separator === target.length - 1 || target.indexOf(':', separator + 1) !== -1) throw new Error('GitHub push target must use owner/repository:relative/path format')
+  const repo = target.slice(0, separator); const path = target.slice(separator + 1)
   parseGitHubRepository(repo); validateGitHubPathPrefix(path)
-  return value === GITHUB_RAW_RSS_TARGET ? { repo, path, kind: 'raw-rss', branch: 'book' } : { repo, path, kind: 'article' }
+  const basename = path.split('/').at(-1) ?? ''
+  const hasFileExtension = /\.[A-Za-z0-9][A-Za-z0-9._-]*$/u.test(basename)
+  const markdown = /\.(?:md|markdown)$/iu.test(basename)
+  const fixedBranch = target === GITHUB_RAW_RSS_TARGET ? 'book' : undefined
+  const inferredType = hasFileExtension && !markdown ? 'raw-file' : markdown ? 'markdown-file' : 'markdown-directory'
+  const kind = requestedType === 'auto' ? inferredType : requestedType
+  if (GITHUB_PUSH_TARGETS.includes(target) && kind !== inferredType) throw new Error(`Built-in GitHub target requires targetType ${inferredType}`)
+  if (kind === 'raw-file') return { repo, path, basename, kind, fixedBranch, format: target === GITHUB_RAW_RSS_TARGET ? 'rss' : 'raw' }
+  if (kind === 'markdown-file') return { repo, path, basename, kind }
+  return { repo, path, kind: 'markdown-directory' }
 }
 async function assertRawRssXml(content) {
   if (!/^\s*(?:<\?xml[^>]*>\s*)?<rss(?:\s|>)/u.test(content) || !/<channel(?:\s|>)/u.test(content)) throw new Error('Raw RSS target requires an RSS 2.0 XML document')
@@ -258,8 +251,12 @@ async function generateGitHubPushMetadata(ctx, content, execution) {
 }
 
 export function apply(ctx, config) {
-  let ffmpegPathPromise
-  const deploymentFfmpegPath = () => { ffmpegPathPromise ??= resolveFfmpegPath(config.ffmpegPath); return ffmpegPathPromise }
+  let ffmpegPathKey, ffmpegPathPromise
+  const deploymentFfmpegPath = () => {
+    const configured = ctx.prismImageGenerationSettings.runtime().ffmpegPath ?? config.ffmpegPath
+    if (configured !== ffmpegPathKey) { ffmpegPathKey = configured; ffmpegPathPromise = resolveFfmpegPath(configured) }
+    return ffmpegPathPromise
+  }
   registerPrismFlowTool(ctx, defineTool({
     name: 'prismflow_process_markdown_media',
     description: 'Fetch Markdown image and video media securely, upload every successful asset to the deployment-pinned R2 destination, rewrite Markdown URLs, and silently remove individual failed media. Missing R2 configuration is a hard error.',
@@ -411,7 +408,7 @@ export function apply(ctx, config) {
   }))
 
   registerPrismFlowTool(ctx, defineTool({
-    name: 'prismflow_generate_rss_content', description: 'Build and persist an original-compatible RSS 2.0 feed from approved and published Drafts. Each item contains the full Markdown-derived HTML in content:encoded CDATA and uses the dated hex2077.dev/docs/YYYY-MM/YYYY-MM-DD URL. Publication must reference the returned rssOutputId so XML is transferred losslessly.',
+    name: 'prismflow_generate_rss_content', description: 'Build and persist an original-compatible RSS 2.0 feed from approved and published Drafts. Each item contains the full Markdown-derived HTML in content:encoded CDATA and uses the dated hex2077.dev/docs/YYYY-MM/YYYY-MM-DD URL. For the persisted publication path, pass the returned rssOutputId so XML is transferred losslessly without model reconstruction.',
     parameters: { draftId: { type: 'string', required: true }, draftVersion: { type: 'integer', required: true }, artifactSha256: { type: 'string', required: true } },
     output: { schema: { type: 'object', additionalProperties: false, properties: { content: { type: 'string', required: true }, rssOutputId: { type: 'string', required: true }, xmlSha256: { type: 'string', required: true }, xmlBytes: { type: 'integer', required: true }, draftId: { type: 'string', required: true }, draftVersion: { type: 'integer', required: true }, artifactSha256: { type: 'string', required: true } } }, render: (_args, value) => [{ type: 'text', text: `Saved complete RSS output ${value.rssOutputId} (${value.xmlBytes} UTF-8 bytes, SHA-256 ${value.xmlSha256}). Publish it with prismflow_github_push using this rssOutputId; do not copy or reconstruct XML.` }] },
     async execute(args) {
@@ -487,11 +484,12 @@ export function apply(ctx, config) {
   }))
 
   registerPrismFlowTool(ctx, defineTool({
-    name: 'prismflow_github_push', description: 'Push only to fixed GitHub targets. Article targets accept content and add dated Frontmatter. The fixed rss-t.xml target accepts only a persisted prismflow_generate_rss_content rssOutputId and writes that exact verified XML byte-for-byte to branch book, preventing model truncation or reconstruction.',
+    name: 'prismflow_github_push', description: 'Push to built-in targets, or to arbitrary validated owner/repository paths when the Profile explicitly enables it. Markdown directory targets add dated Frontmatter and filenames; exact .md/.markdown targets use their requested file path with Markdown Frontmatter. Targets whose path has another file extension use raw-file mode without Frontmatter or filename rewriting. The fixed rss.xml target accepts either direct RSS XML content or a persisted prismflow_generate_rss_content rssOutputId and writes the selected XML unchanged to branch book.',
     parameters: {
-      targets: { type: 'array', items: { type: 'string', enum: GITHUB_PUSH_TARGETS }, description: 'Optional fixed repository:path targets. The rss-t.xml target always uses branch book and raw XML mode; defaults to the first article target.' },
-      content: { type: 'string', description: 'Arbitrary article body. Required for article targets and forbidden for the fixed RSS target.' },
-      rssOutputId: { type: 'string', description: 'Exact persisted RSS Output ID returned by prismflow_generate_rss_content. Required only for the fixed RSS target.' },
+      targets: { type: 'array', items: { type: 'string' }, description: 'Optional owner/repository:relative/path targets. Arbitrary repositories and paths require the Profile opt-in. Directory targets create dated Markdown files, exact .md/.markdown targets use that file path, and other file extensions use raw-file mode. Defaults to the first built-in Markdown directory target.' },
+      targetType: { type: 'string', enum: ['auto', 'markdown-directory', 'markdown-file', 'raw-file'], description: 'Optional type override for arbitrary targets. Use raw-file for extensionless files such as CNAME; defaults to auto inference.' },
+      content: { type: 'string', description: 'Direct content. Required for Markdown article targets; also accepted as the exact payload for non-Markdown raw-file targets.' },
+      rssOutputId: { type: 'string', description: 'Optional persisted RSS Output ID returned by prismflow_generate_rss_content. For a non-Markdown raw-file target, provide exactly one of rssOutputId or direct content.' },
       filename: { type: 'string', description: 'Optional filename stem; .md is stripped before the date prefix is added.' },
       branch: { type: 'string', description: 'Optional Git branch; defaults to main.' },
       message: { type: 'string', description: 'Optional commit message.' },
@@ -508,28 +506,38 @@ export function apply(ctx, config) {
     } }, render: (_args, value) => [{ type: 'text', text: `${value.message}\n${value.details.map(item => `${item.success ? '✓' : '✗'} ${item.repo}@${item.branch}:${item.path}${item.url ? ` — ${item.url}` : item.error ? ` — ${item.error}` : ''}`).join('\n')}` }] },
     async execute(args, execution) {
       const targets = args.targets === undefined ? [GITHUB_PUSH_TARGETS[0]] : args.targets
-      if (!Array.isArray(targets) || targets.length < 1 || targets.length > GITHUB_PUSH_TARGETS.length || new Set(targets).size !== targets.length) throw new Error(`targets must contain 1 to ${GITHUB_PUSH_TARGETS.length} unique supported targets`)
-      const parsedTargets = targets.map(githubPushTarget)
-      const rawTargets = parsedTargets.filter(target => target.kind === 'raw-rss')
-      const articleTargets = parsedTargets.filter(target => target.kind === 'article')
-      if (rawTargets.length && articleTargets.length) throw new Error('The fixed RSS target cannot be combined with article targets')
+      const maxTargets = config.githubAllowArbitraryTargets ? 10 : GITHUB_PUSH_TARGETS.length
+      if (!Array.isArray(targets) || targets.length < 1 || targets.length > maxTargets || new Set(targets).size !== targets.length) throw new Error(`targets must contain 1 to ${maxTargets} unique targets`)
+      const targetType = args.targetType ?? 'auto'
+      const parsedTargets = targets.map(target => githubPushTarget(target, config.githubAllowArbitraryTargets === true, targetType))
+      const rawTargets = parsedTargets.filter(target => target.kind === 'raw-file')
+      const articleTargets = parsedTargets.filter(target => target.kind === 'markdown-directory' || target.kind === 'markdown-file')
+      if (rawTargets.length && articleTargets.length) throw new Error('Non-Markdown raw-file targets cannot be combined with Markdown article targets')
       let content
       if (rawTargets.length) {
-        if (args.content !== undefined) throw new Error('The fixed RSS target rejects raw content; provide rssOutputId from prismflow_generate_rss_content')
-        const output = ctx.prismRssOutputs.get(bounded(args.rssOutputId, 'rssOutputId', 64))
-        if (!output) throw new Error('Unknown persisted RSS output')
-        content = output.xml
-        await assertRawRssXml(content)
+        const hasContent = args.content !== undefined
+        const hasRssOutput = args.rssOutputId !== undefined
+        if (hasContent === hasRssOutput) throw new Error('A non-Markdown raw-file target requires exactly one of content or rssOutputId')
+        if (hasRssOutput) {
+          const output = ctx.prismRssOutputs.get(bounded(args.rssOutputId, 'rssOutputId', 64))
+          if (!output) throw new Error('Unknown persisted RSS output')
+          content = output.xml
+        } else {
+          content = githubPushText(args.content, 'content', 900_000)
+        }
+        if (Buffer.byteLength(content, 'utf8') > 900_000) throw new Error('Raw GitHub push content exceeds 900000 UTF-8 bytes')
+        if (hasRssOutput || rawTargets.some(target => target.format === 'rss')) await assertRawRssXml(content)
       } else {
-        if (args.rssOutputId !== undefined) throw new Error('Article targets do not accept rssOutputId')
+        if (args.rssOutputId !== undefined) throw new Error('Markdown article targets do not accept rssOutputId')
         content = githubPushText(args.content, 'content', 900_000, { allowEmpty: true })
       }
       const requestedBranch = args.branch === undefined ? undefined : validateGitHubBranch(args.branch)
-      if (rawTargets.length && requestedBranch !== undefined && requestedBranch !== 'book') throw new Error('The fixed rss-t.xml target requires branch book')
+      const fixedBranchTarget = rawTargets.find(target => target.fixedBranch && requestedBranch !== undefined && target.fixedBranch !== requestedBranch)
+      if (fixedBranchTarget) throw new Error(`The fixed ${fixedBranchTarget.basename} target requires branch ${fixedBranchTarget.fixedBranch}`)
       if (!articleTargets.length) {
-        if (args.filename !== undefined && args.filename !== 'rss-t.xml') throw new Error('The fixed raw RSS target filename is rss-t.xml')
+        if (args.filename !== undefined && rawTargets.some(target => target.basename !== args.filename)) throw new Error(`The fixed raw-file target filename is ${rawTargets[0].basename}`)
         if ([args.title, args.description, args.slug, args.date].some(value => value !== undefined) || args.tags !== undefined) {
-          throw new Error('Raw RSS publication does not accept article metadata, tags, or a date prefix')
+          throw new Error('Raw-file publication does not accept article metadata, tags, or a date prefix')
         }
       }
       const articleBranch = requestedBranch ?? 'main'
@@ -553,6 +561,8 @@ export function apply(ctx, config) {
         const randomSuffix = Math.floor(Math.random() * 1_000).toString().padStart(3, '0')
         const baseFilename = githubPushFilename((args.filename ?? slug) || `post-${randomSuffix}`)
         articleFilename = `${date}-${baseFilename}.md`
+        const exactMarkdownTargets = articleTargets.filter(target => target.kind === 'markdown-file')
+        if (args.filename !== undefined && exactMarkdownTargets.length === articleTargets.length && exactMarkdownTargets.some(target => target.basename !== args.filename)) throw new Error('filename must match every exact Markdown file target')
         articleContent = `---\n${YAML.stringify({ title, slug, description, date: timestamp, draft: false, comments: true, tags })}---\n\n${content}`
         if (Buffer.byteLength(articleContent, 'utf8') > 900_000) throw new Error('GitHub push content exceeds 900000 UTF-8 bytes after Frontmatter')
       }
@@ -560,11 +570,11 @@ export function apply(ctx, config) {
       if (!credential?.value) throw new Error('GitHub push credential is unavailable')
       const details = []
       for (const target of parsedTargets) {
-        const raw = target.kind === 'raw-rss'
-        const branch = raw ? target.branch : articleBranch
-        const path = raw ? target.path : `${target.path}/${articleFilename}`
+        const raw = target.kind === 'raw-file'
+        const branch = raw ? target.fixedBranch ?? requestedBranch ?? 'main' : articleBranch
+        const path = raw || target.kind === 'markdown-file' ? target.path : `${target.path}/${articleFilename}`
         const uploadContent = raw ? content : articleContent
-        const message = githubPushCommitMessage(args.message, `Update ${raw ? target.path : articleFilename}`)
+        const message = githubPushCommitMessage(args.message, `Update ${raw || target.kind === 'markdown-file' ? target.basename : articleFilename}`)
         try {
           const write = await publishGitHubFile({ apiBaseUrl: 'https://api.github.com', repository: parseGitHubRepository(target.repo), branch, overwrite: 'if-changed' }, credential.value, path, uploadContent, message, execution.signal)
           const encodedPath = path.split('/').map(encodeURIComponent).join('/')

@@ -16,6 +16,7 @@ test('selection tools expose only bounded policy-lowering inputs and never outpu
   const { tools, calls, listeners } = harness()
   assert.deepEqual([...tools.keys()], ['prismflow_create_ai_selection', 'prismflow_create_ai_selection_from_explicit_source'])
   const create = tools.get('prismflow_create_ai_selection')
+  assert.match(create.description, /never fetches, refreshes, or synchronizes/u)
   const names = Object.keys(create.parameters.properties)
   assert.deepEqual(names.sort(), ['asOf', 'category', 'hours', 'topic'])
   assert.equal(names.includes('sourceId'), false)
@@ -40,7 +41,7 @@ test('selection tools expose only bounded policy-lowering inputs and never outpu
 test('package exports selection plugins and bundle keeps every new row disabled by default', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
-  assert.equal(packageJson.version, '0.19.23')
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u)
   for (const subpath of ['./store-content-selection', './reviewer-ai-relevance-subagent', './tool-content-selection']) assert.ok(packageJson.exports[subpath])
   for (const id of ['prismflow-store-content-selection', 'prismflow-reviewer-ai-relevance-subagent', 'prismflow-tool-content-selection']) assert.match(patch, new RegExp(`id: ${id}[\\s\\S]*?disabled: true`))
 })

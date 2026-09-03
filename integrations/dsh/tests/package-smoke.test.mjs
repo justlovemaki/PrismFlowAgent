@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 
 const packageRoot = resolve(import.meta.dirname, '..')
+const packageVersion = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).version
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 
 function run(command, args, options = {}) {
@@ -27,7 +28,16 @@ test('packed package installs standalone and its publisher-profile bin exports a
     .replace('__LOCAL_ROOT__', home.replaceAll('\\', '/'))
   writeFileSync(join(profile, 'cordis.patch.yml'), fixture)
   run(npm, ['pack', '--ignore-scripts', '--pack-destination', packs], { cwd: packageRoot })
-  run(npm, ['install', '--ignore-scripts', '--legacy-peer-deps', join(packs, 'prismflow-dsh-0.19.23.tgz')], { cwd: root })
+  run(npm, ['install', '--ignore-scripts', '--legacy-peer-deps', join(packs, `prismflow-dsh-${packageVersion}.tgz`)], { cwd: root })
+  const installed = join(root, 'node_modules', '@prismflow', 'dsh')
+  assert.equal(existsSync(join(installed, 'skills', 'prismflow-daily-production')), false)
+  assert.equal(existsSync(join(installed, 'plugins', 'personal', 'prismflow-personal-rss')), false)
+  assert.equal(existsSync(join(installed, 'manual-import', 'skills', 'prismflow-daily-production.zip')), true)
+  assert.equal(existsSync(join(installed, 'manual-import', 'skills', 'prismflow-ai-shortreport.zip')), true)
+  assert.equal(existsSync(join(installed, 'manual-import', 'skills', 'prismflow-ai-shortreport')), false)
+  assert.equal(existsSync(join(installed, 'manual-import', 'plugins', 'prismflow-personal-rss')), false)
+  assert.equal(existsSync(join(installed, 'manual-import-src')), false)
+  assert.equal(existsSync(join(installed, 'manual-import', 'plugins', 'prismflow-personal-rss.zip')), true)
   const bin = join(root, 'node_modules', '.bin', process.platform === 'win32' ? 'prismflow-dsh-profile.cmd' : 'prismflow-dsh-profile')
   const output = run(bin, ['export', '--profile', 'web'], { cwd: root, env: { ...process.env, DSH_HOME: home } })
   const document = JSON.parse(output)

@@ -28,12 +28,17 @@ export interface StoredContentRecord {
   item: ContentItem;
 }
 
+export type ContentSortField = 'publishedAt' | 'fetchedAt' | 'updatedAt' | 'title' | 'source' | 'category';
+export type ContentSortOrder = 'asc' | 'desc';
+
 export interface ContentQuery {
   storeId?: string;
   sourceId?: string;
   category?: string;
   status?: ContentStatus;
   search?: string;
+  sortBy?: ContentSortField;
+  sortOrder?: ContentSortOrder;
   limit?: number;
   offset?: number;
 }
@@ -148,11 +153,27 @@ export function prepareStoredContentRecord(
   };
 }
 
+function validTimestamp(value: string | undefined): number {
+  const timestamp = Date.parse(value ?? '');
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
 function recordTimestamp(record: StoredContentRecord): number {
-  const published = Date.parse(record.item.published_date);
-  if (Number.isFinite(published)) return published;
-  const updated = Date.parse(record.updatedAt);
-  return Number.isFinite(updated) ? updated : 0;
+  return validTimestamp(record.item.published_date) || validTimestamp(record.updatedAt);
+}
+
+function compareStoredContent(left: StoredContentRecord, right: StoredContentRecord, sortBy: ContentSortField, sortOrder: ContentSortOrder): number {
+  let compared: number;
+  if (sortBy === 'publishedAt') compared = recordTimestamp(left) - recordTimestamp(right);
+  else if (sortBy === 'fetchedAt') compared = validTimestamp(left.fetchedAt) - validTimestamp(right.fetchedAt);
+  else if (sortBy === 'updatedAt') compared = validTimestamp(left.updatedAt) - validTimestamp(right.updatedAt);
+  else {
+    const leftValue = sortBy === 'title' ? left.item.title : sortBy === 'source' ? left.item.source : left.item.category;
+    const rightValue = sortBy === 'title' ? right.item.title : sortBy === 'source' ? right.item.source : right.item.category;
+    compared = leftValue.localeCompare(rightValue);
+  }
+  if (compared !== 0) return sortOrder === 'asc' ? compared : -compared;
+  return right.updatedAt.localeCompare(left.updatedAt) || left.storeId.localeCompare(right.storeId);
 }
 
 function matchesStoredContent(record: StoredContentRecord, query: ContentQuery, needle?: string): boolean {
@@ -195,11 +216,16 @@ export function queryStoredContent(
     throw new Error('Content query offset must be a non-negative integer');
   }
 
+  const sortBy = query.sortBy ?? 'publishedAt';
+  const sortOrder = query.sortOrder ?? 'desc';
+  if (!['publishedAt', 'fetchedAt', 'updatedAt', 'title', 'source', 'category'].includes(sortBy)) {
+    throw new Error('Content query sortBy is invalid');
+  }
+  if (sortOrder !== 'asc' && sortOrder !== 'desc') throw new Error('Content query sortOrder is invalid');
+
   const needle = query.search?.trim().toLocaleLowerCase();
   return Array.from(records)
     .filter(record => matchesStoredContent(record, query, needle))
-    .sort((left, right) => recordTimestamp(right) - recordTimestamp(left)
-      || right.updatedAt.localeCompare(left.updatedAt)
-      || left.storeId.localeCompare(right.storeId))
+    .sort((left, right) => compareStoredContent(left, right, sortBy, sortOrder))
     .slice(offset, offset + limit);
 }

@@ -11,3 +11,5 @@ src/plugins/custom
 data/
 .DS_Store
 
+integrations/dsh/plugins/personal/*
+manual-import*

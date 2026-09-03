@@ -40,7 +40,7 @@ test('relevance tools expose only bounded fixed filters and compact results', as
 test('package exports relevance plugins and bundle keeps them disabled by default', async () => {
   const packageJson = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
-  assert.equal(packageJson.version, '0.19.23')
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u)
   assert.equal(packageJson.exports['./store-content-relevance'], './lib/store-content-relevance.js')
   assert.equal(packageJson.exports['./tool-content-relevance'], './lib/tool-content-relevance.js')
   assert.match(patch, /id: prismflow-store-content-relevance[\s\S]*?disabled: true/)

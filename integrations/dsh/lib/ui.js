@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs'
-import { isAbsolute } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import AdmZip from 'adm-zip'
 import Schema from '@deepseek-ai/schemastery'
 import YAML from 'yaml'
 import { managedMediaFetch } from './secure-rss-fetch.js'
+import { createPrismFlowDataBackup, decryptPrismFlowDataBackup, encryptPrismFlowDataBackup, MAX_PRISMFLOW_BACKUP_BYTES, parsePrismFlowDataBackup, PrismFlowDataBackupError, readSourceCredentialSlots, restorePrismFlowDataBackup } from './data-backup.js'
 import { publicationReconciliationResult } from './store-production.js'
-import { PRISMFLOW_CORE_TOOL_NAMES, PRISMFLOW_TOOL_NAMES, prismFlowToolOrigin } from './store-prismflow-toolsets.js'
+import { PRISMFLOW_CORE_TOOL_NAMES, PRISMFLOW_TOOL_NAMES } from './store-prismflow-toolsets.js'
 import { isPublisherOutcomeError } from './shared/publisher-outcome.js'
 import {
   PublisherProfileCliError, beginPublisherProfileOperationDrain, cancelPendingPublisherProfileOperation,
@@ -50,6 +51,24 @@ function jsonResponse(res, status, value) {
     'content-length': Buffer.byteLength(body),
   })
   res.end(body)
+}
+
+function backupResponse(res, backup) {
+  const date = backup.document.exportedAt.slice(0, 10)
+  res.writeHead(200, {
+    'content-type': 'application/vnd.prismflow.configuration-backup+json',
+    'content-disposition': `attachment; filename="prismflow-configuration-backup-${date}.pfbackup"`,
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'content-length': backup.buffer.length,
+    'x-prismflow-record-count': backup.recordCount,
+    'x-prismflow-workflow-history-count': backup.workflowHistoryCount,
+    'x-prismflow-workflow-id-count': backup.workflowIdCount,
+    'x-prismflow-workflow-historical-id-count': backup.workflowHistoricalIdCount,
+    'x-prismflow-deleted-workflow-id-count': backup.deletedWorkflowIdCount,
+    'x-prismflow-fingerprint': backup.document.fingerprint,
+  })
+  res.end(backup.buffer)
 }
 
 function isLoopbackHostname(value) {
@@ -142,6 +161,38 @@ function parseSkillZip(buffer) {
   if (typeof description !== 'string' || !description.trim() || description.length > 1024) throw new HttpError(400, 'Skill description is invalid')
   const content = match[2].trim(); if (!content || content.length > 32000) throw new HttpError(400, 'Skill instructions are invalid')
   return { input: { skillId: name, name, description: description.trim(), whenToUse: '', content, enabled: metadata['disable-model-invocation'] !== true }, files }
+}
+
+function parsePersonalPluginZip(buffer) {
+  let entries
+  try { entries = new AdmZip(buffer).getEntries() } catch { throw new HttpError(400, 'Invalid personal plugin ZIP archive') }
+  if (entries.length < 2 || entries.length > 48) throw new HttpError(400, 'Personal plugin ZIP must contain 2 to 48 entries')
+  const rawFiles = []; let total = 0
+  for (const entry of entries) {
+    const path = entry.entryName
+    if (typeof path !== 'string' || path.includes('\\') || path.startsWith('/') || /^[A-Za-z]:/u.test(path) || path.includes('\u0000')) throw new HttpError(400, 'Personal plugin ZIP contains an unsafe path')
+    const parts = path.split('/').filter(Boolean)
+    if (parts.some(part => part === '.' || part === '..') || parts.length > 8 || path.length > 240) throw new HttpError(400, 'Personal plugin ZIP contains an unsafe path')
+    const unixType = (entry.attr >>> 16) & 0xf000
+    if (unixType === 0xa000 || (entry.header?.flags & 1) !== 0) throw new HttpError(400, 'Personal plugin ZIP links and encrypted entries are not allowed')
+    if (entry.isDirectory) continue
+    const declared = Number(entry.header?.size ?? 0)
+    if (!Number.isSafeInteger(declared) || declared < 0 || declared > 256 * 1024 || total + declared > 512 * 1024) throw new HttpError(413, 'Expanded personal plugin Bundle is too large')
+    let data; try { data = entry.getData() } catch { throw new HttpError(400, 'Personal plugin ZIP entry cannot be extracted') }
+    total += data.length; if (data.length !== declared || total > 512 * 1024) throw new HttpError(400, 'Personal plugin ZIP entry size is invalid')
+    rawFiles.push({ path: parts.join('/'), data })
+  }
+  const rootManifest = rawFiles.some(file => file.path.toLowerCase() === 'prismflow-plugin.json')
+  let wrapper = ''
+  if (!rootManifest) {
+    const roots = new Set(rawFiles.map(file => file.path.split('/')[0]))
+    if (roots.size !== 1) throw new HttpError(400, 'Personal plugin ZIP must contain prismflow-plugin.json at its root or in one top-level directory')
+    wrapper = [...roots][0]
+  }
+  const files = rawFiles.map(file => ({ ...file, path: wrapper ? file.path.slice(wrapper.length + 1) : file.path })).filter(file => file.path)
+  const folded = new Set(); for (const file of files) { const key = file.path.toLowerCase(); if (folded.has(key)) throw new HttpError(400, 'Personal plugin ZIP contains duplicate paths'); folded.add(key) }
+  if (!folded.has('prismflow-plugin.json') || files.length > 32) throw new HttpError(400, 'Personal plugin Bundle must contain prismflow-plugin.json and at most 32 files')
+  return files
 }
 
 async function readJson(req, maxBodyBytes = MAX_BODY_BYTES) {
@@ -305,6 +356,28 @@ async function mediaResponse(ctx, req, res, searchParams) {
 
 function boundedString(value, max) {
   return typeof value === 'string' ? value.slice(0, max) : ''
+}
+
+function projectContentRecord(record, review) {
+  const item = record?.item ?? {}
+  const validReview = review && typeof review === 'object' && !Array.isArray(review)
+    && Number.isInteger(review.aiScore) && review.aiScore >= 0 && review.aiScore <= 100
+    && typeof review.aiSummary === 'string' && typeof review.reason === 'string' && typeof review.reviewedAt === 'string'
+  return {
+    storeId: /^[a-f0-9]{64}$/u.test(record?.storeId ?? '') ? record.storeId : '',
+    sourceId: boundedString(record?.sourceId, 256),
+    externalId: boundedString(record?.externalId, 512),
+    status: ['unread', 'read', 'archived'].includes(record?.status) ? record.status : 'unread',
+    firstSeenAt: boundedString(record?.firstSeenAt, 64), updatedAt: boundedString(record?.updatedAt, 64), fetchedAt: boundedString(record?.fetchedAt, 64),
+    title: boundedString(item.title, 2_000), description: boundedString(item.description, 12_000),
+    url: safeWebUrl(item.url) ?? '', publishedAt: boundedString(item.published_date, 64),
+    source: boundedString(item.source, 512), category: boundedString(item.category, 256), author: boundedString(item.author, 512),
+    sourceAiSummary: boundedString(item.metadata?.ai_summary, 4_000),
+    aiSummary: validReview ? boundedString(review.aiSummary, 4_000) : '',
+    aiScore: validReview ? review.aiScore : null,
+    aiReason: validReview ? boundedString(review.reason, 2_000) : '',
+    aiReviewedAt: validReview ? boundedString(review.reviewedAt, 64) : '',
+  }
 }
 
 function projectRegistryEntry(record) {
@@ -492,14 +565,26 @@ function toolsetError(error) {
   if (error?.name === 'PrismToolsetDeletedError') return new HttpError(410, error.message, { code: 'skill_deleted' })
   return error
 }
+function projectPrismPlugin(record) {
+  return { pluginId: boundedString(record?.pluginId, 96), name: boundedString(record?.name, 128), description: boundedString(record?.description, 500),
+    origin: record?.origin === 'system' ? 'system' : 'personal', version: typeof record?.version === 'number' ? record.version : boundedString(record?.version, 64),
+    configurable: record?.configurable === true, uploaded: record?.uploaded === true, removable: record?.removable === true,
+    tools: Array.isArray(record?.tools) ? record.tools.filter(tool => typeof tool === 'string').slice(0, 16) : [],
+    skills: Array.isArray(record?.skills) ? record.skills.filter(skill => typeof skill === 'string').slice(0, 16) : [] }
+}
 function projectPrismSkill(record, includeContent = false) {
   return { skillId: boundedString(record?.skillId, 96), name: boundedString(record?.name, 128), description: boundedString(record?.description, 500),
     whenToUse: boundedString(record?.whenToUse, 1000), enabled: record?.enabled === true, lifecycle: boundedString(record?.lifecycle, 16),
-    origin: record?.origin === 'system-default' ? 'system-default' : 'personal-custom', version: record?.version, sha256: boundedString(record?.sha256, 64), updatedAt: boundedString(record?.updatedAt, 64),
+    origin: record?.origin === 'system-default' ? 'system-default' : 'personal-custom', removable: record?.removable === true,
+    version: record?.version, sha256: boundedString(record?.sha256, 64), updatedAt: boundedString(record?.updatedAt, 64),
     action: boundedString(record?.action, 16), sourceVersion: record?.sourceVersion, ...(includeContent ? { content: boundedString(record?.content, 32000) } : {}) }
 }
+function projectPromptSuggestions(record) {
+  return { items: Array.isArray(record?.items) ? record.items.slice(0, 20).map(item => ({ id: boundedString(item?.id, 64), text: boundedString(item?.text, 4000), enabled: item?.enabled === true })) : [],
+    version: record?.version, sha256: boundedString(record?.sha256, 64), updatedAt: boundedString(record?.updatedAt, 64) }
+}
 function projectPrismToolset(record) {
-  return { mode: record?.mode, enabledTools: Array.isArray(record?.enabledTools) ? record.enabledTools.slice(0, 64) : [],
+  return { mode: record?.mode, enabledPlugins: Array.isArray(record?.enabledPlugins) ? record.enabledPlugins.slice(0, 64) : [], enabledTools: Array.isArray(record?.enabledTools) ? record.enabledTools.slice(0, 64) : [],
     enabledSkills: Array.isArray(record?.enabledSkills) ? record.enabledSkills.slice(0, 256) : [], version: record?.version,
     sha256: boundedString(record?.sha256, 64), updatedAt: boundedString(record?.updatedAt, 64) }
 }
@@ -507,6 +592,8 @@ function projectRequest(record) {
   return { requestId: boundedString(record?.requestId, 128), generatorId: boundedString(record?.generatorId, 128), status: boundedString(record?.status, 16),
     itemCount: Array.isArray(record?.contentStoreIds) ? record.contentStoreIds.length : 0, attempt: Number.isInteger(record?.attempt) ? record.attempt : 0,
     createdAt: boundedString(record?.createdAt, 64), updatedAt: boundedString(record?.updatedAt, 64),
+    hasWorkflowInput: !!record?.workflowInput,
+    ...(record?.workflowInputSha256 ? { workflowInputSha256: boundedString(record.workflowInputSha256, 64) } : {}),
     ...(record?.draftId ? { draftId: boundedString(record.draftId, 128) } : {}), ...(record?.errorCode ? { errorCode: boundedString(record.errorCode, 64) } : {}),
     ...(record?.executionKind === 'workflow-v1' ? { executionKind: 'workflow-v1', generatorWorkflowVersion: record.generatorWorkflowVersion, generatorWorkflowSha256: boundedString(record.generatorWorkflowSha256, 64) }
       : Number.isInteger(record?.generatorPromptVersion) ? { generatorPromptVersion: record.generatorPromptVersion, generatorPromptSha256: boundedString(record.generatorPromptSha256, 64) } : {}) }
@@ -671,6 +758,57 @@ async function credentialProvider(ctx) {
   }
   return provider
 }
+async function backupCredentialProvider(ctx) {
+  const provider = await credentialProvider(ctx)
+  if (typeof provider.resolve !== 'function') throw new HttpError(503, 'Credential provider does not support encrypted backup resolution')
+  return provider
+}
+function backupPassword(value) {
+  if (typeof value !== 'string' || value.length < 12 || value.length > 256 || value.includes('\u0000')) throw new HttpError(400, 'Backup password must contain 12 to 256 characters')
+  return value
+}
+async function exportCredentialValues(ctx, refs) {
+  const provider = await backupCredentialProvider(ctx)
+  const credentials = []
+  for (const ref of [...new Set(refs)].sort()) {
+    if (!CREDENTIAL_REF_PATTERN.test(ref) || SECRET_LIKE_CREDENTIAL_REF.test(ref)) throw new HttpError(409, 'A configured Credential Ref is invalid or appears to contain a secret')
+    let resolved
+    try { resolved = await provider.resolve(ref) } catch { throw new HttpError(503, 'A PrismFlow Credential could not be resolved for encrypted backup') }
+    credentials.push({ ref, value: resolved?.value ?? null })
+  }
+  return credentials
+}
+async function applyCredentialValues(ctx, credentials) {
+  const provider = await backupCredentialProvider(ctx)
+  const previous = []
+  try {
+    for (const credential of credentials) {
+      const current = await provider.resolve(credential.ref)
+      if ((current?.value ?? null) === credential.value) continue
+      const info = await provider.describe(credential.ref)
+      if (info?.writable !== true) throw new Error('Credential destination is not writable')
+      previous.push({ ref: credential.ref, value: current?.value ?? null })
+      if (credential.value === null) await provider.unset(credential.ref)
+      else await provider.set(credential.ref, credential.value)
+    }
+  } catch (error) {
+    const rollbackErrors = []
+    for (const credential of previous.reverse()) {
+      try { if (credential.value === null) await provider.unset(credential.ref); else await provider.set(credential.ref, credential.value) }
+      catch (rollbackError) { rollbackErrors.push(rollbackError) }
+    }
+    if (rollbackErrors.length) throw new AggregateError([error, ...rollbackErrors], 'Credential restore and rollback both failed')
+    throw error
+  }
+  return async () => {
+    const failures = []
+    for (const credential of previous.reverse()) {
+      try { if (credential.value === null) await provider.unset(credential.ref); else await provider.set(credential.ref, credential.value) }
+      catch (error) { failures.push(error) }
+    }
+    if (failures.length) throw new AggregateError(failures, 'Credential rollback failed')
+  }
+}
 async function describePublisherCredentials(ctx, document) {
   const provider = await credentialProvider(ctx)
   const statusByRef = new Map()
@@ -748,6 +886,57 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
     throw new HttpError(403, 'PrismFlow dashboard operations are restricted to the local machine')
   }
 
+  if (method === 'POST' && pathname === `${API_PREFIX}/configuration-backup/export`) {
+    if (!profileBinding) throw new HttpError(409, 'Dashboard Profile binding is required for configuration backup')
+    const body = await readJson(req, 1024); allowFields(body, ['password'])
+    const password = backupPassword(body.password)
+    try {
+      const patchPath = join(profileBinding.dshHome, 'profiles', profileBinding.profileName, 'cordis.patch.yml')
+      const slots = readSourceCredentialSlots(readFileSync(patchPath, 'utf8'))
+      const refs = slots.map(slot => slot.credentialRef)
+      const imageCredentialRef = ctx.get('prismImageGenerationSettings')?.credentialRef ?? 'OPENAI_IMAGE_API_KEY'
+      refs.push(imageCredentialRef)
+      const publisherDocument = exportPublisherProfile(profileBinding.profileName, { home: profileBinding.dshHome })
+      if (publisherDocument.rows.some(row => row.migrationRequired === true)) throw new HttpError(409, 'Publisher configuration contains unresolved Credential migration placeholders')
+      refs.push(...publisherCredentialRows(publisherDocument).map(slot => slot.credentialRef))
+      const credentials = await exportCredentialValues(ctx, refs)
+      const publisherRows = publisherDocument.rows.map(row => ({ rowId: row.rowId, channelKind: row.channelKind, disabled: row.disabled, config: row.config }))
+      const backup = createPrismFlowDataBackup(join(profileBinding.dshHome, 'storages', 'domain.sqlite'), PLUGIN_VERSION, new Date(), slots, credentials, publisherRows)
+      return backupResponse(res, { ...backup, buffer: encryptPrismFlowDataBackup(backup.buffer, password) })
+    } catch (error) {
+      if (error instanceof HttpError) throw error
+      if (error instanceof PrismFlowDataBackupError) throw new HttpError(409, error.message, { code: 'prismflow_data_backup_failed' })
+      throw error
+    }
+  }
+
+  if (method === 'POST' && pathname === `${API_PREFIX}/configuration-backup/import`) {
+    if (!profileBinding) throw new HttpError(409, 'Dashboard Profile binding is required for configuration restore')
+    const body = await readJson(req, MAX_PRISMFLOW_BACKUP_BYTES * 2); allowFields(body, ['password', 'document'])
+    const password = backupPassword(body.password)
+    let buffer, parsed
+    try { buffer = decryptPrismFlowDataBackup(body.document, password); parsed = parsePrismFlowDataBackup(buffer) }
+    catch (error) {
+      if (error instanceof PrismFlowDataBackupError) throw new HttpError(400, error.message, { code: 'prismflow_data_backup_invalid' })
+      throw error
+    }
+    const maintenance = await drainForProfileApply(ctx)
+    if (!maintenance.drained) throw new HttpError(409, 'Could not drain active publication work before configuration restore', { ...maintenance, restartRequired: true })
+    let rollbackCredentials
+    try {
+      rollbackCredentials = await applyCredentialValues(ctx, parsed.payload.credentials)
+      const restored = restorePrismFlowDataBackup(join(profileBinding.dshHome, 'storages', 'domain.sqlite'), buffer, join(profileBinding.dshHome, 'profiles', profileBinding.profileName, 'cordis.patch.yml'), profileBinding)
+      return jsonResponse(res, 200, { restored: true, ...restored, credentialCount: parsed.payload.credentials.length, ...maintenance, restartRequired: true })
+    } catch (error) {
+      if (rollbackCredentials) {
+        try { await rollbackCredentials() }
+        catch (rollbackError) { throw new AggregateError([error, rollbackError], 'Configuration and Credential rollback both failed') }
+      }
+      if (error instanceof PrismFlowDataBackupError) throw new HttpError(409, error.message, { code: 'prismflow_data_restore_failed', ...maintenance, restartRequired: true })
+      throw new HttpError(409, 'Credential or configuration restore failed; no secret value was exposed', { code: 'prismflow_credential_restore_failed', ...maintenance, restartRequired: true })
+    }
+  }
+
   if (method === 'GET' && pathname === `${API_PREFIX}/status`) {
     const sources = ctx.get('prismSources')
     const contentStore = ctx.get('prismContentStore')
@@ -776,6 +965,7 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
       counts: {
         sources: sources?.list().length ?? 0,
         sourceSettings: sourceSettings?.list().length ?? 0,
+        contents: contentStore?.count?.() ?? 0,
         publishers: publishers?.list().length ?? 0,
         generators: production?.listGenerators().length ?? 0,
         generatorWorkflows: workflowRows.length,
@@ -784,19 +974,50 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
     })
   }
 
+  if (method === 'GET' && pathname === `${API_PREFIX}/content`) {
+    allowQuery(requestUrl.searchParams, ['search', 'category', 'status', 'sortBy', 'sortOrder', 'limit', 'offset'])
+    const search = text(requestUrl.searchParams.get('search') ?? undefined, 'search', 256)
+    const category = text(requestUrl.searchParams.get('category') ?? undefined, 'category', 256)
+    const status = text(requestUrl.searchParams.get('status') ?? undefined, 'status', 16)
+    const sortBy = text(requestUrl.searchParams.get('sortBy') ?? undefined, 'sortBy', 16) ?? 'publishedAt'
+    const sortOrder = text(requestUrl.searchParams.get('sortOrder') ?? undefined, 'sortOrder', 4) ?? 'desc'
+    if (status !== undefined && !['unread', 'read', 'archived'].includes(status)) throw new HttpError(400, 'status is invalid')
+    if (!['publishedAt', 'fetchedAt', 'updatedAt', 'title', 'source', 'category'].includes(sortBy)) throw new HttpError(400, 'sortBy is invalid')
+    if (!['asc', 'desc'].includes(sortOrder)) throw new HttpError(400, 'sortOrder is invalid')
+    const parsePageInteger = (field, fallback, min, max) => {
+      const raw = requestUrl.searchParams.get(field)
+      if (raw === null) return fallback
+      if (!/^\d+$/u.test(raw)) throw new HttpError(400, `${field} must be an integer`)
+      const value = Number(raw)
+      if (!Number.isSafeInteger(value) || value < min || value > max) throw new HttpError(400, `${field} is outside the allowed range`)
+      return value
+    }
+    const limit = parsePageInteger('limit', 20, 1, 100)
+    const offset = parsePageInteger('offset', 0, 0, 1_000_000)
+    const content = requireService(ctx, 'prismContentStore', 'Content Store')
+    const selections = ctx.get('prismContentSelections')
+    const query = { search, category, status, sortBy, sortOrder }
+    const categories = content.categoryCounts().slice(0, 1_000).map(row => ({ category: boundedString(row.category, 256), count: Math.max(0, Math.min(1_000_000_000, Number(row.count) || 0)) }))
+    return jsonResponse(res, 200, {
+      records: content.list({ ...query, limit, offset }).map(record => projectContentRecord(record, selections?.getReview?.(record.storeId))),
+      total: content.count(query), limit, offset, categories,
+    })
+  }
+
   if (method === 'GET' && pathname === `${API_PREFIX}/image-generation/settings`) {
     const settings = requireService(ctx, 'prismImageGenerationSettings', 'Image generation settings')
-    try { return jsonResponse(res, 200, { settings: settings.get(), credential: await settings.describeCredential() }) }
+    try { return jsonResponse(res, 200, { settings: settings.get(), credential: await settings.describeCredential(), ffmpeg: await settings.describeFfmpeg() }) }
     catch (error) { throw imageSettingsError(error) }
   }
 
   if (method === 'POST' && pathname === `${API_PREFIX}/image-generation/settings`) {
     const body = await readJson(req); allowFields(body, ['settings', 'expected'])
-    const input = plainObject(body.settings, 'settings'); allowFields(input, ['imageApiUrl', 'imageApiProtocol', 'imageModel', 'imageSize', 'avifQuality', 'avifEffort'])
+    const input = plainObject(body.settings, 'settings'); allowFields(input, ['imageApiUrl', 'imageApiProtocol', 'imageModel', 'imageSize', 'avifQuality', 'avifEffort', 'ffmpegPath'])
     const expected = plainObject(body.expected, 'expected'); allowFields(expected, ['version', 'sha256'])
     try {
       const service = requireService(ctx, 'prismImageGenerationSettings', 'Image generation settings')
-      return jsonResponse(res, 200, { settings: await service.update(input, expected), credential: await service.describeCredential() })
+      const settings = await service.update(input, expected)
+      return jsonResponse(res, 200, { settings, credential: await service.describeCredential(), ffmpeg: await service.describeFfmpeg() })
     } catch (error) { throw imageSettingsError(error) }
   }
 
@@ -903,10 +1124,28 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
 
   if (method === 'GET' && pathname === `${API_PREFIX}/toolsets`) {
     const store = requireService(ctx, 'prismToolsets', 'PrismFlow Toolset')
-    return jsonResponse(res, 200, { toolset: projectPrismToolset(store.getToolset()), tools: PRISMFLOW_TOOL_NAMES,
-      toolOrigins: Object.fromEntries(PRISMFLOW_TOOL_NAMES.map(tool => [tool, prismFlowToolOrigin(tool)])),
+    return jsonResponse(res, 200, { toolset: projectPrismToolset(store.getToolset()), plugins: store.listPlugins().map(projectPrismPlugin), tools: PRISMFLOW_TOOL_NAMES,
       toolPresets: { core: PRISMFLOW_CORE_TOOL_NAMES, complete: PRISMFLOW_TOOL_NAMES },
       skills: store.listSkills().map(skill => projectPrismSkill(skill)) })
+  }
+  if (method === 'GET' && pathname === `${API_PREFIX}/prompt-suggestions`) {
+    try { return jsonResponse(res, 200, { suggestions: projectPromptSuggestions(requireService(ctx, 'prismToolsets', 'PrismFlow Toolset').getPromptSuggestions()) }) }
+    catch (error) { throw toolsetError(error) }
+  }
+  if (method === 'POST' && pathname === `${API_PREFIX}/prompt-suggestions`) {
+    const body = await readJson(req); allowFields(body, ['items', 'expected'])
+    try { return jsonResponse(res, 200, { suggestions: projectPromptSuggestions(await requireService(ctx, 'prismToolsets', 'PrismFlow Toolset').savePromptSuggestions(body)) }) }
+    catch (error) { throw toolsetError(error) }
+  }
+  if (method === 'POST' && pathname === `${API_PREFIX}/toolsets/plugin/import-zip`) {
+    const files = parsePersonalPluginZip(await readBinary(req, 'application/zip', 600 * 1024))
+    try { return jsonResponse(res, 201, { plugin: projectPrismPlugin(await requireService(ctx, 'prismToolsets', 'PrismFlow Toolset').installPersonalPlugin(files)), restartRequired: true }) }
+    catch (error) { throw toolsetError(error) }
+  }
+  if (method === 'POST' && pathname === `${API_PREFIX}/toolsets/plugin/delete`) {
+    const body = await readJson(req); allowFields(body, ['pluginId', 'expected'])
+    try { return jsonResponse(res, 200, { deleted: await requireService(ctx, 'prismToolsets', 'PrismFlow Toolset').deletePersonalPlugin(body), restartRequired: false }) }
+    catch (error) { throw toolsetError(error) }
   }
   if (method === 'GET' && pathname === `${API_PREFIX}/toolsets/skill`) {
     const id = text(requestUrl.searchParams.get('skillId'), 'skillId', 96, true)
@@ -919,7 +1158,7 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
     catch (error) { throw toolsetError(error) }
   }
   if (method === 'POST' && pathname === `${API_PREFIX}/toolsets`) {
-    const body = await readJson(req); allowFields(body, ['mode', 'enabledTools', 'enabledSkills', 'expected'])
+    const body = await readJson(req); allowFields(body, ['mode', 'enabledPlugins', 'enabledTools', 'enabledSkills', 'expected'])
     try { return jsonResponse(res, 200, { toolset: projectPrismToolset(await requireService(ctx, 'prismToolsets', 'PrismFlow Toolset').saveToolset(body)), restartRequired: true }) }
     catch (error) { throw toolsetError(error) }
   }
@@ -1191,13 +1430,18 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
 
   if (method === 'POST' && pathname === `${API_PREFIX}/production/drafts`) {
     const body = await readJson(req)
-    allowFields(body, ['status', 'limit'])
+    allowFields(body, ['status', 'query', 'offset', 'limit'])
     const status = text(body.status, 'status', 16)
+    const query = text(body.query, 'query', 200)
     if (status && !['draft', 'approved', 'rejected', 'publishing', 'published'].includes(status)) throw new HttpError(400, 'status is invalid')
     const production = requireService(ctx, 'prismProduction', 'Production Store')
-    const records = production.listDrafts({ status, limit: integer(body.limit, 'limit', 1, 100, 50) })
+    const options = { status, query, offset: integer(body.offset, 'offset', 0, 1_000_000, 0), limit: integer(body.limit, 'limit', 1, 50, 10) }
+    const page = typeof production.queryDrafts === 'function' ? production.queryDrafts(options) : (() => {
+      const records = production.listDrafts({ status, limit: options.limit })
+      return { records, total: records.length, statusCounts: records.reduce((counts, item) => ({ ...counts, [item.status]: (counts[item.status] ?? 0) + 1 }), {}) }
+    })()
     const receipts = ctx.get('prismPublicationReceipts')
-    return jsonResponse(res, 200, { records: records.map(record => ({ ...projectDraft(record),
+    return jsonResponse(res, 200, { total: page.total, statusCounts: page.statusCounts, records: page.records.map(record => ({ ...projectDraft(record),
       publicationAttempts: listDraftAttempts(production, receipts, record.draftId) })) })
   }
 

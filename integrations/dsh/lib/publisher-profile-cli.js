@@ -4,7 +4,7 @@ import {
   renameSync, rmSync, statSync, writeFileSync,
 } from 'node:fs'
 import { hostname } from 'node:os'
-import { basename, dirname, join, parse, relative, resolve, sep } from 'node:path'
+import { basename, dirname, join, parse, posix, relative, resolve, sep, win32 } from 'node:path'
 import { parseDocument, isMap, isSeq } from 'yaml'
 import {
   LEGACY_PUBLISHER_CHANGE_PLAN_KIND, LEGACY_PUBLISHER_PROFILE_DOCUMENT_KIND, PUBLISHER_CHANGE_PLAN_KIND,
@@ -613,6 +613,90 @@ function renderPublisherPatch(source, parsed, plan) {
   let output = String(parsed.document)
   if (source.includes('\r\n')) output = output.replace(/(?<!\r)\n/gu, '\r\n')
   return output
+}
+
+function nativeAbsolutePath(value, platform = process.platform) {
+  if (platform === 'win32') return /^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+)/u.test(value)
+  return posix.isAbsolute(value)
+}
+function adaptPortablePublisherRows(rows, destinationHome, platform = process.platform) {
+  if (rows === undefined || destinationHome === undefined) return { rows, pathMappings: [] }
+  const adapted = structuredClone(rows); const pathMappings = []
+  const local = adapted.find(row => row?.rowId === 'prismflow-publisher-local-markdown')
+  for (const destination of local?.config?.destinations ?? []) {
+    if (typeof destination.root !== 'string' || nativeAbsolutePath(destination.root, platform)) continue
+    if (!posix.isAbsolute(destination.root) && !win32.isAbsolute(destination.root)) continue
+    const source = destination.root
+    destination.root = (platform === 'win32' ? win32 : posix).join(destinationHome, 'publications', destination.id)
+    pathMappings.push({ rowId: local.rowId, destinationId: destination.id, field: 'root', source, target: destination.root })
+  }
+  const wechat = adapted.find(row => row?.rowId === 'prismflow-publisher-wechat-draft')
+  for (const destination of wechat?.config?.destinations ?? []) {
+    if (typeof destination.ffmpegPath !== 'string' || nativeAbsolutePath(destination.ffmpegPath, platform)) continue
+    if (!posix.isAbsolute(destination.ffmpegPath) && !win32.isAbsolute(destination.ffmpegPath)) continue
+    const source = destination.ffmpegPath
+    delete destination.ffmpegPath
+    pathMappings.push({ rowId: wechat.rowId, destinationId: destination.id, field: 'ffmpegPath', source, target: 'PATH:ffmpeg' })
+  }
+  return { rows: adapted, pathMappings }
+}
+
+function backupPublisherChanges(rows, parsed, options = {}) {
+  if (!Array.isArray(rows) || rows.length !== PUBLISHER_ROWS.length) fail('Configuration backup must contain the four fixed publisher rows')
+  return rows.map((raw, index) => {
+    const row = object(raw, `publisherRows[${index}]`)
+    exact(row, ['rowId', 'channelKind', 'disabled', 'config'], `publisherRows[${index}]`)
+    const descriptor = PUBLISHER_ROWS[index]
+    if (row.rowId !== descriptor.rowId || row.channelKind !== descriptor.kind || typeof row.disabled !== 'boolean') fail(`publisherRows[${index}] is invalid`)
+    const config = normalizePublisherConfig(descriptor.kind, row.config, options.destinationHome === undefined ? {} : { allowPortableAbsolutePaths: true })
+    if (config.destinations.some(destination => Object.entries(destination)
+      .some(([field, value]) => /Credential$/u.test(field) && value === 'MIGRATION_REQUIRED'))) {
+      fail(`publisherRows[${index}] contains a Credential migration placeholder`)
+    }
+    const found = parsed.found.get(descriptor.rowId)
+    if (found.migrationRequired) {
+      const legacyIds = new Set(found.row.config.destinations.map(destination => destination.id))
+      if (config.destinations.some(destination => legacyIds.has(destination.id))) fail(`Migration-required ${descriptor.rowId} destinations must use new ids`)
+    } else {
+      enforceImmutableIdentity(found.row.config, config, descriptor.rowId)
+    }
+    return { rowId: descriptor.rowId, disabled: row.disabled, config }
+  })
+}
+function prepareBackupPublisherPatch(source, rows, options = {}) {
+  const parsed = parsePublisherRows(source)
+  const adapted = adaptPortablePublisherRows(rows, options.destinationHome, options.platform)
+  const effectiveRows = adapted.rows ?? PUBLISHER_ROWS.map(descriptor => {
+    const current = parsed.found.get(descriptor.rowId).row
+    return { rowId: descriptor.rowId, channelKind: descriptor.kind, disabled: current.disabled, config: current.config }
+  })
+  const changes = backupPublisherChanges(effectiveRows, parsed, options)
+  return { parsed, changes, patch: renderPublisherPatch(source, parsed, { changes }), pathMappings: adapted.pathMappings }
+}
+export function configurePublisherProfileRows(source, rows, options = {}) {
+  if (typeof source !== 'string') fail('Profile patch source is required')
+  return prepareBackupPublisherPatch(source, rows, options).patch
+}
+export function withPublisherProfileBackupRestore(profile, rows, apply, options = {}) {
+  if (typeof apply !== 'function') fail('Publisher backup restore callback is required')
+  const location = resolveNamedProfile(profile, options.home)
+  const lock = acquireLock(location.profileDir)
+  try {
+    lock.assertIdentity()
+    const locked = resolveNamedProfile(profile, options.home)
+    rejectHigherPrecedenceOverlays(locked.homeRoot, locked.profileDir)
+    const operations = readOperations(locked)
+    if (Object.values(operations.operations).some(record => record.status === 'pending' && record.profile === profile)) {
+      fail('A Publisher Profile operation is pending recovery')
+    }
+    const patchRead = readRegularFile(locked.patchPath, 'Profile patch')
+    const prepared = prepareBackupPublisherPatch(patchRead.source, rows, { destinationHome: locked.homeRoot })
+    const stateRead = readState(locked)
+    const nextState = seedAndCheckState(stateRead.state, prepared.parsed, prepared.changes)
+    lock.assertIdentity()
+    return apply({ patch: prepared.patch, previousPatchSource: patchRead.source, statePath: locked.statePath,
+      previousStateSource: stateRead.source, nextStateSource: stateSource(nextState), pathMappings: prepared.pathMappings })
+  } finally { lock.release() }
 }
 
 function emptyOperations() {

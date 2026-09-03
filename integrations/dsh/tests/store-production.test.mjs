@@ -71,6 +71,26 @@ async function approvedDraft(service) {
   return service.review(draft.draftId, 'approve', draft.version, draft.sha256)
 }
 
+test('draft query filters by status and identity fields with stable totals, counts, and pagination', async () => {
+  const { service } = fixture()
+  const generated = []
+  for (const [title, createdAt] of [['Alpha brief', '2026-01-01T00:00:00.000Z'], ['Beta report', '2026-01-02T00:00:00.000Z'], ['Gamma note', '2026-01-03T00:00:00.000Z']]) {
+    const request = await service.createRequest('daily', [STORE_ID])
+    const draft = await service.generate(request.requestId, { agent: {}, signal: new AbortController().signal })
+    const row = { ...draft, title, createdAt, updatedAt: createdAt }
+    await service.drafts.put(draft.draftId, row); generated.push(row)
+  }
+  const approved = await service.review(generated[1].draftId, 'approve', generated[1].version, generated[1].sha256)
+  const first = service.queryDrafts({ offset: 0, limit: 2 })
+  assert.equal(first.total, 3); assert.deepEqual(first.records.map(item => item.title), ['Gamma note', 'Beta report'])
+  assert.deepEqual(first.statusCounts, { draft: 2, approved: 1 })
+  const second = service.queryDrafts({ offset: 2, limit: 2 })
+  assert.deepEqual(second.records.map(item => item.title), ['Alpha brief'])
+  assert.deepEqual(service.queryDrafts({ status: 'approved', limit: 10 }).records.map(item => item.draftId), [approved.draftId])
+  assert.deepEqual(service.queryDrafts({ query: 'beta', limit: 10 }).records.map(item => item.title), ['Beta report'])
+  assert.equal(service.queryDrafts({ query: generated[2].requestId.slice(-8), limit: 10 }).records[0].draftId, generated[2].draftId)
+})
+
 test('Chat can derive image-bound unapproved Drafts from exact approved or published sources without mutating them', async () => {
   const { service } = fixture()
   const approved = await approvedDraft(service)
@@ -178,7 +198,22 @@ test('draft deletion appends an exact irreversible tombstone while retaining Req
   const request2 = await service.createRequest('daily', [STORE_ID])
   const draft2 = await service.generate(request2.requestId, { agent: {} })
   const approved = await service.review(draft2.draftId, 'approve', draft2.version, draft2.sha256)
-  await assert.rejects(service.deleteDraft(approved.draftId, approved.version, approved.sha256), /cannot be deleted in status/)
+  const deletedApproved = await service.deleteDraft(approved.draftId, approved.version, approved.sha256)
+  assert.equal(deletedApproved.deletedFromStatus, 'approved'); assert.equal(service.getDraft(approved.draftId), undefined)
+
+  const request3 = await service.createRequest('daily', [STORE_ID])
+  const draft3 = await service.generate(request3.requestId, { agent: {} })
+  const approved3 = await service.review(draft3.draftId, 'approve', draft3.version, draft3.sha256)
+  const published = { ...approved3, status: 'published', publishedAt: '2026-01-01T00:00:00.000Z', publishedPublisherIds: ['wechat-draft:news'] }
+  await service.drafts.put(published.draftId, published)
+  const deletedPublished = await service.deleteDraft(published.draftId, published.version, published.sha256)
+  assert.equal(deletedPublished.deletedFromStatus, 'published'); assert.equal(service.getDraft(published.draftId), undefined)
+
+  const request4 = await service.createRequest('daily', [STORE_ID])
+  const draft4 = await service.generate(request4.requestId, { agent: {} })
+  const approved4 = await service.review(draft4.draftId, 'approve', draft4.version, draft4.sha256)
+  await service.drafts.put(approved4.draftId, { ...approved4, status: 'publishing' })
+  await assert.rejects(service.deleteDraft(approved4.draftId, approved4.version, approved4.sha256), /cannot be deleted in status/)
 })
 
 test('production draft revision requires exact linked request prompt provenance, including legacy absence', async () => {
@@ -641,6 +676,40 @@ test('missing sources and skipped publications do not strand or consume approval
   assert.deepEqual(skipped.service.getDraft(skippedDraft.draftId).publishedPublisherIds ?? [], [])
 })
 
+test('direct workflow input supports input-only and explicitly mixed Selection requests with immutable hashes', async () => {
+  const { service } = fixture()
+  let observed
+  service.generators.set('daily', { ...service.generators.get('daily'), async generate(request, records) {
+    observed = { request: structuredClone(request), recordCount: records.length }
+    return { title: 'Direct', markdown: '# Direct' }
+  } })
+  const inputOnly = await service.createRequestFromDirectInput('daily', { format: 'markdown', content: '# 用户直接材料' })
+  assert.deepEqual(inputOnly.contentStoreIds, [])
+  assert.equal(inputOnly.workflowInput.format, 'markdown')
+  assert.match(inputOnly.workflowInputSha256, /^[a-f0-9]{64}$/u)
+  const directDraft = await service.generate(inputOnly.requestId, { agent: {}, signal: new AbortController().signal })
+  assert.equal(observed.recordCount, 0)
+  assert.deepEqual(observed.request.workflowInput, { format: 'markdown', content: '# 用户直接材料' })
+  assert.equal(directDraft.workflowInputSha256, inputOnly.workflowInputSha256)
+  assert.match(directDraft.artifactBindingSha256, /^[a-f0-9]{64}$/u)
+
+  const selection = {
+    selectionId: 'selection-mixed', selectionSha256: 'b'.repeat(64), contentStoreIds: [STORE_ID],
+    sourceContentClaims: [{ storeId: STORE_ID, contentHash: 'c'.repeat(64) }],
+    packedMaterials: [{ storeId: STORE_ID, title: 'One', url: '', source: 'fixture', author: '', publishedDate: '', category: 'test', excerpts: [], materialChars: 10, estimatedTokens: 10, materialSha256: 'd'.repeat(64) }],
+  }
+  service.registerMaterialProvider({ id: 'ai-selection', async resolve(id) { assert.equal(id, selection.selectionId); return structuredClone(selection) } })
+  const mixed = await service.createRequestFromDirectInput('daily', { format: 'json', content: '{"focus":"agent"}' }, selection.selectionId)
+  assert.deepEqual(mixed.contentStoreIds, [STORE_ID]); assert.equal(mixed.selectionId, selection.selectionId)
+  const mixedDraft = await service.generate(mixed.requestId, { agent: {}, signal: new AbortController().signal })
+  assert.equal(observed.recordCount, 1); assert.equal(observed.request.workflowInput.format, 'json')
+  assert.equal(mixedDraft.workflowInputSha256, mixed.workflowInputSha256)
+
+  const tampered = await service.createRequestFromDirectInput('daily', { format: 'text', content: 'original' })
+  await service.requests.put(tampered.requestId, { ...tampered, workflowInput: { format: 'text', content: 'changed' } })
+  await assert.rejects(service.generate(tampered.requestId, { agent: {}, signal: new AbortController().signal }), /workflowInput provenance/u)
+})
+
 test('trusted AI selection requests pin packed material and revalidate selection before generation and publication', async () => {
   const { service } = fixture()
   const selection = {
@@ -648,6 +717,7 @@ test('trusted AI selection requests pin packed material and revalidate selection
     sourceContentClaims: [{ storeId: STORE_ID, contentHash: 'c'.repeat(64) }],
     packedMaterials: [{
       storeId: STORE_ID, title: 'One', url: '', source: 'fixture', author: '', publishedDate: '', category: 'test',
+      aiSummary: '**模型发布。** 摘要', aiScore: 85, scoreReason: '综合评分为85分。',
       excerpts: [{ field: 'description', start: 0, end: 4, text: 'Body', sha256: 'd'.repeat(64) }],
       media: [{ kind: 'image', url: 'https://cdn.example.test/model.png' }],
       materialChars: 200, estimatedTokens: 50, materialSha256: 'e'.repeat(64),
@@ -660,6 +730,8 @@ test('trusted AI selection requests pin packed material and revalidate selection
   const request = await service.createRequestFromAISelection('daily', 'selection-1')
   assert.equal(request.selectionSha256, selection.selectionSha256)
   assert.equal(request.packedMaterials[0].excerpts[0].text, 'Body')
+  assert.equal(request.packedMaterials[0].aiScore, 85)
+  assert.equal(request.packedMaterials[0].aiSummary, '**模型发布。** 摘要')
   assert.deepEqual(request.packedMaterials[0].media, [{ kind: 'image', url: 'https://cdn.example.test/model.png' }])
   const draft = await service.generate(request.requestId, { agent: {}, signal: new AbortController().signal })
   assert.equal(observed.selectionId, 'selection-1')

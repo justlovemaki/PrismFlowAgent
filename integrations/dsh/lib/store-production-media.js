@@ -80,8 +80,18 @@ export class PrismProductionMediaService extends Service {
 
   /** Internal pre-production admission seam. No Dashboard or publication route calls this method. */
   async ingest(value) {
-    const bytes = Buffer.isBuffer(value) ? Buffer.from(value) : value instanceof Uint8Array ? Buffer.from(value) : undefined
+    let bytes = Buffer.isBuffer(value) ? Buffer.from(value) : value instanceof Uint8Array ? Buffer.from(value) : undefined
     if (!bytes || bytes.length < 1 || bytes.length > this.config.maxAssetBytes) throw new Error('Production media asset exceeds its admission limit')
+    try { inspectImage(bytes) }
+    catch {
+      try {
+        const source = await sharp(bytes, { failOn: 'error', limitInputPixels: 100_000_000, animated: false }).metadata()
+        if (!['avif', 'heif', 'webp'].includes(source.format ?? '')) throw new Error('unsupported source image')
+        bytes = await sharp(bytes, { failOn: 'error', limitInputPixels: 100_000_000, animated: false })
+          .rotate().flatten({ background: '#ffffff' }).jpeg({ quality: 90, progressive: false, chromaSubsampling: '4:2:0' }).toBuffer()
+      } catch { throw new Error('Production media must be a structurally recognized JPG, PNG, GIF, AVIF, or WebP image') }
+    }
+    if (bytes.length < 1 || bytes.length > this.config.maxAssetBytes) throw new Error('Production media asset exceeds its admission limit after conversion')
     const dimensions = inspectImage(bytes)
     let decoded
     try { decoded = await sharp(bytes, { failOn: 'error', limitInputPixels: 100_000_000, animated: true }).metadata() }

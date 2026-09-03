@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { Context } from '@deepseek-ai/cordis'
+import sharp from 'sharp'
 import { PrismProductionMediaService } from '../lib/store-production-media.js'
 
 class Table {
@@ -22,4 +23,14 @@ test('Production Media resolves an exact claim by assetId without returning pers
   assert.equal(Buffer.isBuffer(resolved.bytes), false)
   await assert.rejects(service.getClaim('0'.repeat(64)), /unavailable/)
   await assert.rejects(service.getClaim('bad'), /asset id is invalid/)
+})
+
+test('Production Media converts bounded AVIF input into an exact persisted JPEG claim', async () => {
+  const service = new PrismProductionMediaService(new Context(), { maxAssetBytes: 10 * 1024 * 1024, maxAssets: 100 })
+  service.assets = new Table()
+  const avif = await sharp({ create: { width: 8, height: 6, channels: 4, background: { r: 20, g: 40, b: 60, alpha: 0.5 } } }).avif().toBuffer()
+  const admitted = await service.ingest(avif)
+  assert.equal(admitted.mime, 'image/jpeg'); assert.equal(admitted.width, 8); assert.equal(admitted.height, 6)
+  const resolved = await service.resolve(admitted)
+  assert.equal(resolved.bytes.subarray(0, 2).equals(Buffer.from([0xff, 0xd8])), true)
 })

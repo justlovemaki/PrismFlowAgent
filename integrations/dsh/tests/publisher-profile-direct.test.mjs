@@ -10,8 +10,8 @@ import { configureDashboardRow, deriveDashboardProfileBinding } from '../lib/das
 import { apply } from '../lib/ui.js'
 import {
   beginPublisherProfileOperationDrain, cancelPendingPublisherProfileOperation, commitPublisherProfileOperation,
-  exportPublisherProfile, getPendingPublisherProfileOperation, getPublisherProfileOperation, importPublisherChangePlan,
-  preparePublisherProfileOperation,
+  configurePublisherProfileRows, exportPublisherProfile, getPendingPublisherProfileOperation, getPublisherProfileOperation,
+  importPublisherChangePlan, preparePublisherProfileOperation,
 } from '../lib/publisher-profile-cli.js'
 import { documentFingerprint, normalizePublisherConfig, publisherConfigRevision } from '../lib/shared/publisher-profile.js'
 
@@ -23,6 +23,20 @@ async function fixture() {
   writeFileSync(join(profileDir, 'cordis.patch.yml'), '[]\n')
   return { home, profileDir, cleanup: () => rm(home, { recursive: true, force: true }) }
 }
+test('configuration backup restore maps foreign absolute local paths into the target DSH home', () => {
+  const rows = [
+    { rowId: 'prismflow-publisher-local-markdown', channelKind: 'local-markdown', disabled: false,
+      config: { destinations: [{ id: 'archive', name: 'Archive', root: 'C:\\Users\\source\\publications' }] } },
+    { rowId: 'prismflow-publisher-github-markdown', channelKind: 'github-markdown', disabled: true, config: { destinations: [] } },
+    { rowId: 'prismflow-publisher-r2-markdown', channelKind: 'r2-markdown', disabled: true, config: { destinations: [] } },
+    { rowId: 'prismflow-publisher-wechat-draft', channelKind: 'wechat-draft', disabled: true, config: { destinations: [] } },
+  ]
+  assert.equal(normalizePublisherConfig('local-markdown', rows[0].config, { allowPortableAbsolutePaths: true }).destinations[0].root, 'C:\\Users\\source\\publications')
+  const patch = configurePublisherProfileRows('[]\n', rows, { destinationHome: '/srv/dsh', platform: 'linux' })
+  assert.match(patch, /root: \/srv\/dsh\/publications\/archive/u)
+  assert.doesNotMatch(patch, /C:\\Users/u)
+})
+
 function changePlan(document, disabled = false) {
   const row = document.rows[0]
   const config = { destinations: [] }
@@ -258,6 +272,8 @@ await test('installer derives one canonical binding and YAML-migrates only the u
   assert.deepEqual(deriveDashboardProfileBinding(value.profileDir), { dshHome: value.home, profileName: 'web' })
   const patch = "- insert:\n    - id: unrelated\n      name: example\n    - id: prismflow-dashboard\n      name: '@prismflow/dsh-dashboard'\n"
   const output = configureDashboardRow(patch, { dshHome: value.home, profileName: 'web' })
+  assert.match(output, /name: '@prismflow\/dsh\/ui'/u)
+  assert.doesNotMatch(output, /@prismflow\/dsh-dashboard/u)
   assert.match(output, /config:\s*\n\s+dshHome:/u); assert.match(output, /profileName: web/u)
   assert.throws(() => configureDashboardRow(`${patch}${patch}`, { dshHome: value.home, profileName: 'web' }), /duplicated/u)
   assert.throws(() => configureDashboardRow("- id: prismflow-dashboard\n  name: '@prismflow/dsh-dashboard'\n", { dshHome: value.home, profileName: 'web' }), /unsupported shape/u)

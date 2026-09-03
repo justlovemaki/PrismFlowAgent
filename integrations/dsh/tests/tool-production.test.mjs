@@ -6,7 +6,7 @@ import { apply } from '../lib/tool-production.js'
 function harness({ draftStatus = 'approved' } = {}) {
   const tools = new Map()
   const listeners = new Map()
-  const calls = { create: [], selection: [], generate: [], cancel: [], retry: [], review: 0 }
+  const calls = { create: [], directInput: [], selection: [], generate: [], cancel: [], retry: [], review: 0 }
   const request = { requestId: 'request-1', generatorId: 'brief', generatorPromptVersion: 4, generatorPromptSha256: 'd'.repeat(64), contentStoreIds: ['b', 'a'], status: 'pending', createdAt: '2026-01-01T00:00:00.000Z' }
   const draft = {
     draftId: 'draft-1', requestId: 'request-1', generatorId: 'brief', generatorPromptVersion: 4, generatorPromptSha256: 'd'.repeat(64), title: 'Brief', markdown: '# MUST NOT LEAK',
@@ -19,6 +19,10 @@ function harness({ draftStatus = 'approved' } = {}) {
       listGenerators: () => [{ id: 'brief', name: 'Brief', description: 'Configured' }],
       async createRequest(generatorId, contentStoreIds) { calls.create.push({ generatorId, contentStoreIds: [...contentStoreIds] }); return { ...request, generatorId, contentStoreIds } },
       async createRequestFromAISelection(generatorId, selectionId) { calls.selection.push({ generatorId, selectionId }); return { ...request, generatorId, selectionId } },
+      async createRequestFromDirectInput(generatorId, workflowInput, selectionId) {
+        calls.directInput.push({ generatorId, workflowInput, selectionId })
+        return { ...request, generatorId, contentStoreIds: selectionId ? ['b', 'a'] : [], workflowInput, workflowInputSha256: 'f'.repeat(64), ...(selectionId ? { selectionId } : {}) }
+      },
       listRequests: () => [request],
       async cancel(requestId) { calls.cancel.push(requestId); return { ...request, requestId, status: 'cancelled' } },
       async retry(requestId) { calls.retry.push(requestId); return { ...request, requestId, status: 'pending' } },
@@ -43,6 +47,7 @@ test('production Chat tools own ordered request creation and immutable draft gen
   assert.deepEqual([...tools.keys()], [
     'prismflow_generators',
     'prismflow_create_generation_request_from_explicit_content_ids',
+    'prismflow_create_generation_request_from_direct_input',
     'prismflow_create_generation_request_from_ai_selection',
     'prismflow_generation_request',
     'prismflow_generate_draft',
@@ -63,6 +68,15 @@ test('production Chat tools own ordered request creation and immutable draft gen
   assert.deepEqual(calls.create, [{ generatorId: 'brief', contentStoreIds: ['b', 'a'] }])
   assert.equal(created.itemCount, 2)
   assert.deepEqual({ generatorPromptVersion: created.generatorPromptVersion, generatorPromptSha256: created.generatorPromptSha256 }, { generatorPromptVersion: 4, generatorPromptSha256: 'd'.repeat(64) })
+  const directInputTool = tools.get('prismflow_create_generation_request_from_direct_input')
+  const directOnly = await directInputTool.execute({ generatorId: 'brief', inputFormat: 'markdown', content: '# 用户直接内容' }, execution())
+  assert.equal(directOnly.itemCount, 0); assert.equal(directOnly.hasWorkflowInput, true); assert.equal(directOnly.workflowInputSha256, 'f'.repeat(64))
+  const mixed = await directInputTool.execute({ generatorId: 'brief', inputFormat: 'json', content: '{"news":true}', selectionId: 'selection-mixed' }, execution())
+  assert.equal(mixed.itemCount, 2); assert.equal(mixed.selectionId, 'selection-mixed')
+  assert.deepEqual(calls.directInput, [
+    { generatorId: 'brief', workflowInput: { format: 'markdown', content: '# 用户直接内容' }, selectionId: undefined },
+    { generatorId: 'brief', workflowInput: { format: 'json', content: '{"news":true}' }, selectionId: 'selection-mixed' },
+  ])
   const fromSelection = await tools.get('prismflow_create_generation_request_from_ai_selection').execute({ generatorId: 'brief', selectionId: 'selection-1' }, execution())
   assert.equal(fromSelection.selectionId, 'selection-1')
   assert.deepEqual(calls.selection, [{ generatorId: 'brief', selectionId: 'selection-1' }])
@@ -149,14 +163,10 @@ test('Chat draft listing explicitly warns for persisted unknown external outcome
   assert.match(tool.output.render({}, result)[0].text, /ERROR:.*unknown.*do not retry/is)
 })
 
-test('bundled two-stage daily brief prompts require materially longer entries', async () => {
+test('bundle does not seed the retired daily brief legacy generator', async () => {
   const patch = await readFile(new URL('../cordis.patch.yml', import.meta.url), 'utf8')
-  assert.match(patch, /每条副标题约8-18个中文字符/)
-  assert.match(patch, /每条副标题控制在 \*\*8-18 个中文字符\*\*/)
-  assert.equal((patch.match(/4-6句话|4-6 句话/gu) ?? []).length, 2)
-  assert.equal((patch.match(/120-220/gu) ?? []).length, 2)
-  assert.doesNotMatch(patch, /3-4\s*句话/gu)
-  assert.doesNotMatch(patch, /每句\s*\*\*?10-15|每句10-15字/gu)
+  assert.match(patch, /generators: \[\]/u)
+  assert.doesNotMatch(patch, /daily-brief|每日资讯简报（双阶段）/u)
 })
 
 test('bundle exports no scheduler or generic raw-content publication plugin beyond the fixed prismflow_github_push compatibility tool', async () => {

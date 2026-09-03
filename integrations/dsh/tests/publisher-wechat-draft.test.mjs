@@ -172,6 +172,19 @@ test('news separates body URL uploads from permanent cover ids and returns an ex
   assert.equal(receipt.operation, 'draft.add')
 })
 
+test('news uses the first non-body presentation image as cover and ignores later gallery-only images', async () => {
+  const first = media('news-nonbody-first'), second = media('news-nonbody-second')
+  const publisherId = 'wechat-draft:account-news'
+  const presentation = { publisherId, imageOrder: [first.claim.assetId, second.claim.assetId] }
+  const value = artifact('纯正文，不含图片。', [first, second], [presentation])
+  const run = fixture('news', value, [first, second])
+  await run.provider.publishArtifact(value, [{ storeId: STORE_ID }], {})
+  const payload = JSON.parse(run.requests.find(request => request.url.includes('/draft/add')).body)
+  assert.equal(payload.articles[0].thumb_media_id.startsWith('material-'), true)
+  assert.equal(run.requests.filter(request => request.url.includes('/material/add_material')).length, 1)
+  assert.equal(run.requests.some(request => request.url.includes('/media/uploadimg')), false)
+})
+
 test('newspic applies approved cover-first ordered dedup and emits only permanent media ids', async () => {
   const one = media('one'), two = media('two'), cover = media('cover')
   const publisherId = 'wechat-draft:account-newspic'

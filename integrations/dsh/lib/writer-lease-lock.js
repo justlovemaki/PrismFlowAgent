@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto'
 import { hostname as systemHostname } from 'node:os'
 import { dirname, isAbsolute } from 'node:path'
+import { performance } from 'node:perf_hooks'
 import { link, mkdir, open, readFile, rename, stat, unlink } from 'node:fs/promises'
 
 export const WRITER_LOCK_STALE_AGE_MS = 30_000
 const OWNER_FIELDS = ['hostname', 'pid', 'nonce', 'createdAt']
+const CURRENT_PROCESS_STARTED_AT_MS = Math.floor(performance.timeOrigin)
 
 export class WriterLeaseValidationError extends Error { constructor(message) { super(message); this.name = 'WriterLeaseValidationError' } }
 export class WriterLeaseConflictError extends Error { constructor(message) { super(message); this.name = 'WriterLeaseConflictError' } }
@@ -25,6 +27,16 @@ function validOwner(value) {
 function processAlive(pid) {
   try { process.kill(pid, 0); return true } catch (error) { return error?.code === 'EPERM' }
 }
+// A persistent container commonly assigns the same low PID after restart. For
+// our own PID, a lock created before this Node process started belongs to the
+// prior incarnation even though kill(pid, 0) now succeeds against us.
+function ownerIsPriorCurrentPidIncarnation(owner) {
+  return owner.pid === process.pid && owner.timestamp < CURRENT_PROCESS_STARTED_AT_MS
+}
+function ownerProcessAlive(owner) {
+  return !ownerIsPriorCurrentPidIncarnation(owner) && processAlive(owner.pid)
+}
+function ownerRequiresStaleDelay(owner) { return !ownerIsPriorCurrentPidIncarnation(owner) }
 async function readOwner(path) {
   try { return validOwner(JSON.parse(await readFile(path, 'utf8'))) } catch { return undefined }
 }
@@ -68,8 +80,8 @@ async function reclaimStaleRecovery(recoveryPath, localHostname, now, staleAgeMs
   const owner = await readOwner(recoveryPath)
   if (!owner) throw new WriterLeaseConflictError(`Writer lock recovery owner is missing, malformed, or unreadable: ${recoveryPath}`)
   if (owner.hostname !== localHostname) throw new WriterLeaseConflictError(`Writer lock recovery is owned by another hostname: ${owner.hostname}`)
-  if (processAlive(owner.pid)) throw new WriterLeaseConflictError(`Writer lock recovery is held by PID ${owner.pid}`)
-  if (ownerAge(owner, now) < staleAgeMs) throw new WriterLeaseConflictError('Writer lock recovery owner is dead but has not reached the bounded stale age')
+  if (ownerProcessAlive(owner)) throw new WriterLeaseConflictError(`Writer lock recovery is held by PID ${owner.pid}`)
+  if (ownerRequiresStaleDelay(owner) && ownerAge(owner, now) < staleAgeMs) throw new WriterLeaseConflictError('Writer lock recovery owner is dead but has not reached the bounded stale age')
   const quarantine = `${recoveryPath}.stale-${randomUUID()}`
   try { await rename(recoveryPath, quarantine) }
   catch (error) { if (error?.code === 'ENOENT') return false; throw error }
@@ -129,8 +141,8 @@ export async function acquireWriterLease(lockPath, options = {}) {
       const existing = await readOwner(lockPath)
       if (!existing) throw new WriterLeaseConflictError(`Writer lock owner is missing, malformed, or unreadable: ${lockPath}`)
       if (existing.hostname !== settings.hostname) throw new WriterLeaseConflictError(`Writer lock is owned by another hostname: ${existing.hostname}`)
-      if (processAlive(existing.pid)) throw new WriterLeaseConflictError(`Writer lock is held by PID ${existing.pid}`)
-      if (ownerAge(existing, settings.now()) < settings.staleAgeMs) {
+      if (ownerProcessAlive(existing)) throw new WriterLeaseConflictError(`Writer lock is held by PID ${existing.pid}`)
+      if (ownerRequiresStaleDelay(existing) && ownerAge(existing, settings.now()) < settings.staleAgeMs) {
         throw new WriterLeaseConflictError('Writer lock owner is dead but has not reached the bounded stale age')
       }
       const recoveryOwner = { hostname: settings.hostname, pid: process.pid, nonce: randomUUID(), createdAt: new Date(settings.now()).toISOString() }
@@ -138,8 +150,8 @@ export async function acquireWriterLease(lockPath, options = {}) {
       try {
         await recovery.assertOwned()
         const confirmed = await readOwner(lockPath)
-        if (!sameOwner(confirmed, existing) || confirmed.hostname !== settings.hostname || processAlive(confirmed.pid)
-          || ownerAge(confirmed, settings.now()) < settings.staleAgeMs) continue
+        if (!sameOwner(confirmed, existing) || confirmed.hostname !== settings.hostname || ownerProcessAlive(confirmed)
+          || ownerRequiresStaleDelay(confirmed) && ownerAge(confirmed, settings.now()) < settings.staleAgeMs) continue
         if (typeof options.onRecoveryAcquired === 'function') await options.onRecoveryAcquired({ lockPath, owner: structuredClone(confirmed) })
         await recovery.assertOwned()
         const inode = (await stat(lockPath)).ino

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { isAbsolute, resolve } from 'node:path'
+import { isAbsolute, posix, resolve, win32 } from 'node:path'
 import { renderGitHubCommitMessage, normalizeGitHubApiBaseUrl, parseGitHubRepository, validateGitHubBranch, validateGitHubPathPrefix } from './github-publisher.js'
 import { renderMarkdownFileName } from './markdown-publisher.js'
 import { normalizeR2AccountId, normalizeR2PublicUrlPrefix, validateR2BucketName, validateR2PathPrefix } from './r2-publisher.js'
@@ -77,13 +77,15 @@ function compatibility(destination, defaults) {
   }))
 }
 
-function normalizeLocal(destination, field) {
+function normalizeLocal(destination, field, options = {}) {
   exact(destination, ['id', 'name', 'root', 'fileNamePattern', 'artifactFileNamePattern', 'title', 'overwrite', 'maxItems', 'maxDescriptionChars', 'maxBytes'], field)
-  const root = string(destination.root, `${field}.root`, { max: 4096 })
-  if (!isAbsolute(root)) fail(`${field}.root must be an absolute path`)
+  const suppliedRoot = string(destination.root, `${field}.root`, { max: 4096 })
+  const portableAbsolute = posix.isAbsolute(suppliedRoot) || win32.isAbsolute(suppliedRoot)
+  if (options.allowPortableAbsolutePaths ? !portableAbsolute : !isAbsolute(suppliedRoot)) fail(`${field}.root must be an absolute path`)
+  const root = options.allowPortableAbsolutePaths ? suppliedRoot : resolve(suppliedRoot)
   const artifactFileNamePattern = string(destination.artifactFileNamePattern ?? 'prismflow-draft-{date}.md', `${field}.artifactFileNamePattern`, { max: 256 })
   renderMarkdownFileName(artifactFileNamePattern, '2000-01-01')
-  return { ...identity(destination, field), root: resolve(root), artifactFileNamePattern,
+  return { ...identity(destination, field), root, artifactFileNamePattern,
     overwrite: choice(destination.overwrite, `${field}.overwrite`, ['never', 'if-changed'], 'if-changed'),
     maxBytes: integer(destination.maxBytes, `${field}.maxBytes`, 1024, 2_000_000, 1_000_000),
     ...compatibility(destination, LOCAL_COMPATIBILITY_DEFAULTS) }
@@ -151,7 +153,7 @@ function normalizeWechat(destination, field, options = {}) {
   const allowedProtocol = parsed.protocol === 'https:' || (parsed.protocol === 'http:' && allowInsecureHttp === 1)
   if (!allowedProtocol || parsed.username || parsed.password || parsed.search || parsed.hash) fail(`${field}.apiOrigin must be a credential-free HTTP(S) base URL without query or fragment; HTTP requires allowInsecureHttp=1`)
   const apiBaseUrl = `${parsed.origin}${parsed.pathname.replace(/\/+$/u, '')}`
-  const ffmpegPath = destination.ffmpegPath === undefined ? undefined : string(destination.ffmpegPath, `${field}.ffmpegPath`, { max: 1024 })
+  const ffmpegPath = destination.ffmpegPath === undefined || destination.ffmpegPath === '' ? undefined : string(destination.ffmpegPath, `${field}.ffmpegPath`, { max: 1024 })
   const appSecretCredential = options.allowLegacyCredentialRefs
     ? string(destination.appSecretCredential, `${field}.appSecretCredential`, { max: 128 })
     : credentialRef(destination.appSecretCredential, `${field}.appSecretCredential`)

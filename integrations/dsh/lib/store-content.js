@@ -116,6 +116,17 @@ export class PrismContentStore extends Service {
     )
   }
 
+  categoryCounts() {
+    const counts = new Map()
+    for (const [, record] of this.requireItems().entries()) {
+      const category = typeof record.item?.category === 'string' ? record.item.category.trim() : ''
+      if (category) counts.set(category, (counts.get(category) ?? 0) + 1)
+    }
+    return [...counts.entries()]
+      .map(([category, count]) => ({ category, count }))
+      .sort((left, right) => left.category.localeCompare(right.category))
+  }
+
   snapshot(maxRecords = 100_000) {
     if (!Number.isInteger(maxRecords) || maxRecords < 1 || maxRecords > 1_000_000) {
       throw new Error('Content snapshot limit must be an integer from 1 to 1000000')

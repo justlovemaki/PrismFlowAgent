@@ -1,6 +1,6 @@
 {
   "name": "@prismflow/dsh",
-  "version": "0.19.23",
+  "version": "0.24.58",
   "description": "Native PrismFlow plugins and one-stop dashboard for DeepSeek Harness",
   "type": "module",
   "main": "./lib/core.js",
@@ -8,6 +8,8 @@
     ".": "./lib/core.js",
     "./client": "./lib/client.js",
     "./ui": "./lib/ui.js",
+    "./ui/package.json": "./package.json",
+    "./ffmpeg-runtime": "./lib/ffmpeg-runtime.js",
     "./core": "./lib/core.js",
     "./source-rss": "./lib/source-rss.js",
     "./source-github-trending": "./lib/source-github-trending.js",
@@ -43,16 +45,22 @@
     "./tool-production-media": "./lib/tool-production-media.js",
     "./tool-legacy-production": "./lib/tool-legacy-production.js",
     "./storage-sqlite-migration": "./lib/storage-sqlite-migration.js",
+    "./dsh-install": "./lib/dsh-install.js",
+    "./data-backup": "./lib/data-backup.js",
     "./package.json": "./package.json"
   },
   "bin": {
+    "prismflow-dsh-install": "./scripts/install.mjs",
     "prismflow-dsh-dashboard": "./scripts/install-dashboard.mjs",
     "prismflow-dsh-migrate-sqlite": "./scripts/migrate-storage-sqlite.mjs",
     "prismflow-dsh-profile": "./scripts/publisher-profile.mjs"
   },
   "files": [
     "lib",
+    "plugins",
     "skills",
+    "manual-import",
+    "scripts/install.mjs",
     "scripts/install-dashboard.mjs",
     "scripts/migrate-storage-sqlite.mjs",
     "scripts/publisher-profile.mjs",
@@ -63,17 +71,25 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-sidebar"
+      ]
     }
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-runtime": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-layout": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-credentials": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-storage-domain": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-storage-sqlite": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-tools": "0.1.0-rc.6"
+    "@deepseek-ai/dsh-client-runtime": ">=0.1.0-rc.6 <0.2.0",
+    "@deepseek-ai/dsh-client-ui-layout": ">=0.1.0-rc.6 <0.2.0",
+    "@deepseek-ai/dsh-client-ui-sidebar": ">=0.1.0-rc.6 <0.2.0",
+    "@deepseek-ai/dsh-credentials": ">=0.1.0-rc.6 <0.2.0",
+    "@deepseek-ai/dsh-storage-domain": ">=0.1.0-rc.6 <0.2.0",
+    "@deepseek-ai/dsh-storage-sqlite": ">=0.1.0-rc.6 <0.2.0",
+    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.6 <0.2.0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-client-runtime": {
@@ -108,8 +124,14 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-storage-domain": "0.1.0-rc.6",
-    "@deepseek-ai/dsh-storage-sqlite": "0.1.0-rc.6",
+    "@deepseek-ai/cordis": "^4.0.2",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-layout": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-sidebar": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-credentials": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-storage-domain": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-storage-sqlite": "0.1.1-rc.2",
+    "@deepseek-ai/dsh-tools": "^0.1.1-rc.2",
     "typescript": "^5.9.3"
   },
   "scripts": {

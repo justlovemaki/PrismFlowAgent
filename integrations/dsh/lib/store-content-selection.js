@@ -6,7 +6,7 @@ import { z } from 'zod'
 import {
   AI_CONTENT_SELECTION_STRATEGY_VERSION,
   aiSelectionContentHash,
-  clusterAIEvents,
+  clusterAIEventsFromGroups,
   extractSelectionMedia,
   packSelectionMaterials,
   rankDiverseEvents,
@@ -91,28 +91,56 @@ function exactKeys(raw, keys) {
   return raw && typeof raw === 'object' && !Array.isArray(raw)
     && Object.keys(raw).length === keys.length && keys.every(key => Object.hasOwn(raw, key))
 }
+const REVIEW_KEYS_V2 = ['version', 'storeId', 'sourceId', 'contentHash', 'relevanceProfileFingerprint', 'reviewerProfileFingerprint', 'topics', 'aiSummary', 'aiScore', 'reason', 'reviewedAt']
+function validEditorialSummary(value) {
+  if (typeof value !== 'string' || !value.startsWith('**')) return false
+  const images = [...value.matchAll(/!\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/giu)]
+  const seoCount = (value.match(/AI资讯/gu) ?? []).length
+  if (seoCount !== images.length || images.some(match => !match[1].startsWith('AI资讯：')
+    || (match[1].match(/AI资讯/gu) ?? []).length !== 1)) return false
+  return true
+}
 function validReview(raw, storeId) {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.storeId !== storeId
+  if (!exactKeys(raw, REVIEW_KEYS_V2) || raw.version !== 2 || raw.storeId !== storeId
     || !bounded(raw.sourceId, 256) || !validHash(raw.contentHash) || !validHash(raw.relevanceProfileFingerprint)
-    || !validHash(raw.reviewerProfileFingerprint) || !['relevant', 'irrelevant'].includes(raw.decision)
+    || !validHash(raw.reviewerProfileFingerprint)
     || !Array.isArray(raw.topics) || raw.topics.length > TOPICS.length || raw.topics.some(topic => !TOPICS.includes(topic))
-    || !bounded(raw.reasonCode, 128) || !canonicalIso(raw.reviewedAt)) return undefined
+    || typeof raw.aiSummary !== 'string' || raw.aiSummary.length < 1 || raw.aiSummary.length > 4000
+    || /[\u0000-\u001f\u007f]/u.test(raw.aiSummary) || /\\[nr]/u.test(raw.aiSummary) || !validEditorialSummary(raw.aiSummary)
+    || !Number.isInteger(raw.aiScore) || raw.aiScore < 0 || raw.aiScore > 100
+    || typeof raw.reason !== 'string' || raw.reason.length < 1 || raw.reason.length > 2000
+    || /[\u0000-\u001f\u007f]/u.test(raw.reason) || /\\[nr]/u.test(raw.reason)
+    || !canonicalIso(raw.reviewedAt)) return undefined
+  const dimensions = [
+    /AI相关性\(40%\):\s*(\d{1,3})分/u, /新闻新鲜度\(20%\):\s*(\d{1,3})分/u,
+    /炸裂程度\(20%\):\s*(\d{1,3})分/u, /影响力\(20%\):\s*(\d{1,3})分/u,
+  ].map(pattern => Number(raw.reason.match(pattern)?.[1] ?? -1))
+  const calculated = Math.round(dimensions[0] * 0.4 + dimensions[1] * 0.2 + dimensions[2] * 0.2 + dimensions[3] * 0.2)
+  if (dimensions.some(score => score < 0 || score > 100) || calculated !== raw.aiScore
+    || (dimensions[0] < 50 && raw.aiScore >= 60)
+    || !new RegExp(`因此综合评分为${raw.aiScore}分。?$`, 'u').test(raw.reason)) return undefined
   return { ...raw, topics: [...raw.topics] }
 }
 const EXCERPT_KEYS = ['field', 'start', 'end', 'text', 'sha256']
 const MEDIA_KEYS = ['kind', 'url']
 const MATERIAL_KEYS_V1 = ['storeId', 'title', 'url', 'source', 'author', 'publishedDate', 'category', 'excerpts', 'materialChars', 'estimatedTokens', 'materialSha256']
 const MATERIAL_KEYS_V2 = ['storeId', 'title', 'url', 'source', 'author', 'publishedDate', 'category', 'excerpts', 'media', 'materialChars', 'estimatedTokens', 'materialSha256']
+const MATERIAL_KEYS_V3 = ['storeId', 'title', 'url', 'source', 'author', 'publishedDate', 'category', 'aiSummary', 'aiScore', 'scoreReason', 'excerpts', 'media', 'materialChars', 'estimatedTokens', 'materialSha256']
 function validMediaUrl(value) {
   if (!bounded(value, 2048)) return false
   try { return ['http:', 'https:'].includes(new URL(value).protocol) } catch { return false }
 }
-function validMaterial(raw) {
-  const hasMedia = exactKeys(raw, MATERIAL_KEYS_V2)
-  if ((!hasMedia && !exactKeys(raw, MATERIAL_KEYS_V1)) || !bounded(raw.storeId, 128)
+function validMaterial(raw, strategyVersion) {
+  const editorial = strategyVersion === AI_CONTENT_SELECTION_STRATEGY_VERSION
+  const hasMedia = editorial ? exactKeys(raw, MATERIAL_KEYS_V3) : exactKeys(raw, MATERIAL_KEYS_V2)
+  if ((editorial ? !hasMedia : (!hasMedia && !exactKeys(raw, MATERIAL_KEYS_V1))) || !bounded(raw.storeId, 128)
     || typeof raw.title !== 'string' || raw.title.length > 1000 || typeof raw.url !== 'string' || raw.url.length > 2048
     || typeof raw.source !== 'string' || raw.source.length > 512 || typeof raw.author !== 'string' || raw.author.length > 512
     || typeof raw.publishedDate !== 'string' || raw.publishedDate.length > 64 || typeof raw.category !== 'string' || raw.category.length > 256
+    || (editorial && (typeof raw.aiSummary !== 'string' || raw.aiSummary.length < 1 || raw.aiSummary.length > 4000
+      || /[\u0000-\u001f\u007f]/u.test(raw.aiSummary) || !Number.isInteger(raw.aiScore) || raw.aiScore < 0 || raw.aiScore > 100
+      || typeof raw.scoreReason !== 'string' || raw.scoreReason.length < 1 || raw.scoreReason.length > 2000
+      || /[\u0000-\u001f\u007f]/u.test(raw.scoreReason)))
     || !Array.isArray(raw.excerpts) || raw.excerpts.length > 32 || !Number.isInteger(raw.materialChars) || raw.materialChars < 0 || raw.materialChars > 20000
     || !Number.isInteger(raw.estimatedTokens) || raw.estimatedTokens < 0 || raw.estimatedTokens > 100000 || !validHash(raw.materialSha256)) return undefined
   const excerpts = []
@@ -134,14 +162,16 @@ function validMaterial(raw) {
   }
   const material = {
     storeId: raw.storeId, title: raw.title, url: raw.url, source: raw.source, author: raw.author,
-    publishedDate: raw.publishedDate, category: raw.category, excerpts,
-    ...(hasMedia ? { media } : {}),
+    publishedDate: raw.publishedDate, category: raw.category,
+    ...(editorial ? { aiSummary: raw.aiSummary, aiScore: raw.aiScore, scoreReason: raw.scoreReason } : {}),
+    excerpts, ...(hasMedia ? { media } : {}),
     materialChars: raw.materialChars, estimatedTokens: raw.estimatedTokens, materialSha256: raw.materialSha256,
   }
   const encoded = JSON.stringify({
     storeId: material.storeId, title: material.title, url: material.url, source: material.source, author: material.author,
-    publishedDate: material.publishedDate, category: material.category, excerpts: material.excerpts,
-    ...(hasMedia ? { media: material.media } : {}),
+    publishedDate: material.publishedDate, category: material.category,
+    ...(editorial ? { aiSummary: material.aiSummary, aiScore: material.aiScore, scoreReason: material.scoreReason } : {}),
+    excerpts: material.excerpts, ...(hasMedia ? { media: material.media } : {}),
   })
   return encoded.length === material.materialChars
     && createHash('sha256').update(encoded, 'utf8').digest('hex') === material.materialSha256 ? material : undefined
@@ -149,7 +179,8 @@ function validMaterial(raw) {
 const COUNT_KEYS = ['candidate', 'localMatched', 'ambiguous', 'reviewed', 'reviewAccepted', 'reviewRejected', 'eventClusters', 'selected']
 const ROOT_KEYS = ['selectionId', 'version', 'createdAt', 'asOf', 'since', 'hours', 'classifierVersion', 'relevanceProfileFingerprint', 'reviewerProfileFingerprint', 'strategyVersion', 'strategyProfileFingerprint', 'counts', 'items', 'totalMaterialChars', 'estimatedTokens', 'selectionSha256']
 const ITEM_KEYS = ['rank', 'storeId', 'sourceId', 'contentHash', 'clusterId', 'topics', 'signals', 'reasons', 'memberClaims', 'material']
-const SIGNAL_KEYS = ['distinctSourceCount', 'memberCount', 'recencyTimestamp', 'bodyChars', 'topicCount', 'localMatch']
+const SIGNAL_KEYS_V2 = ['distinctSourceCount', 'memberCount', 'recencyTimestamp', 'bodyChars', 'topicCount', 'localMatch']
+const SIGNAL_KEYS_V3 = [...SIGNAL_KEYS_V2, 'aiScore']
 const MEMBER_CLAIM_KEYS = ['storeId', 'contentHash']
 function validSelection(raw) {
   if (!exactKeys(raw, ROOT_KEYS) || !bounded(raw.selectionId, 128) || raw.version !== 1
@@ -163,6 +194,7 @@ function validSelection(raw) {
     || !exactKeys(raw.counts, COUNT_KEYS)
     || COUNT_KEYS.some(key => !Number.isInteger(raw.counts[key]) || raw.counts[key] < 0 || raw.counts[key] > 1000000)) return undefined
   const counts = Object.fromEntries(COUNT_KEYS.map(key => [key, raw.counts[key]]))
+  const signalKeys = SIGNAL_KEYS_V3
   const items = []; const allMemberIds = new Set(); let memberClaimCount = 0
   for (let index = 0; index < raw.items.length; index += 1) {
     const item = raw.items[index]
@@ -170,13 +202,15 @@ function validSelection(raw) {
       || !bounded(item.sourceId, 256) || !validHash(item.contentHash) || !validHash(item.clusterId)
       || !Array.isArray(item.topics) || item.topics.length > TOPICS.length || new Set(item.topics).size !== item.topics.length
       || item.topics.some(topic => !TOPICS.includes(topic)) || !Array.isArray(item.reasons) || item.reasons.length > 16
-      || item.reasons.some(reason => !bounded(reason, 128)) || !exactKeys(item.signals, SIGNAL_KEYS)
+      || item.reasons.some(reason => !bounded(reason, 128)) || !exactKeys(item.signals, signalKeys)
       || !Number.isInteger(item.signals.distinctSourceCount) || item.signals.distinctSourceCount < 1 || item.signals.distinctSourceCount > 100000
       || !Number.isInteger(item.signals.memberCount) || item.signals.memberCount < 1 || item.signals.memberCount > 100000
       || !Number.isSafeInteger(item.signals.recencyTimestamp) || item.signals.recencyTimestamp < 0
       || !Number.isInteger(item.signals.bodyChars) || item.signals.bodyChars < 0 || item.signals.bodyChars > 20000000
       || !Number.isInteger(item.signals.topicCount) || item.signals.topicCount < 0 || item.signals.topicCount > TOPICS.length
-      || typeof item.signals.localMatch !== 'boolean' || !Array.isArray(item.memberClaims)
+      || typeof item.signals.localMatch !== 'boolean'
+      || !Number.isInteger(item.signals.aiScore) || item.signals.aiScore < 0 || item.signals.aiScore > 100
+      || !Array.isArray(item.memberClaims)
       || item.memberClaims.length !== item.signals.memberCount || item.memberClaims.length < 1) return undefined
     const memberClaims = []
     for (const claim of item.memberClaims) {
@@ -186,12 +220,12 @@ function validSelection(raw) {
     }
     memberClaimCount += memberClaims.length
     if (memberClaimCount > 100000 || !memberClaims.some(claim => claim.storeId === item.storeId && claim.contentHash === item.contentHash)) return undefined
-    const material = validMaterial(item.material)
-    if (!material || material.storeId !== item.storeId) return undefined
+    const material = validMaterial(item.material, raw.strategyVersion)
+    if (!material || material.storeId !== item.storeId || material.aiScore !== item.signals.aiScore) return undefined
     items.push({
       rank: item.rank, storeId: item.storeId, sourceId: item.sourceId, contentHash: item.contentHash,
       clusterId: item.clusterId, topics: [...item.topics],
-      signals: Object.fromEntries(SIGNAL_KEYS.map(key => [key, item.signals[key]])),
+      signals: Object.fromEntries(signalKeys.map(key => [key, item.signals[key]])),
       reasons: [...item.reasons], memberClaims, material,
     })
   }
@@ -206,40 +240,48 @@ function validSelection(raw) {
   if (selectionSha256(payload) !== raw.selectionSha256) return undefined
   return { ...payload, selectionSha256: raw.selectionSha256 }
 }
+function safeReviewerUrl(value) {
+  if (typeof value !== 'string' || value.length < 1 || value.length > 2048 || /[\u0000-\u001f\u007f]/u.test(value)) return ''
+  try { return ['http:', 'https:'].includes(new URL(value).protocol) ? value : '' } catch { return '' }
+}
+function sourceUrls(value) {
+  if (typeof value !== 'string') return []
+  return [...value.matchAll(/https?:\/\/[^\s<>"'()\[\]]+/giu)]
+    .map(match => safeReviewerUrl(match[0].replace(/[.,;:!?，。；：！？]+$/u, ''))).filter(Boolean)
+}
 function reviewerCard(claim, maxChars) {
-  const raw = claim.card ?? {}
-  const card = {
-    storeId: claim.record.storeId,
-    title: typeof raw.title === 'string' ? raw.title.slice(0, 300) : '',
-    source: typeof raw.source === 'string' ? raw.source.slice(0, 120) : '',
-    category: typeof raw.category === 'string' ? raw.category.slice(0, 120) : '',
-    publishedAt: typeof raw.publishedAt === 'string' ? raw.publishedAt.slice(0, 64) : '',
-    localVerdict: claim.assessment.verdict,
-    evidence: Array.isArray(raw.evidence) ? raw.evidence.slice(0, 3).map(item => ({ field: item.field, excerpt: String(item.excerpt ?? '').slice(0, 120) })) : [],
-    context: (() => {
-      const item = claim.record?.item ?? {}
-      const description = typeof item.description === 'string' ? item.description : ''
-      const content = typeof item.content === 'string' ? item.content : ''
-      const body = content.length > description.length ? content : description
-      if (body.length <= 240) return body.replace(/[\u0000\u007f]/gu, '')
-      return `${body.slice(0, 80)} … ${body.slice(Math.max(0, Math.floor(body.length / 2) - 40), Math.floor(body.length / 2) + 40)} … ${body.slice(-80)}`.replace(/[\u0000\u007f]/gu, '')
-    })(),
+  const item = claim.record?.item ?? {}
+  const metadata = item.metadata && typeof item.metadata === 'object' && !Array.isArray(item.metadata) ? item.metadata : {}
+  const title = typeof item.title === 'string' ? item.title.replace(/[\u0000\u007f]/gu, '').slice(0, 500) : ''
+  const description = typeof item.description === 'string' ? item.description.replace(/[\u0000\u007f]/gu, '') : ''
+  const content = typeof item.content === 'string' ? item.content.replace(/[\u0000\u007f]/gu, '') : ''
+  const body = content.length > description.length ? content : description
+  const articleUrl = safeReviewerUrl(item.url)
+  const contentHtml = typeof metadata.content_html === 'string' ? metadata.content_html : ''
+  const media = extractSelectionMedia(description, content, 2, contentHtml)
+  const allowedUrls = []; let allowedUrlChars = 0
+  const coreUrls = [articleUrl, ...media.map(item => item.url)].filter(Boolean)
+  for (const value of [...coreUrls, ...sourceUrls(description), ...sourceUrls(content), ...sourceUrls(contentHtml)]) {
+    if (!value || allowedUrls.includes(value) || allowedUrls.length >= 16
+      || (!coreUrls.includes(value) && allowedUrlChars + value.length > 3000)) continue
+    allowedUrls.push(value); allowedUrlChars += value.length
   }
-  while (JSON.stringify(card).length > maxChars && card.evidence.length > 0) card.evidence.pop()
-  while (JSON.stringify(card).length > maxChars && card.context.length > 40) card.context = card.context.slice(0, card.context.length - 20)
-  if (JSON.stringify(card).length > maxChars) card.title = card.title.slice(0, 80)
-  if (JSON.stringify(card).length > maxChars) throw new Error('Reviewer card cannot fit configured limit')
+  const front = `# ${title}\n\n来源：${typeof item.source === 'string' ? item.source.slice(0, 200) : ''}\n分类：${typeof item.category === 'string' ? item.category.slice(0, 120) : ''}\n发布时间：${typeof item.published_date === 'string' ? item.published_date.slice(0, 64) : ''}\n原文：${articleUrl}\n\n`
+  const mediaText = media.length > 0 ? `\n\n候选媒体：${media.map(value => `${value.kind}:${value.url}`).join(' ')}` : ''
+  const room = Math.max(160, maxChars - JSON.stringify({ storeId: claim.record.storeId, articleUrl, allowedUrls, media }).length - front.length - mediaText.length - 80)
+  const rawMarkdown = body.length <= room ? `${front}${body}${mediaText}` : (() => {
+    const segment = Math.max(40, Math.floor(room / 3))
+    return `${front}${body.slice(0, segment)}\n\n…\n\n${body.slice(Math.max(0, Math.floor(body.length / 2) - Math.floor(segment / 2)), Math.floor(body.length / 2) + Math.ceil(segment / 2))}\n\n…\n\n${body.slice(-segment)}${mediaText}`
+  })()
+  const card = { storeId: claim.record.storeId, articleUrl, allowedUrls, media, rawMarkdown }
+  while (JSON.stringify(card).length > maxChars && card.rawMarkdown.length > 160) card.rawMarkdown = card.rawMarkdown.slice(0, card.rawMarkdown.length - 100)
+  if (JSON.stringify(card).length > maxChars) throw new Error('AI editorial card cannot fit configured limit')
   return card
 }
 function throwIfAborted(signal) {
   if (!signal?.aborted) return
   if (signal.reason instanceof Error) throw signal.reason
   throw new Error(`AI selection aborted: ${String(signal.reason ?? 'aborted')}`)
-}
-function auditSelected(storeId, percent) {
-  if (percent <= 0) return false
-  const value = createHash('sha256').update(storeId).digest().readUInt32BE(0) % 10000
-  return value < Math.round(percent * 100)
 }
 
 export class PrismContentSelectionStore extends Service {
@@ -256,6 +298,7 @@ export class PrismContentSelectionStore extends Service {
     const domain = await this.ctx.storageDomain.open(prismContentSelectionDomain)
     this.reviews = domain.table('reviews'); this.selections = domain.table('selections')
     try {
+      await this.purgeLegacyState()
       this.unregisterMaterialProvider = this.ctx.prismProduction.registerMaterialProvider({
         id: 'ai-selection', resolve: selectionId => this.resolveMaterial(selectionId),
       })
@@ -266,8 +309,22 @@ export class PrismContentSelectionStore extends Service {
       this.unregisterMaterialProvider?.(); this.reviews = undefined; this.selections = undefined; await domain.close(); throw error
     }
   }
+  async purgeLegacyState() {
+    const legacyStrategies = new Set(['ai-selection-v1', 'ai-selection-v2', 'ai-selection-v3'])
+    for (const [storeId, raw] of [...this.requireReviews().entries()]) {
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.version !== 2) await this.requireReviews().delete(storeId)
+    }
+    for (const [selectionId, raw] of [...this.requireSelections().entries()]) {
+      if (raw && typeof raw === 'object' && !Array.isArray(raw) && legacyStrategies.has(raw.strategyVersion)) {
+        await this.requireSelections().delete(selectionId)
+      }
+    }
+  }
   registerReviewer(provider) {
-    if (!provider?.id || typeof provider.reviewBatch !== 'function' || !validHash(provider.fingerprint)) throw new Error('AI relevance reviewer provider is invalid')
+    if (!provider?.id || typeof provider.reviewBatch !== 'function' || typeof provider.clusterAll !== 'function' || !validHash(provider.fingerprint)
+      || !Number.isInteger(provider.minimumAiScore) || provider.minimumAiScore < 1 || provider.minimumAiScore > 100) {
+      throw new Error('AI editorial reviewer provider is invalid')
+    }
     if (this.reviewer) throw new Error('AI relevance reviewer is already registered')
     this.reviewer = provider
     return () => { if (this.reviewer === provider) this.reviewer = undefined }
@@ -295,60 +352,63 @@ export class PrismContentSelectionStore extends Service {
     const snapshot = await this.ctx.prismContentRelevance.snapshotCurrent(query, execution)
     throwIfAborted(execution.signal)
     const reviewer = this.reviewer
-    const reviewClaims = [...snapshot.ambiguous]
-    if (reviewer) reviewClaims.push(...snapshot.unmatched.filter(item => item.record.sourceId === sourceQuota?.sourceId
-      || auditSelected(item.record.storeId, reviewer.unmatchedAuditPercent)))
-    const acceptedReviews = []
-    let rejectedReviews = 0
-    if (reviewClaims.length > 0) {
-      if (!reviewer) throw new Error('AI relevance reviewer is unavailable for ambiguous content')
-      if (!execution.agent) throw new Error('AI selection with ambiguous content requires a calling DSH Agent')
-      if (reviewClaims.length > reviewer.maxCards) throw new Error('AI relevance reviewer card ceiling exceeded')
-      const pending = []
-      for (const claim of reviewClaims) {
-        const cached = validReview(this.requireReviews().get(claim.record.storeId), claim.record.storeId)
-        if (cached && cached.contentHash === claim.contentHash
-          && cached.relevanceProfileFingerprint === snapshot.relevanceProfileFingerprint
-          && cached.reviewerProfileFingerprint === reviewer.fingerprint) {
-          if (cached.decision === 'relevant') acceptedReviews.push({ claim, review: cached }); else rejectedReviews += 1
-        } else pending.push(claim)
-      }
-      for (let index = 0; index < pending.length; index += reviewer.batchSize) {
-        throwIfAborted(execution.signal)
-        const batch = pending.slice(index, index + reviewer.batchSize)
-        const cards = batch.map(claim => reviewerCard(claim, reviewer.maxCardChars))
-        const decisions = await reviewer.reviewBatch(cards, execution)
-        throwIfAborted(execution.signal)
-        const rows = decisions.map(decision => {
-          const claim = batch.find(item => item.record.storeId === decision.storeId)
-          if (!claim) throw new Error('Reviewer returned an unknown decision id')
-          return {
-            storeId: decision.storeId, sourceId: claim.record.sourceId, contentHash: claim.contentHash,
-            relevanceProfileFingerprint: snapshot.relevanceProfileFingerprint, reviewerProfileFingerprint: reviewer.fingerprint,
-            decision: decision.decision, topics: decision.topics, reasonCode: decision.reasonCode, reviewedAt: new Date().toISOString(),
-          }
-        })
-        await this.mutate(async () => { for (const row of rows) await this.requireReviews().put(row.storeId, row) })
-        for (const row of rows) {
-          const claim = batch.find(item => item.record.storeId === row.storeId)
-          if (row.decision === 'relevant') acceptedReviews.push({ claim, review: row }); else rejectedReviews += 1
+    const reviewClaims = [...snapshot.matched, ...snapshot.ambiguous, ...snapshot.unmatched]
+      .sort((left, right) => left.record.storeId.localeCompare(right.record.storeId))
+    if (!reviewer) throw new Error('AI editorial reviewer is unavailable')
+    if (reviewClaims.length > reviewer.maxCards) throw new Error('AI editorial reviewer card ceiling exceeded')
+    const acceptedReviews = []; let rejectedReviews = 0; const pending = []
+    for (const claim of reviewClaims) {
+      const cached = validReview(this.requireReviews().get(claim.record.storeId), claim.record.storeId)
+      if (cached && cached.contentHash === claim.contentHash
+        && cached.relevanceProfileFingerprint === snapshot.relevanceProfileFingerprint
+        && cached.reviewerProfileFingerprint === reviewer.fingerprint) {
+        if (cached.aiScore >= reviewer.minimumAiScore) acceptedReviews.push({ claim, review: cached }); else rejectedReviews += 1
+      } else pending.push(claim)
+    }
+    for (let index = 0; index < pending.length; index += reviewer.batchSize) {
+      throwIfAborted(execution.signal)
+      const batch = pending.slice(index, index + reviewer.batchSize)
+      const cards = batch.map(claim => reviewerCard(claim, reviewer.maxCardChars))
+      const decisions = await reviewer.reviewBatch(cards, execution)
+      throwIfAborted(execution.signal)
+      const rows = decisions.map(decision => {
+        const claim = batch.find(item => item.record.storeId === decision.storeId)
+        if (!claim) throw new Error('AI editorial reviewer returned an unknown result id')
+        return {
+          version: 2, storeId: decision.storeId, sourceId: claim.record.sourceId, contentHash: claim.contentHash,
+          relevanceProfileFingerprint: snapshot.relevanceProfileFingerprint, reviewerProfileFingerprint: reviewer.fingerprint,
+          topics: decision.topics, aiSummary: decision.aiSummary, aiScore: decision.aiScore,
+          reason: decision.reason, reviewedAt: new Date().toISOString(),
         }
+      })
+      await this.mutate(async () => { for (const row of rows) await this.requireReviews().put(row.storeId, row) })
+      for (const row of rows) {
+        const claim = batch.find(item => item.record.storeId === row.storeId)
+        if (row.aiScore >= reviewer.minimumAiScore) acceptedReviews.push({ claim, review: row }); else rejectedReviews += 1
       }
     }
-    const candidates = snapshot.matched.map(claim => ({
-      record: claim.record, contentHash: claim.contentHash, assessment: claim.assessment,
-      relevanceOrigin: 'local-match', effectiveTimestamp: claim.effectiveTimestamp,
-    }))
-    for (const { claim, review } of acceptedReviews) candidates.push({
+    const candidates = acceptedReviews.map(({ claim, review }) => ({
       record: claim.record, contentHash: claim.contentHash,
       assessment: { ...claim.assessment, verdict: 'matched-ai', topics: review.topics },
-      relevanceOrigin: claim.assessment.verdict === 'ambiguous' ? 'reviewed-ambiguous' : 'reviewed-audit',
-      effectiveTimestamp: claim.effectiveTimestamp,
-    })
+      relevanceOrigin: 'ai-editorial', effectiveTimestamp: claim.effectiveTimestamp,
+      editorial: { aiSummary: review.aiSummary, aiScore: review.aiScore, reason: review.reason },
+    }))
     const filtered = topic ? candidates.filter(item => item.assessment.topics.includes(topic)) : candidates
     if (filtered.length === 0) throw new Error('No AI-related content matched the selection policy')
     throwIfAborted(execution.signal)
-    const clusters = clusterAIEvents(filtered, { maxBucketSize: this.config.maxBucketSize, maxPairComparisons: this.config.maxPairComparisons })
+    const clusteringCards = filtered.map(candidate => {
+      const item = candidate.record.item ?? {}
+      const title = String(item.title ?? '').replace(/[\u0000-\u001f\u007f]+/gu, ' ').replace(/\s+/gu, ' ').trim().slice(0, 300) || '无标题'
+      const summary = candidate.editorial.aiSummary
+        .replace(/<br\/>[\s\S]*$/iu, '').replace(/!\[[^\]]*\]\([^)]*\)/gu, '')
+        .replace(/<video[\s\S]*$/iu, '').replace(/\[([^\]]+)\]\([^)]*\)/gu, '$1').replace(/\*\*/gu, '')
+        .replace(/[\u0000-\u001f\u007f]+/gu, ' ').replace(/\s+/gu, ' ').trim().slice(0, 600)
+      if (!summary) throw new Error(`AI event clustering summary is empty: ${candidate.record.storeId}`)
+      return { storeId: candidate.record.storeId, title, summary }
+    })
+    const semanticGroups = await reviewer.clusterAll(clusteringCards, execution)
+    throwIfAborted(execution.signal)
+    const clusters = clusterAIEventsFromGroups(filtered, semanticGroups)
     throwIfAborted(execution.signal)
     const ranked = rankDiverseEvents(clusters, {
       maxItems, maxPerSource: this.config.maxPerSource, longTailPercent: this.config.longTailPercent, sourceQuota,
@@ -419,6 +479,14 @@ export class PrismContentSelectionStore extends Service {
     })
     return this.project(selection)
   }
+  getReview(storeId) {
+    if (!bounded(storeId, 128)) return undefined
+    const value = validReview(this.requireReviews().get(storeId), storeId)
+    const claim = this.ctx.prismContentRelevance.currentContentClaim?.(storeId)
+    if (!value || !this.reviewer || value.reviewerProfileFingerprint !== this.reviewer.fingerprint
+      || !claim || value.contentHash !== claim.contentHash || value.relevanceProfileFingerprint !== claim.relevanceProfileFingerprint) return undefined
+    return { aiSummary: value.aiSummary, aiScore: value.aiScore, reason: value.reason, reviewedAt: value.reviewedAt }
+  }
   list({ limit = 20 } = {}) {
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error('limit is invalid')
     const values = []
@@ -470,7 +538,11 @@ export class PrismContentSelectionStore extends Service {
       packedMaterials: selection.items.map(item => ({
         storeId: item.material.storeId, title: item.material.title, url: item.material.url,
         source: item.material.source, author: item.material.author, publishedDate: item.material.publishedDate,
-        category: item.material.category, excerpts: item.material.excerpts.map(excerpt => ({ ...excerpt })),
+        category: item.material.category,
+        ...(selection.strategyVersion === AI_CONTENT_SELECTION_STRATEGY_VERSION ? {
+          aiSummary: item.material.aiSummary, aiScore: item.material.aiScore, scoreReason: item.material.scoreReason,
+        } : {}),
+        excerpts: item.material.excerpts.map(excerpt => ({ ...excerpt })),
         ...(item.material.media ? { media: item.material.media.map(media => ({ ...media })) } : {}),
         materialChars: item.material.materialChars, estimatedTokens: item.material.estimatedTokens,
         materialSha256: item.material.materialSha256,

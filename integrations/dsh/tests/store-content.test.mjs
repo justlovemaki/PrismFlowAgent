@@ -28,3 +28,18 @@ test('content batch still fails closed for storage errors and cancellation', asy
   const controller = new AbortController(); controller.abort('cancelled')
   await assert.rejects(store.putBatch('rss:fixture', [item('two')], { signal: controller.signal }), /persistence aborted/u)
 })
+
+test('content listing supports deterministic sorting, paging, searching, and category facets', async () => {
+  const store = new PrismContentStore(new Context()); store.items = new Table()
+  const rows = [
+    { ...item('zeta'), title: 'Zeta', category: 'news', published_date: '2026-01-03T00:00:00.000Z' },
+    { ...item('alpha'), title: 'Alpha', category: 'paper', published_date: '2026-01-01T00:00:00.000Z' },
+    { ...item('beta'), title: 'Beta', category: 'news', published_date: '2026-01-02T00:00:00.000Z' },
+  ]
+  await store.putBatch('rss:fixture', rows, { now: new Date('2026-01-04T00:00:00.000Z') })
+  assert.deepEqual(store.list({ sortBy: 'title', sortOrder: 'asc', limit: 2, offset: 0 }).map(record => record.item.title), ['Alpha', 'Beta'])
+  assert.deepEqual(store.list({ sortBy: 'publishedAt', sortOrder: 'asc', limit: 2, offset: 1 }).map(record => record.item.title), ['Beta', 'Zeta'])
+  assert.deepEqual(store.list({ category: 'news', search: 'beta', limit: 20 }).map(record => record.item.title), ['Beta'])
+  assert.deepEqual(store.categoryCounts(), [{ category: 'news', count: 2 }, { category: 'paper', count: 1 }])
+  assert.throws(() => store.list({ sortBy: 'invalid' }), /sortBy is invalid/u)
+})
