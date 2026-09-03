@@ -2,7 +2,7 @@
 
 > **自动化信息聚合 + AI 智能体：让高质量信息自动流向你**
 
-流光 (PrismFlowAgent) 是一个全栈自动化资讯处理系统。它能帮你从 GitHub、RSS、社交媒体抓取海量信息，利用最强的 AI (Gemini/Claude/GPT) 进行深度总结，并自动分发到你的微信公众号、GitHub 仓库或 RSS 订阅源。
+流光 (PrismFlowAgent) 是一个全栈自动化资讯处理系统。它能帮你从 GitHub、RSS、社交媒体抓取海量信息，利用最强的 AI (Gemini/Claude/GPT) 进行深度总结，并自动分发到你的微信公众号、GitHub 仓库或 RSS 订阅源。项目同时提供 **DeepSeek Harness 专属原生插件 `@prismflow/dsh`**，可将 PrismFlow 的采集、筛选、生成、审核与发布能力直接带入 DSH Chat 和 Dashboard。
 
 ---
 
@@ -29,6 +29,12 @@
 ### 5. AI 交互与互操作 (Agent Interop)
 - **专为 AI 设计**: 提供 API 与接入指引，让外部 AI Agent 能像操作四肢一样调用本地工具，Agent，工作流。
 - **闭环协作**: 支持 AI 自动触发抓取、筛选与发布流程，实现真正的人机协作。
+
+### 6. DeepSeek Harness 专属插件
+- **原生集成**：`@prismflow/dsh` 直接运行在 DeepSeek Harness / Cordis 进程内，无需额外启动 PrismFlow HTTP 服务。
+- **完整工作链路**：在 DSH 中完成数据源同步、AI Selection、工作流生成、草稿审核、媒体处理和受控发布。
+- **专属管理界面**：向 DSH Dashboard 注入 PrismFlow 工作台，用于数据源、工具集、工作流、草稿、发布目标及审计管理。
+- **安全可审计**：关键配置采用版本与 SHA-256 CAS，发布严格绑定已审批 Artifact，并保留发布尝试与回执记录。
 
 ---
 
@@ -103,6 +109,7 @@
 │   ├── services/       # 业务逻辑 (AI、任务调度、工作流)
 │   └── types/          # 全局 TypeScript 定义
 ├── frontend/           # 管理后台 (React SPA)
+├── integrations/dsh/   # DeepSeek Harness 专属原生插件
 └── data/               # 本地数据库与缓存
 ```
 
@@ -133,9 +140,35 @@ npm run dev:all
 
 ---
 
-## 🧩 DeepSeek Harness 原生集成
+## 🧩 DeepSeek Harness 专属原生插件
 
-`@prismflow/dsh` 在 DSH/Cordis 进程内原生运行，不依赖 PrismFlow HTTP 服务或 API Key。其职责边界为：
+PrismFlow 为 **DeepSeek Harness** 提供独立发行的专属插件包 [`@prismflow/dsh`](./integrations/dsh/)。它直接运行在 DSH/Cordis 进程内，不依赖 PrismFlow HTTP 服务或 PrismFlow API Key，也不会把 DSH 简单作为外部接口调用方。
+
+安装后，DSH Chat 可以直接调用 PrismFlow 工具完成“来源同步 → AI 筛选 → 内容生成 → 草稿修订 → 人工审批 → 多渠道发布”；DSH Dashboard 则获得一套专属 PrismFlow 管理工作台。插件复用主项目的内容处理 Core，同时保持独立打包、独立安装和明确的运行边界。
+
+### 插件能力
+
+- **原生数据源**：支持 GitHub Trending、Follow API (Folo)、AI Search 与 RSS；
+- **AI 内容筛选**：基于相关性评审、语义聚类、来源配额和 AI 评分生成可追溯 Selection；
+- **工作流生成**：支持直接文本、Markdown、JSON 或已持久化内容作为输入，并执行多阶段串行生成；
+- **草稿与媒体**：支持并发安全修订、图片生成、AVIF/WebP/HEIF 转换及 FFmpeg 媒体处理；
+- **受控发布**：支持本地 Markdown、GitHub、Cloudflare R2 和微信公众号草稿；
+- **安全审计**：Generation Request、Draft、Artifact、发布尝试和 Receipt 均保留版本、哈希与来源绑定。
+
+### 安装专属插件
+
+停止正在运行的 DSH Web 后，将发行包路径或下载地址传给插件管理器：
+
+```sh
+dsh plugin --profile web add --allow-build=sharp <path-or-url-to-prismflow-dsh.tgz>
+dsh plugin --profile web exec prismflow-dsh-install
+```
+
+安装完成后重新启动 DSH Web，并创建新 Chat 以加载最新工具与 Skills。完整的版本兼容范围、Profile 配置、升级和故障恢复说明见 [`integrations/dsh/README.md`](./integrations/dsh/README.md)。
+
+### 运行边界
+
+`@prismflow/dsh` 的职责边界为：
 
 - PrismFlow 工作台按原项目的 Adapter + Items 模型配置 GitHub Trending、Follow API (Folo)、AI 搜索和 RSS 订阅；预定义凭证槽位可显示配置状态，并按部署策略安全写入或轮换 Follow Cookie；
 - 工作流生成器统一管理 Persona 与串行步骤；元数据会显示未保存/已保存状态，保存与放弃操作位于画布后的自然流页脚（支持受保护的 Ctrl/Cmd+S CAS 保存，不自动保存），归档/重新启用则在独立的“生成器状态”区确认执行；旧版投影会标记“旧版生成器 · 尚未迁移”，并通过精确版本/hash CAS 迁移，不再提供 Dashboard 兼容提示词编辑入口；旧提示词存储仅供旧 Request 解析与迁移使用；
