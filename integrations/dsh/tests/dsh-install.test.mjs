@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import { parse } from 'yaml'
-import { configurePrismFlowRuntime, configureProfileManifest, configureSqliteStorage, findActiveDshProcesses, listProcProcesses, resolveInstallerDshHome, sqliteVersionForDsh } from '../lib/dsh-install.js'
+import { configurePrismFlowRuntime, configureProfileManifest, configureSqliteStorage, detectInstalledDshVersion, findActiveDshProcesses, listProcProcesses, resolveInstallerDshHome, sqliteVersionForDsh } from '../lib/dsh-install.js'
 
 const windowsDatabase = String.raw`C:\Users\person\dsh\storages\domain.sqlite`
 
@@ -56,10 +56,29 @@ test('one-stop installer recognizes Windows DSH command paths and ignores unrela
   assert.deepEqual(findActiveDshProcesses(entries, 99).map(entry => entry.pid), [10])
 })
 
-test('one-stop installer maps each tested DSH release to its exact SQLite backend', () => {
+test('one-stop installer accepts the compatible DSH line and pins the same exact SQLite backend', () => {
   assert.equal(sqliteVersionForDsh('0.1.0-rc.6'), '0.1.0-rc.6')
   assert.equal(sqliteVersionForDsh('0.1.1-rc.2'), '0.1.1-rc.2')
+  assert.equal(sqliteVersionForDsh('0.1.2-rc.1'), '0.1.2-rc.1')
+  assert.equal(sqliteVersionForDsh('0.1.9-rc.12'), '0.1.9-rc.12')
+  assert.equal(sqliteVersionForDsh('0.1.9'), '0.1.9')
+  assert.throws(() => sqliteVersionForDsh('0.1.0-rc.5'), /unsupported DSH version/u)
   assert.throws(() => sqliteVersionForDsh('0.1.2-alpha.2'), /unsupported DSH version/u)
+  assert.throws(() => sqliteVersionForDsh('0.2.0-rc.1'), /unsupported DSH version/u)
+})
+
+test('one-stop installer detects one coherent installed DSH release without an exact allowlist', async t => {
+  const profile = await mkdtemp(join(tmpdir(), 'prismflow-dsh-version-'))
+  t.after(() => rm(profile, { recursive: true, force: true }))
+  assert.equal(detectInstalledDshVersion(profile), undefined)
+  for (const packageName of ['dsh-base', 'dsh-storage-domain']) {
+    const directory = join(profile, 'node_modules', '@deepseek-ai', packageName)
+    mkdirSync(directory, { recursive: true })
+    writeFileSync(join(directory, 'package.json'), '{"version":"0.1.9-rc.12"}\n')
+  }
+  assert.equal(detectInstalledDshVersion(profile), '0.1.9-rc.12')
+  writeFileSync(join(profile, 'node_modules', '@deepseek-ai', 'dsh-storage-domain', 'package.json'), '{"version":"0.1.8"}\n')
+  assert.throws(() => detectInstalledDshVersion(profile), /inconsistent versions/u)
 })
 
 test('one-stop installer adds the PrismFlow bundle to an initialized Profile manifest exactly once', () => {
@@ -123,15 +142,17 @@ test('main installer writes runtime, storage, and Dashboard in one Profile patch
   t.after(() => rm(home, { recursive: true, force: true }))
   const profile = join(home, 'profiles', 'web')
   const sqlitePackage = join(profile, 'node_modules', '@deepseek-ai', 'dsh-storage-sqlite')
+  const domainPackage = join(profile, 'node_modules', '@deepseek-ai', 'dsh-storage-domain')
   const bin = join(home, 'bin'); const downloads = join(home, 'downloads'); const sourceArtifact = join(downloads, 'incoming-prismflow.tgz')
-  mkdirSync(sqlitePackage, { recursive: true }); mkdirSync(bin); mkdirSync(downloads); writeFileSync(sourceArtifact, 'verified-test-package')
+  mkdirSync(sqlitePackage, { recursive: true }); mkdirSync(domainPackage, { recursive: true }); mkdirSync(bin); mkdirSync(downloads); writeFileSync(sourceArtifact, 'verified-test-package')
   writeFileSync(join(profile, 'package.json'), `${JSON.stringify({ name: 'dsh-profile-web', private: true, dependencies: { '@prismflow/dsh': `file:${sourceArtifact.replaceAll('\\', '/')}` }, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base', '@deepseek-ai/dsh-web-app'] } } }, null, 2)}\n`)
   writeFileSync(join(profile, 'cordis.patch.yml'), '[]\n')
-  writeFileSync(join(sqlitePackage, 'package.json'), '{"version":"0.1.1-rc.2"}\n')
+  writeFileSync(join(sqlitePackage, 'package.json'), '{"version":"0.1.2-rc.1"}\n')
+  writeFileSync(join(domainPackage, 'package.json'), '{"version":"0.1.2-rc.1"}\n')
   const fakePnpm = join(bin, process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm')
   writeFileSync(fakePnpm, process.platform === 'win32' ? '@exit /b 0\r\n' : '#!/bin/sh\nexit 0\n')
   if (process.platform !== 'win32') chmodSync(fakePnpm, 0o755)
-  const result = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/install.mjs', import.meta.url)), '--profile', 'web', '--dsh-home', home, '--dsh-version', '0.1.1-rc.2'], {
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL('../scripts/install.mjs', import.meta.url)), '--profile', 'web', '--dsh-home', home], {
     encoding: 'utf8', env: { ...process.env, PATH: `${bin}${process.platform === 'win32' ? ';' : ':'}${process.env.PATH ?? ''}` },
   })
   assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`)

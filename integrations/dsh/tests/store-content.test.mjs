@@ -41,5 +41,10 @@ test('content listing supports deterministic sorting, paging, searching, and cat
   assert.deepEqual(store.list({ sortBy: 'publishedAt', sortOrder: 'asc', limit: 2, offset: 1 }).map(record => record.item.title), ['Beta', 'Zeta'])
   assert.deepEqual(store.list({ category: 'news', search: 'beta', limit: 20 }).map(record => record.item.title), ['Beta'])
   assert.deepEqual(store.categoryCounts(), [{ category: 'news', count: 2 }, { category: 'paper', count: 1 }])
+  const aiProcessed = record => record.externalId === 'beta'
+  assert.deepEqual(store.list({ limit: 20 }, aiProcessed).map(record => record.item.title), ['Beta'])
+  assert.equal(store.count({}, aiProcessed), 1)
+  assert.deepEqual(store.categoryCounts(aiProcessed), [{ category: 'news', count: 1 }])
+  assert.throws(() => store.list({}, 'invalid'), /filter must be a function/u)
   assert.throws(() => store.list({ sortBy: 'invalid' }), /sortBy is invalid/u)
 })

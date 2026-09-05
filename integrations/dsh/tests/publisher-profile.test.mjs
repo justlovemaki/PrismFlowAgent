@@ -259,7 +259,7 @@ await test('literal GitHub tokens in legacy Profile rows are never exported and 
 await test('Profile patch symlinks are rejected and CRLF remains CRLF after managed import', async t => {
   const value = await fixture(); t.after(value.cleanup)
   const patchPath = join(value.profile, 'cordis.patch.yml')
-  writeFileSync(patchPath, value.source.replaceAll('\n', '\r\n'))
+  writeFileSync(patchPath, value.source.replace(/\r?\n/gu, '\r\n'))
   let document = exportPublisherProfile('web', { home: value.home })
   const config = { destinations: [] }
   importPublisherChangePlan('web', plan(document, [{ rowId: 'prismflow-publisher-local-markdown', disabled: false, config,

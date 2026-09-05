@@ -101,6 +101,8 @@ function services() {
   const promptHistory = [structuredClone(prompt)]
   let imageSettings = { id: 'current', version: 1, sha256: '7'.repeat(64), imageApiUrl: 'https://images.example/v1/images/generations', imageApiProtocol: 'auto', imageModel: 'image-model', imageSize: '1024x1024', avifQuality: 70, avifEffort: 5, ffmpegPath: '', updatedAt: '2026-01-01T00:00:00.000Z' }
   let imageCredentialConfigured = false
+  const contentRecord = { storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:02.000Z', fetchedAt: '2026-01-01T00:00:02.000Z', status: 'unread', item: { title: 'AI News', description: 'Summary', url: 'https://example.com/entry-1', published_date: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author', metadata: { ai_summary: 'Source AI summary', secret: 'must-not-project' } } }
+  const filteredContent = filter => !filter || filter(contentRecord) ? [contentRecord] : []
   return {
     markdown,
     prismSources: { list: () => [{ id: 'rss:news' }] },
@@ -123,9 +125,9 @@ function services() {
       unsetCredential: async () => ({}),
     },
     prismContentStore: {
-      count: () => 1,
-      categoryCounts: () => [{ category: 'news', count: 1 }],
-      list: () => [{ storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:02.000Z', fetchedAt: '2026-01-01T00:00:02.000Z', status: 'unread', item: { title: 'AI News', description: 'Summary', url: 'https://example.com/entry-1', published_date: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author', metadata: { ai_summary: 'Source AI summary', secret: 'must-not-project' } } }],
+      count: (_query, filter) => filteredContent(filter).length,
+      categoryCounts: filter => filteredContent(filter).length ? [{ category: 'news', count: 1 }] : [],
+      list: (_query, filter) => filteredContent(filter),
     },
     prismContentSelections: {
       getReview: storeId => storeId === 'a'.repeat(64) ? { aiSummary: 'Reviewer AI summary', aiScore: 85, reason: 'Weighted review reason', reviewedAt: '2026-01-01T00:00:03.000Z', hidden: 'must-not-project-review' } : undefined,
@@ -327,13 +329,17 @@ test('dashboard API exposes only configuration, immutable draft review/publicati
     assert.equal((await request(app.origin, '/image-generation/settings', { settings: { imageApiUrl: 'http://unsafe.example/v1/images/generations', imageApiProtocol: 'auto', imageModel: 'x', imageSize: '1024x1024', avifQuality: 70, avifEffort: 5, ffmpegPath: '' }, expected: { version: 2, sha256: '6'.repeat(64) }, apiKey: 'forbidden' })).status, 400)
     assert.equal((await request(app.origin, '/image-generation/credential/set', { value: 'bad\nkey' })).status, 400)
 
-    const content = await request(app.origin, '/content?search=AI&category=news&status=unread&sortBy=title&sortOrder=asc&limit=20&offset=0')
+    const content = await request(app.origin, '/content?search=AI&category=news&aiProcessed=true&sortBy=title&sortOrder=asc&limit=20&offset=0')
     assert.equal(content.status, 200); assert.equal(content.value.total, 1); assert.equal(content.value.records[0].title, 'AI News')
-    assert.deepEqual(content.value.records[0], { storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', status: 'unread',
+    assert.deepEqual(content.value.records[0], { storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', aiProcessed: true,
       firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:02.000Z', fetchedAt: '2026-01-01T00:00:02.000Z',
       title: 'AI News', description: 'Summary', url: 'https://example.com/entry-1', publishedAt: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author',
       sourceAiSummary: 'Source AI summary', aiSummary: 'Reviewer AI summary', aiScore: 85, aiReason: 'Weighted review reason', aiReviewedAt: '2026-01-01T00:00:03.000Z' })
     assert.deepEqual(content.value.categories, [{ category: 'news', count: 1 }]); assert.equal(JSON.stringify(content.value).includes('must-not-project'), false)
+    const unprocessedContent = await request(app.origin, '/content?aiProcessed=false')
+    assert.equal(unprocessedContent.status, 200); assert.equal(unprocessedContent.value.total, 0); assert.deepEqual(unprocessedContent.value.records, [])
+    assert.equal((await request(app.origin, '/content?status=unread')).status, 400)
+    assert.equal((await request(app.origin, '/content?aiProcessed=maybe')).status, 400)
     assert.equal((await request(app.origin, '/content?sortBy=secret')).status, 400)
     assert.equal((await request(app.origin, '/content?limit=20&limit=30')).status, 400)
     assert.equal((await request(app.origin, '/content?unknown=1')).status, 400)

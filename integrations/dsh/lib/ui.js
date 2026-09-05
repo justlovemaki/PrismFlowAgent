@@ -358,16 +358,20 @@ function boundedString(value, max) {
   return typeof value === 'string' ? value.slice(0, max) : ''
 }
 
+function validContentReview(review) {
+  return Boolean(review && typeof review === 'object' && !Array.isArray(review)
+    && Number.isInteger(review.aiScore) && review.aiScore >= 0 && review.aiScore <= 100
+    && typeof review.aiSummary === 'string' && typeof review.reason === 'string' && typeof review.reviewedAt === 'string')
+}
+
 function projectContentRecord(record, review) {
   const item = record?.item ?? {}
-  const validReview = review && typeof review === 'object' && !Array.isArray(review)
-    && Number.isInteger(review.aiScore) && review.aiScore >= 0 && review.aiScore <= 100
-    && typeof review.aiSummary === 'string' && typeof review.reason === 'string' && typeof review.reviewedAt === 'string'
+  const validReview = validContentReview(review)
   return {
     storeId: /^[a-f0-9]{64}$/u.test(record?.storeId ?? '') ? record.storeId : '',
     sourceId: boundedString(record?.sourceId, 256),
     externalId: boundedString(record?.externalId, 512),
-    status: ['unread', 'read', 'archived'].includes(record?.status) ? record.status : 'unread',
+    aiProcessed: validReview,
     firstSeenAt: boundedString(record?.firstSeenAt, 64), updatedAt: boundedString(record?.updatedAt, 64), fetchedAt: boundedString(record?.fetchedAt, 64),
     title: boundedString(item.title, 2_000), description: boundedString(item.description, 12_000),
     url: safeWebUrl(item.url) ?? '', publishedAt: boundedString(item.published_date, 64),
@@ -975,13 +979,13 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
   }
 
   if (method === 'GET' && pathname === `${API_PREFIX}/content`) {
-    allowQuery(requestUrl.searchParams, ['search', 'category', 'status', 'sortBy', 'sortOrder', 'limit', 'offset'])
+    allowQuery(requestUrl.searchParams, ['search', 'category', 'aiProcessed', 'sortBy', 'sortOrder', 'limit', 'offset'])
     const search = text(requestUrl.searchParams.get('search') ?? undefined, 'search', 256)
     const category = text(requestUrl.searchParams.get('category') ?? undefined, 'category', 256)
-    const status = text(requestUrl.searchParams.get('status') ?? undefined, 'status', 16)
+    const aiProcessed = text(requestUrl.searchParams.get('aiProcessed') ?? undefined, 'aiProcessed', 5)
     const sortBy = text(requestUrl.searchParams.get('sortBy') ?? undefined, 'sortBy', 16) ?? 'publishedAt'
     const sortOrder = text(requestUrl.searchParams.get('sortOrder') ?? undefined, 'sortOrder', 4) ?? 'desc'
-    if (status !== undefined && !['unread', 'read', 'archived'].includes(status)) throw new HttpError(400, 'status is invalid')
+    if (aiProcessed !== undefined && !['true', 'false'].includes(aiProcessed)) throw new HttpError(400, 'aiProcessed is invalid')
     if (!['publishedAt', 'fetchedAt', 'updatedAt', 'title', 'source', 'category'].includes(sortBy)) throw new HttpError(400, 'sortBy is invalid')
     if (!['asc', 'desc'].includes(sortOrder)) throw new HttpError(400, 'sortOrder is invalid')
     const parsePageInteger = (field, fallback, min, max) => {
@@ -996,11 +1000,17 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
     const offset = parsePageInteger('offset', 0, 0, 1_000_000)
     const content = requireService(ctx, 'prismContentStore', 'Content Store')
     const selections = ctx.get('prismContentSelections')
-    const query = { search, category, status, sortBy, sortOrder }
-    const categories = content.categoryCounts().slice(0, 1_000).map(row => ({ category: boundedString(row.category, 256), count: Math.max(0, Math.min(1_000_000_000, Number(row.count) || 0)) }))
+    const reviews = new Map()
+    const reviewFor = record => {
+      if (!reviews.has(record.storeId)) reviews.set(record.storeId, selections?.getReview?.(record.storeId) ?? null)
+      return reviews.get(record.storeId) ?? undefined
+    }
+    const processedFilter = aiProcessed === undefined ? undefined : record => validContentReview(reviewFor(record)) === (aiProcessed === 'true')
+    const query = { search, category, sortBy, sortOrder }
+    const categories = content.categoryCounts(processedFilter).slice(0, 1_000).map(row => ({ category: boundedString(row.category, 256), count: Math.max(0, Math.min(1_000_000_000, Number(row.count) || 0)) }))
     return jsonResponse(res, 200, {
-      records: content.list({ ...query, limit, offset }).map(record => projectContentRecord(record, selections?.getReview?.(record.storeId))),
-      total: content.count(query), limit, offset, categories,
+      records: content.list({ ...query, limit, offset }, processedFilter).map(record => projectContentRecord(record, reviewFor(record))),
+      total: content.count(query, processedFilter), limit, offset, categories,
     })
   }
 

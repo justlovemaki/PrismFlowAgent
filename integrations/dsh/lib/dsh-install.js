@@ -10,9 +10,12 @@ const DEFAULT_GENERATOR_BUILDER_PROFILE = Object.freeze({
   maxSteps: 8, maxInputChars: 100000, maxIntermediateOutputChars: 100000, maxCombinedInputChars: 250000,
   maxOutputChars: 100000, maxPromptAggregateChars: 32000,
 })
-const SUPPORTED = new Map([
-  ['0.1.0-rc.6', '0.1.0-rc.6'],
-  ['0.1.1-rc.2', '0.1.1-rc.2'],
+const COMPATIBLE_DSH_VERSION = /^0\.1\.(\d+)(?:-rc\.([1-9]\d*))?$/u
+const DSH_VERSION_SENTINELS = Object.freeze([
+  '@deepseek-ai/dsh-base',
+  '@deepseek-ai/dsh-storage-domain',
+  '@deepseek-ai/dsh-tools',
+  '@deepseek-ai/dsh-client-ui-layout',
 ])
 const ENABLED_RUNTIME_IDS = Object.freeze([
   'prismflow-store-source-settings',
@@ -98,10 +101,36 @@ export function resolveInstallerDshHome(explicitHome, env = process.env, userHom
 }
 
 export function sqliteVersionForDsh(dshVersion) {
-  if (typeof dshVersion !== 'string' || !SUPPORTED.has(dshVersion)) {
-    fail(`unsupported DSH version ${JSON.stringify(dshVersion)}; supported versions: ${[...SUPPORTED.keys()].join(', ')}`)
+  const match = typeof dshVersion === 'string' ? COMPATIBLE_DSH_VERSION.exec(dshVersion) : null
+  const patch = match ? Number(match[1]) : -1
+  const releaseCandidate = match?.[2] === undefined ? undefined : Number(match[2])
+  if (!match || (patch === 0 && releaseCandidate !== undefined && releaseCandidate < 6)) {
+    fail(`unsupported DSH version ${JSON.stringify(dshVersion)}; expected a compatible 0.1.x RC/stable release at or after 0.1.0-rc.6`)
   }
-  return SUPPORTED.get(dshVersion)
+  return dshVersion
+}
+
+export function detectInstalledDshVersion(profileDir) {
+  if (typeof profileDir !== 'string' || !profileDir.trim()) fail('Profile directory is invalid')
+  const detected = []
+  for (const packageName of DSH_VERSION_SENTINELS) {
+    const manifestPath = join(profileDir, 'node_modules', ...packageName.split('/'), 'package.json')
+    let source
+    try { source = readFileSync(manifestPath, 'utf8') } catch (error) {
+      if (error?.code === 'ENOENT') continue
+      fail(`could not inspect installed ${packageName}: ${error.message}`)
+    }
+    let manifest
+    try { manifest = JSON.parse(source) } catch { fail(`installed ${packageName} package.json is malformed`) }
+    if (!plainObject(manifest) || typeof manifest.version !== 'string') fail(`installed ${packageName} has no valid version`)
+    detected.push({ packageName, version: manifest.version })
+  }
+  if (!detected.length) return undefined
+  const versions = new Set(detected.map(entry => entry.version))
+  if (versions.size !== 1) {
+    fail(`installed DSH packages have inconsistent versions: ${detected.map(entry => `${entry.packageName}@${entry.version}`).join(', ')}`)
+  }
+  return detected[0].version
 }
 
 export function configureProfileManifest(source) {

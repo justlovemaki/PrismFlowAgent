@@ -170,7 +170,7 @@
         maxCards: 1000
         maxCardChars: 6000
         maxClusterInputChars: 500000
-        minimumAiScore: 60
+        minimumAiScore: 70
 
     - id: prismflow-store-generator-prompts
       name: '@prismflow/dsh/store-generator-prompts'

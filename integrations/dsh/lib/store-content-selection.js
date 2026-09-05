@@ -355,7 +355,6 @@ export class PrismContentSelectionStore extends Service {
     const reviewClaims = [...snapshot.matched, ...snapshot.ambiguous, ...snapshot.unmatched]
       .sort((left, right) => left.record.storeId.localeCompare(right.record.storeId))
     if (!reviewer) throw new Error('AI editorial reviewer is unavailable')
-    if (reviewClaims.length > reviewer.maxCards) throw new Error('AI editorial reviewer card ceiling exceeded')
     const acceptedReviews = []; let rejectedReviews = 0; const pending = []
     for (const claim of reviewClaims) {
       const cached = validReview(this.requireReviews().get(claim.record.storeId), claim.record.storeId)

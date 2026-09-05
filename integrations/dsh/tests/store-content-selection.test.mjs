@@ -121,6 +121,34 @@ test('fails closed on unavailable reviewer, content race, overlapping creation a
   await stopped
 })
 
+test('minimum AI score admits 70 and rejects 69', async () => {
+  const matched = [claim('1'), claim('2')]
+  const { service } = fixture({ matched, reviewer: false })
+  service.registerReviewer({
+    id: 'threshold-reviewer', fingerprint: '9'.repeat(64), batchSize: 2, maxCards: 2,
+    maxCardChars: 6000, minimumAiScore: 70, clusterAll: clusterCards,
+    async reviewBatch(cards) { return cards.map((card, index) => editorialResult(card, index === 0 ? 69 : 70)) },
+  })
+  const result = await service.create({ maxItems: 2 }, { agent: {} })
+  assert.equal(result.selectedCount, 1)
+  assert.deepEqual(result.contentStoreIds, [matched[1].record.storeId])
+})
+
+test('editorial review may exceed one clustering-call card ceiling', async () => {
+  const matched = [claim('1'), claim('2'), claim('3')]
+  const { service } = fixture({ matched, reviewer: false })
+  let clustered = 0
+  service.registerReviewer({
+    id: 'partitioning-reviewer', fingerprint: 'f'.repeat(64), batchSize: 2, maxCards: 2,
+    maxCardChars: 6000, minimumAiScore: 60,
+    async reviewBatch(cards) { return cards.map(card => editorialResult(card)) },
+    async clusterAll(cards) { clustered = cards.length; return clusterCards(cards) },
+  })
+  const result = await service.create({ maxItems: 3 }, { agent: {} })
+  assert.equal(result.selectedCount, 3)
+  assert.equal(clustered, 3)
+})
+
 test('handles 2000 scored candidates within one complete AI-decided grouping and bounded material selection', async () => {
   const matched = Array.from({ length: 2000 }, (_, index) => claim(String(index + 1), 'matched-ai', `DeepSeek model event ${index % 100}`))
   const { service } = fixture({ matched, config: { maxPairComparisons: 200000, maxBucketSize: 200 } })

@@ -843,7 +843,7 @@ window.__ModuleLoader__.load({
       const [draftQuery, setDraftQuery] = React.useState({ status: '', query: '', page: 1, pageSize: 10 })
       const [draftPage, setDraftPage] = React.useState({ total: 0, statusCounts: {} })
       const [promptSuggestions, setPromptSuggestions] = React.useState(null)
-      const [contentQuery, setContentQuery] = React.useState({ search: '', category: '', status: '', sortBy: 'publishedAt', sortOrder: 'desc', page: 1, pageSize: 20 })
+      const [contentQuery, setContentQuery] = React.useState({ search: '', category: '', aiProcessed: '', sortBy: 'publishedAt', sortOrder: 'desc', page: 1, pageSize: 20 })
       const [contentPage, setContentPage] = React.useState({ records: [], total: 0, categories: [] })
       const [ffmpegStatus, setFfmpegStatus] = React.useState(null)
       const publisherApplyRequest = React.useRef(null)
@@ -950,7 +950,7 @@ window.__ModuleLoader__.load({
         })
         if (query.search.trim()) params.set('search', query.search.trim())
         if (query.category) params.set('category', query.category)
-        if (query.status) params.set('status', query.status)
+        if (query.aiProcessed) params.set('aiProcessed', query.aiProcessed)
         const value = await run('content', signal => api(`/content?${params.toString()}`, { signal }), '已抓取数据已刷新')
         if (value) setContentPage({ records: value.records ?? [], total: value.total ?? 0, categories: value.categories ?? [] })
       }, [run, contentQuery])
@@ -1520,7 +1520,7 @@ window.__ModuleLoader__.load({
         if (!status?.services.contentStore) return h(Empty, null, 'Content Store 未启用。请由部署者启用 prismflow-store-content。')
         const totalPages = Math.max(1, Math.ceil(contentPage.total / contentQuery.pageSize))
         const categoryOptions = [{ value: '', label: '全部分类' }, ...contentPage.categories.map(row => ({ value: row.category, label: `${row.category} (${row.count})` }))]
-        const statusOptions = [{ value: '', label: '全部状态' }, { value: 'unread', label: '未读' }, { value: 'read', label: '已读' }, { value: 'archived', label: '已归档' }]
+        const aiProcessedOptions = [{ value: '', label: '全部数据' }, { value: 'true', label: '已被 AI 处理' }, { value: 'false', label: '尚未被 AI 处理' }]
         const sortOptions = [
           { value: 'publishedAt', label: '发布时间' }, { value: 'fetchedAt', label: '抓取时间' }, { value: 'updatedAt', label: '更新时间' },
           { value: 'title', label: '标题' }, { value: 'source', label: '来源' }, { value: 'category', label: '分类' },
@@ -1534,12 +1534,12 @@ window.__ModuleLoader__.load({
             h(Field, { label: '分类', value: contentQuery.category, options: categoryOptions, onChange: value => commitContentQuery({ category: value, page: 1 }) }),
             h(Field, { label: '排序字段', value: contentQuery.sortBy, options: sortOptions, onChange: value => commitContentQuery({ sortBy: value, page: 1 }) }),
             h(Field, { label: '顺序', value: contentQuery.sortOrder, options: [{ value: 'desc', label: '降序' }, { value: 'asc', label: '升序' }], onChange: value => commitContentQuery({ sortOrder: value, page: 1 }) }),
-            h('div', { className: 'pf-actions' }, h(Button, { primary: true, disabled: !!busy, onClick: () => commitContentQuery({ page: 1 }) }, '搜索'), h(Button, { type: 'button', disabled: !!busy, onClick: () => commitContentQuery({ search: '', category: '', status: '', sortBy: 'publishedAt', sortOrder: 'desc', page: 1 }) }, '重置'))),
+            h('div', { className: 'pf-actions' }, h(Button, { primary: true, disabled: !!busy, onClick: () => commitContentQuery({ page: 1 }) }, '搜索'), h(Button, { type: 'button', disabled: !!busy, onClick: () => commitContentQuery({ search: '', category: '', aiProcessed: '', sortBy: 'publishedAt', sortOrder: 'desc', page: 1 }) }, '重置'))),
           h('div', { className: 'pf-row pf-space', style: { marginBottom: 10 } },
-            h(Field, { label: '状态', value: contentQuery.status, options: statusOptions, onChange: value => commitContentQuery({ status: value, page: 1 }) }),
+            h(Field, { label: 'AI 处理', value: contentQuery.aiProcessed, options: aiProcessedOptions, onChange: value => commitContentQuery({ aiProcessed: value, page: 1 }) }),
             h(Field, { label: '每页', value: String(contentQuery.pageSize), options: [10, 20, 50, 100].map(value => ({ value: String(value), label: `${value} 条` })), onChange: value => commitContentQuery({ pageSize: Number(value), page: 1 }) })),
           contentPage.records.length ? h('div', { className: 'pf-content-table-wrap' }, h('table', { className: 'pf-content-table' },
-            h('thead', null, h('tr', null, h('th', null, '标题与摘要'), h('th', null, '来源'), h('th', null, '分类'), h('th', null, '状态'), h('th', null, '发布时间'), h('th', null, '抓取时间'))),
+            h('thead', null, h('tr', null, h('th', null, '标题与摘要'), h('th', null, '来源'), h('th', null, '分类'), h('th', null, 'AI 处理'), h('th', null, '发布时间'), h('th', null, '抓取时间'))),
             h('tbody', null, contentPage.records.map(record => h('tr', { key: record.storeId },
               h('td', null,
                 record.url ? h('a', { className: 'pf-content-title pf-content-title-link', href: record.url, target: '_blank', rel: 'noopener noreferrer' }, record.title) : h('span', { className: 'pf-content-title' }, record.title),
@@ -1555,7 +1555,7 @@ window.__ModuleLoader__.load({
                   h('strong', null, '记录标识'), `Store ID: ${record.storeId}\nSource ID: ${record.sourceId}\nExternal ID: ${record.externalId}\n首次发现: ${contentDate(record.firstSeenAt)}\n最后更新: ${contentDate(record.updatedAt)}`))),
               h('td', { className: 'pf-content-source' }, h('strong', null, record.source || '—'), h('span', null, record.author || record.sourceId || '—')),
               h('td', null, h('span', { className: 'pf-badge' }, record.category || '未分类')),
-              h('td', null, h('span', { className: 'pf-badge' }, record.status === 'unread' ? '未读' : record.status === 'read' ? '已读' : '已归档')),
+              h('td', null, h(Badge, { enabled: record.aiProcessed === true }, record.aiProcessed === true ? '已处理' : '未处理')),
               h('td', { className: 'pf-content-date' }, contentDate(record.publishedAt)),
               h('td', { className: 'pf-content-date' }, contentDate(record.fetchedAt))))))) : h(Empty, null, '没有符合当前条件的已抓取数据。'),
           h('div', { className: 'pf-content-pagination' },

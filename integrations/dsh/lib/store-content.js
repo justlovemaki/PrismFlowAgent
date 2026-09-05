@@ -102,23 +102,24 @@ export class PrismContentStore extends Service {
     return this.requireItems().get(storeId)
   }
 
-  list(query = {}) {
-    return queryStoredContent(
-      Array.from(this.requireItems().entries(), ([, record]) => record),
-      query,
-    )
+  records(filter) {
+    if (filter !== undefined && typeof filter !== 'function') throw new Error('Content record filter must be a function')
+    const records = []
+    for (const [, record] of this.requireItems().entries()) if (!filter || filter(record)) records.push(record)
+    return records
   }
 
-  count(query = {}) {
-    return countStoredContent(
-      Array.from(this.requireItems().entries(), ([, record]) => record),
-      query,
-    )
+  list(query = {}, filter) {
+    return queryStoredContent(this.records(filter), query)
   }
 
-  categoryCounts() {
+  count(query = {}, filter) {
+    return countStoredContent(this.records(filter), query)
+  }
+
+  categoryCounts(filter) {
     const counts = new Map()
-    for (const [, record] of this.requireItems().entries()) {
+    for (const record of this.records(filter)) {
       const category = typeof record.item?.category === 'string' ? record.item.category.trim() : ''
       if (category) counts.set(category, (counts.get(category) ?? 0) + 1)
     }

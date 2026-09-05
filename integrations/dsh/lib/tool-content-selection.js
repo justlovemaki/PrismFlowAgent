@@ -54,7 +54,7 @@ export function apply(ctx) {
 
   registerPrismFlowTool(ctx, defineTool({
     name: 'prismflow_create_ai_selection',
-    description: 'Default all-sources path over records already persisted in PrismFlow Content Store. This tool never fetches, refreshes, or synchronizes a source; do not call prismflow_sources or prismflow_sync_source unless the user separately and explicitly requests synchronization. Create one immutable AI-only Selection using AI editorial scoring, one global AI title-summary event clustering pass, diverse ranking, and bounded verbatim material packing. This tool cannot narrow to one source or lower item/token budgets. A window below 48 hours or category/topic filter requires explicit user approval.',
+    description: 'Default all-sources path over records already persisted in PrismFlow Content Store. This tool never fetches, refreshes, or synchronizes a source; do not call prismflow_sources or prismflow_sync_source unless the user separately and explicitly requests synchronization. Create one immutable AI-only Selection using batched AI editorial scoring, bounded AI title-summary event clustering passes, diverse ranking, and bounded verbatim material packing. This tool cannot narrow to one source or lower item/token budgets. A window below 48 hours or category/topic filter requires explicit user approval.',
     parameters: filters(), output: {
       schema: selectionSchema,
       render: (_args, value) => [{ type: 'text', text: `AI selection ${value.selectionId}: ${value.selectedCount} items across ${value.sourceIds.length} selected source(s), about ${value.estimatedTokens} conservative tokens. Use prismflow_create_generation_request_from_ai_selection next.` }],

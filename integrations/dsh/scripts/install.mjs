@@ -7,11 +7,11 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { parse } from 'yaml'
 import { configureDashboardRow, deriveDashboardProfileBinding } from '../lib/dashboard-install.js'
-import { configurePrismFlowRuntime, configureProfileManifest, configureSqliteStorage, findActiveDshProcesses, listProcProcesses, resolveInstallerDshHome, sqliteVersionForDsh } from '../lib/dsh-install.js'
+import { configurePrismFlowRuntime, configureProfileManifest, configureSqliteStorage, detectInstalledDshVersion, findActiveDshProcesses, listProcProcesses, resolveInstallerDshHome, sqliteVersionForDsh } from '../lib/dsh-install.js'
 import { migrateJsonStorageToSqlite } from '../lib/storage-sqlite-migration.js'
 import { acquireWriterLease } from '../lib/writer-lease-lock.js'
 
-const DEFAULT_DSH_VERSION = '0.1.1-rc.2'
+const DEFAULT_DSH_VERSION = '0.1.2-rc.1'
 const PLUGIN_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 const MANUAL_IMPORT_ROOT = new URL('../manual-import/', import.meta.url)
 const PROFILE_NAME = /^[A-Za-z0-9_-]{1,64}$/u
@@ -218,7 +218,7 @@ async function main() {
   const binding = deriveDashboardProfileBinding(profileDir)
   const storageRoot = join(binding.dshHome, 'storages')
   const databasePath = join(storageRoot, 'domain.sqlite')
-  const dshVersion = options.dshVersion || detectLatestDshVersion()
+  const dshVersion = options.dshVersion || detectInstalledDshVersion(profileDir) || detectLatestDshVersion()
   const sqliteVersion = sqliteVersionForDsh(dshVersion)
   configureProfileManifest(readFileSync(packagePath, 'utf8'))
   const originalPatch = readFileSync(patchPath, 'utf8')

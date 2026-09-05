@@ -161,7 +161,7 @@ test('dashboard client is exported by the owning package without a generated fil
   assert.equal(packageJson.exports['./ui/package.json'], './package.json')
   assert.deepEqual(packageJson.dsh.client, {
     platform: 'web',
-    inject: ['@deepseek-ai/dsh-client-runtime', '@deepseek-ai/dsh-client-ui-layout', '@deepseek-ai/dsh-client-ui-sidebar'],
+    inject: ['@deepseek-ai/dsh-client-ui-layout', '@deepseek-ai/dsh-client-ui-sidebar'],
   })
   assert.match(installer, /delete profilePackage\.dependencies\['@prismflow\/dsh-dashboard'\]/u)
   assert.doesNotMatch(installer, /file:\.prismflow\/dashboard/u)
@@ -215,16 +215,18 @@ test('dashboard client is an eight-tab controlled admin, local Profile planning,
 })
 
 test('captured-content tab renders server-paged searchable sortable category-filtered records', async () => {
-  const query = { search: 'AI', category: 'news', status: '', sortBy: 'title', sortOrder: 'asc', page: 2, pageSize: 20 }
+  const query = { search: 'AI', category: 'news', aiProcessed: 'true', sortBy: 'title', sortOrder: 'asc', page: 2, pageSize: 20 }
   const page = { total: 45, categories: [{ category: 'news', count: 30 }, { category: 'paper', count: 15 }], records: [{
-    storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', status: 'unread', firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', fetchedAt: '2026-01-02T00:00:00.000Z',
+    storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', aiProcessed: true, firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', fetchedAt: '2026-01-02T00:00:00.000Z',
     title: 'AI News', description: '完整摘要', sourceAiSummary: '来源摘要', aiSummary: 'AI 摘要', aiScore: 85, aiReason: '四维加权评分理由', aiReviewedAt: '2026-01-02T01:02:03.000Z', url: 'https://example.com/news', publishedAt: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author',
   }] }
   const client = await loadClient(new Map([[0, 'content'], [3, status], [51, query], [52, page]]))
   const values = descendants(client.renderDashboard())
-  for (const label of ['已抓取数据', '搜索', '分类', '排序字段', '顺序', '状态', '每页', '标题与摘要', '抓取时间', '上一页', '下一页']) assert.ok(values.includes(label) || values.some(node => node?.props?.label === label), label)
-  assert.ok(values.includes('AI News')); assert.ok(values.includes('完整摘要')); assert.ok(values.includes('查看完整记录')); assert.ok(values.includes('第 2 / 3 页 · 共 45 条'))
+  for (const label of ['已抓取数据', '搜索', '分类', '排序字段', '顺序', 'AI 处理', '每页', '标题与摘要', '抓取时间', '上一页', '下一页']) assert.ok(values.includes(label) || values.some(node => node?.props?.label === label), label)
+  assert.ok(values.includes('AI News')); assert.ok(values.includes('完整摘要')); assert.ok(values.includes('查看完整记录')); assert.ok(values.includes('第 2 / 3 页 · 共 45 条')); assert.ok(values.includes('已处理'))
+  assert.equal(values.includes('未读'), false); assert.equal(values.includes('已读'), false); assert.equal(values.includes('已归档'), false)
   for (const value of ['来源AI摘要', '来源摘要', 'AI评分', '85 / 100', 'AI摘要', 'AI 摘要', '评分理由', '四维加权评分理由', '审核时间']) assert.ok(values.includes(value), value)
+  assert.match(client.source, /params\.set\('aiProcessed', query\.aiProcessed\)/u)
   assert.match(client.source, /api\(`\/content\?\$\{params\.toString\(\)\}`/u)
   assert.match(client.appendedStyle.textContent, /\.pf-content-table-wrap\{[^}]*overflow:auto/u)
 })
