@@ -10,7 +10,7 @@ import YAML from 'yaml'
 import {
   createPrismFlowDataBackup, decryptPrismFlowDataBackup, encryptPrismFlowDataBackup, parsePrismFlowDataBackup,
   LEGACY_PRISMFLOW_DATA_BACKUP_KIND, LEGACY_PRISMFLOW_DATA_BACKUP_KIND_V1, LEGACY_PRISMFLOW_DATA_BACKUP_KIND_V3,
-  PRISMFLOW_DATA_BACKUP_KIND, PRISMFLOW_ENCRYPTED_BACKUP_KIND, readSourceCredentialSlots,
+  LEGACY_PRISMFLOW_DATA_BACKUP_KIND_V4, PRISMFLOW_DATA_BACKUP_KIND, PRISMFLOW_ENCRYPTED_BACKUP_KIND, readProfileGenerators, readSourceCredentialSlots,
   PRISMFLOW_DATA_UNITS, PrismFlowDataBackupError, restorePrismFlowDataBackup,
 } from '../lib/data-backup.js'
 import { normalizePublisherConfig } from '../lib/shared/publisher-profile.js'
@@ -43,7 +43,7 @@ test('configuration backup round-trips source and operator settings while exclud
     const source = join(root, 'source.sqlite'); const target = join(root, 'target.sqlite')
     const targetHome = join(root, 'target-dsh'); const targetProfile = join(targetHome, 'profiles', 'web'); const targetPatch = join(targetProfile, 'cordis.patch.yml')
     createDatabase(source, 'source'); createDatabase(target, 'target'); await mkdir(targetProfile, { recursive: true }); await writeFile(join(targetProfile, 'package.json'), '{}\n')
-    await writeFile(targetPatch, '- id: prismflow-store-source-settings\n  disabled: false\n  config:\n    credentialSlots: []\n    bootstrap:\n      - type: rss\n        id: target-default\n')
+    await writeFile(targetPatch, '- id: prismflow-store-source-settings\n  disabled: false\n  config:\n    credentialSlots: []\n    bootstrap:\n      - type: rss\n        id: target-default\n- id: prismflow-generator-subagent\n  disabled: false\n  config:\n    generators:\n      - id: target-only\n        name: Target only\n')
     const sourceDb = new DatabaseSync(source)
     sourceDb.prepare('INSERT INTO u_prismflow_generator_workflows_history (key, value) VALUES (?, ?)').run('@workflow:10', JSON.stringify({ marker: 'binary-order' }))
     sourceDb.prepare('INSERT INTO u_prismflow_generator_workflows_history (key, value) VALUES (?, ?)').run('workflow:02', JSON.stringify({ marker: 'binary-order' }))
@@ -63,8 +63,15 @@ test('configuration backup round-trips source and operator settings while exclud
       { rowId: 'prismflow-publisher-r2-markdown', channelKind: 'r2-markdown', disabled: true, config: { destinations: [] } },
       { rowId: 'prismflow-publisher-wechat-draft', channelKind: 'wechat-draft', disabled: true, config: { destinations: [] } },
     ]
-    const exported = createPrismFlowDataBackup(source, '0.24.56', new Date('2026-09-02T12:00:00.000Z'), slots, credentials, publisherRows)
+    const profileGenerators = [{
+      id: 'daily-brief', name: 'Daily Brief', description: 'Legacy Profile generator', subagentProvider: 'spawn',
+      instruction: 'Write the daily brief.', persona: 'You are an editor.', reviewInstruction: '', reviewPersona: '',
+      allowDashboardPromptEdit: false, maxInputChars: 100000, maxStageOneOutputChars: 100000,
+      maxCombinedInputChars: 250000, maxOutputChars: 100000,
+    }]
+    const exported = createPrismFlowDataBackup(source, '0.24.56', new Date('2026-09-02T12:00:00.000Z'), slots, credentials, publisherRows, profileGenerators)
     assert.ok(exported.buffer.length > 0); assert.equal(exported.document.kind, PRISMFLOW_DATA_BACKUP_KIND)
+    assert.equal(exported.profileGeneratorCount, 1); assert.deepEqual(exported.document.profileGenerators, profileGenerators)
     assert.equal(exported.workflowHistoryCount, 5); assert.equal(exported.workflowIdCount, 1)
     assert.equal(exported.workflowHistoricalIdCount, 2); assert.equal(exported.deletedWorkflowIdCount, 1)
     assert.equal(exported.document.units.length, PRISMFLOW_DATA_UNITS.length)
@@ -75,6 +82,7 @@ test('configuration backup round-trips source and operator settings while exclud
     const decrypted = decryptPrismFlowDataBackup(encrypted, 'correct horse battery staple')
     const parsed = parsePrismFlowDataBackup(decrypted)
     assert.equal(parsed.fingerprint, exported.document.fingerprint); assert.deepEqual(parsed.payload.sourceCredentialSlots, slots); assert.deepEqual(parsed.payload.credentials, credentials)
+    assert.deepEqual(parsed.payload.profileGenerators, profileGenerators)
     assert.equal(parsed.payload.publisherRows[1].config.destinations[0].repository, 'owner/repository')
     const foreignDocument = JSON.parse(gunzipSync(exported.buffer).toString('utf8'))
     const foreignRoot = process.platform === 'win32' ? '/srv/source/publications' : 'C:\\Users\\source\\publications'
@@ -91,6 +99,7 @@ test('configuration backup round-trips source and operator settings while exclud
       .some(unit => unit.tables.some(table => table.records.some(record => record.key.startsWith('daily-brief:')))), true, 'existing generator configuration must be exported')
     const legacyDocument = JSON.parse(gunzipSync(exported.buffer).toString('utf8'))
     legacyDocument.kind = LEGACY_PRISMFLOW_DATA_BACKUP_KIND
+    delete legacyDocument.profileGenerators
     const legacyRecords = legacyDocument.units.find(unit => unit.name === 'prismflow_toolsets').tables[0].records
     legacyRecords.push({ key: 'skill:prismflow-legacy-personal:01', value: '{"legacy":true}' })
     legacyRecords.sort((left, right) => Buffer.compare(Buffer.from(left.key), Buffer.from(right.key)))
@@ -104,17 +113,27 @@ test('configuration backup round-trips source and operator settings while exclud
     const { fingerprint: _legacyV3Fingerprint, ...legacyV3Payload } = legacyV3Document
     legacyV3Document.fingerprint = createHash('sha256').update(JSON.stringify(legacyV3Payload)).digest('hex')
     assert.equal(parsePrismFlowDataBackup(gzipSync(JSON.stringify(legacyV3Document))).migratedFrom, LEGACY_PRISMFLOW_DATA_BACKUP_KIND_V3)
+    const legacyV4Document = structuredClone(exported.document); legacyV4Document.kind = LEGACY_PRISMFLOW_DATA_BACKUP_KIND_V4; delete legacyV4Document.profileGenerators
+    const { fingerprint: _legacyV4Fingerprint, ...legacyV4Payload } = legacyV4Document
+    legacyV4Document.fingerprint = createHash('sha256').update(JSON.stringify(legacyV4Payload)).digest('hex')
+    const legacyV4Buffer = gzipSync(JSON.stringify(legacyV4Document))
+    const migratedLegacyV4 = parsePrismFlowDataBackup(legacyV4Buffer)
+    assert.equal(migratedLegacyV4.migratedFrom, LEGACY_PRISMFLOW_DATA_BACKUP_KIND_V4); assert.equal(migratedLegacyV4.payload.profileGenerators, null)
+    const restoredLegacyV4 = restorePrismFlowDataBackup(target, legacyV4Buffer, targetPatch, { profileName: 'web', dshHome: targetHome })
+    assert.equal(restoredLegacyV4.profileGeneratorCount, 0)
+    assert.equal(readProfileGenerators(await readFile(targetPatch, 'utf8'))[0].id, 'target-only', 'v4 omitted Profile generators and must preserve the target binding')
     const legacyV1Document = structuredClone(legacyDocument); legacyV1Document.kind = LEGACY_PRISMFLOW_DATA_BACKUP_KIND_V1; delete legacyV1Document.publisherRows
     const { fingerprint: _legacyV1Fingerprint, ...legacyV1Payload } = legacyV1Document
     legacyV1Document.fingerprint = createHash('sha256').update(JSON.stringify(legacyV1Payload)).digest('hex')
     const migratedLegacyV1 = parsePrismFlowDataBackup(gzipSync(JSON.stringify(legacyV1Document)))
     assert.equal(migratedLegacyV1.migratedFrom, LEGACY_PRISMFLOW_DATA_BACKUP_KIND_V1); assert.equal(migratedLegacyV1.payload.publisherRows, null)
     const restored = restorePrismFlowDataBackup(target, foreignBuffer, targetPatch, { profileName: 'web', dshHome: targetHome })
-    assert.equal(restored.recordCount, exported.recordCount); assert.equal(restored.sourcePluginVersion, '0.24.56'); assert.equal(restored.credentialSlotCount, 1); assert.equal(restored.publisherDestinationCount, 2)
+    assert.equal(restored.recordCount, exported.recordCount); assert.equal(restored.sourcePluginVersion, '0.24.56'); assert.equal(restored.credentialSlotCount, 1); assert.equal(restored.profileGeneratorCount, 1); assert.equal(restored.publisherDestinationCount, 2)
     assert.equal(restored.publisherPathMappings.length, 1); assert.equal(restored.workflowHistoryCount, 5); assert.equal(restored.workflowIdCount, 1)
     assert.equal(restored.workflowHistoricalIdCount, 2); assert.equal(restored.deletedWorkflowIdCount, 1)
     const restoredPatch = await readFile(targetPatch, 'utf8')
     assert.deepEqual(readSourceCredentialSlots(restoredPatch), slots)
+    assert.deepEqual(readProfileGenerators(restoredPatch), profileGenerators)
     const restoredRows = YAML.parse(restoredPatch)
     const restoredGithub = restoredRows.find(row => row.id === 'prismflow-publisher-github-markdown')
     assert.equal(restoredGithub.disabled, false); assert.equal(restoredGithub.config.destinations[0].repository, 'owner/repository')
@@ -142,7 +161,7 @@ test('configuration restore rejects tampering, unknown fields, duplicate keys, a
   try {
     const source = join(root, 'source.sqlite'); const target = join(root, 'target.sqlite'); const targetPatch = join(root, 'cordis.patch.yml')
     createDatabase(source, 'source'); createDatabase(target, 'target')
-    await writeFile(targetPatch, '- id: prismflow-store-source-settings\n  disabled: false\n')
+    await writeFile(targetPatch, '- id: prismflow-store-source-settings\n  disabled: false\n- id: prismflow-generator-subagent\n  disabled: false\n  config:\n    generators: []\n')
     const exported = createPrismFlowDataBackup(source, '0.24.56', new Date('2026-09-02T12:00:00.000Z'))
     const mutate = callback => {
       const value = JSON.parse(gunzipSync(exported.buffer).toString('utf8')); callback(value)

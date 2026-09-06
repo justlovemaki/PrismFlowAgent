@@ -159,6 +159,9 @@
         maxBucketSize: 200
         maxPairComparisons: 200000
         maxMemberClaims: 10000
+        maxPublishedSemanticItems: 2000
+        maxPublishedSemanticComparisons: 200000
+        publishedSemanticLookbackDays: 7
         selectionHashMaxChars: 12000000
 
     - id: prismflow-reviewer-ai-relevance-subagent

@@ -5,12 +5,13 @@ import { defineDomain, domainTable } from '@deepseek-ai/dsh-storage-domain'
 import { z } from 'zod'
 import {
   approveDraft, approvedArtifact, artifactSha256, bindGenerationRequestWorkflowInput, createGenerationRequest, createGenerationRequestFromMaterials,
-  generatorWorkflowSha256, hasInvalidGeneratedUnicode, normalizeGeneratedDraft, normalizeProductionArtifactV2, normalizeProductionWorkflowInput, normalizeWorkflowSnapshot, pinGenerationRequestPrompt,
+  generatorWorkflowSha256, hasInvalidGeneratedUnicode, normalizeGeneratedContent, normalizeGeneratedDraft, normalizeProductionArtifactV2, normalizeProductionWorkflowInput, normalizeWorkflowSnapshot, pinGenerationRequestPrompt,
   productionWorkflowInputSha256,
   productionArtifactBindingSha256,
   pinGenerationRequestWorkflow, sameGenerationProvenance, storedRecordMedia,
 } from './shared/content-production.js'
 import { isPublisherOutcomeError, PublisherOutcomeError } from './shared/publisher-outcome.js'
+import { COVER_ASSET_GENERATOR_ID, COVER_ASSET_PROMPT_SHA256, COVER_ASSET_PROMPT_VERSION } from './cover-asset-generation.js'
 import { acquireWriterLease, WriterLeaseConflictError, WriterLeaseValidationError } from './writer-lease-lock.js'
 
 export const name = 'prismflow-store-production'
@@ -44,7 +45,7 @@ function deterministicUuid(namespace, value) {
 }
 
 function exactRequestDraftLink(request, draft) {
-  return !!request && !!draft && request.status === 'completed'
+  return !!request && !!draft && request.status === 'completed' && request.outputKind === undefined
     && request.requestId === draft.requestId && request.draftId === draft.draftId
     && JSON.stringify(request.derivation) === JSON.stringify(draft.derivation)
     && sameGenerationProvenance(request, draft)
@@ -69,6 +70,32 @@ function validateRevisionInput(draftId, expectedVersion, expectedSha256, title, 
   if (hasInvalidGeneratedUnicode(title) || hasInvalidGeneratedUnicode(markdown)) {
     revisionValidation('title and markdown must not contain Unicode replacement characters or unpaired surrogates')
   }
+}
+
+function boundedCoverInline(value, name, max) {
+  if (typeof value !== 'string' || !value.trim() || value.length > max || /[\u0000-\u001f\u007f]/u.test(value)) throw new Error(`${name} is invalid`)
+  return value.trim()
+}
+
+function parseCoverAssetBinding(workflowInput) {
+  if (!workflowInput || workflowInput.format !== 'json' || typeof workflowInput.content !== 'string') throw new Error('Cover asset request input is invalid')
+  let value
+  try { value = JSON.parse(workflowInput.content) } catch { throw new Error('Cover asset request input is invalid JSON') }
+  const fields = ['kind', 'sourceDraft', 'selectedParagraph', 'mainTitle', 'subtitle', 'aspectRatio']
+  const sourceFields = ['draftId', 'version', 'sha256', 'title']
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.keys(value).length !== fields.length || fields.some(field => !Object.hasOwn(value, field))
+    || value.kind !== 'PrismFlowDraftCoverAssetInput/v1' || !value.sourceDraft || typeof value.sourceDraft !== 'object' || Array.isArray(value.sourceDraft)
+    || Object.keys(value.sourceDraft).length !== sourceFields.length || sourceFields.some(field => !Object.hasOwn(value.sourceDraft, field))
+    || typeof value.sourceDraft.draftId !== 'string' || value.sourceDraft.draftId.length < 1 || value.sourceDraft.draftId.length > 128
+    || !Number.isInteger(value.sourceDraft.version) || value.sourceDraft.version < 1 || !/^[a-f0-9]{64}$/u.test(value.sourceDraft.sha256 ?? '')
+    || typeof value.sourceDraft.title !== 'string' || value.sourceDraft.title.length > 300
+    || typeof value.selectedParagraph !== 'string' || !value.selectedParagraph.trim() || value.selectedParagraph.length > 3_000
+    || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value.selectedParagraph)
+    || value.mainTitle !== boundedCoverInline(value.mainTitle, 'mainTitle', 100)
+    || value.subtitle !== boundedCoverInline(value.subtitle, 'subtitle', 200) || value.aspectRatio !== '2:3') {
+    throw new Error('Cover asset request input fields are invalid')
+  }
+  return value
 }
 
 const workflowInputSchema = z.object({ format: z.enum(['text', 'markdown', 'json']), content: z.string().min(1).max(100000) }).strict()
@@ -101,7 +128,7 @@ const workflowExecutionProfileSchema = z.object({
 }).strict()
 const workflowSnapshotSchema = z.object({
   format: z.literal('workflow-v1'), generatorId: z.string(), generatorName: z.string(), description: z.string(),
-  enabled: z.boolean(), steps: z.array(workflowStepSchema), executionProfile: workflowExecutionProfileSchema,
+  enabled: z.boolean(), saveAsDraft: z.boolean().optional(), steps: z.array(workflowStepSchema), executionProfile: workflowExecutionProfileSchema,
 }).strict().superRefine((value, ctx) => {
   try { normalizeWorkflowSnapshot(value) }
   catch { ctx.addIssue({ code: 'custom', message: 'Invalid workflow snapshot' }) }
@@ -111,6 +138,17 @@ const presentationDerivationSchema = z.object({
   sourceDraftId: z.string().min(1).max(128), sourceDraftVersion: z.number().int().min(1).max(1_000_000_000),
   sourceDraftSha256: promptShaSchema, sourceArtifactBindingSha256: promptShaSchema.optional(),
   sourceStatus: z.enum(['approved', 'published']).optional(),
+}).strict()
+const requestAssetClaimSchema = z.object({
+  assetId: promptShaSchema, sha256: promptShaSchema, bytes: z.number().int().min(1).max(32 * 1024 * 1024),
+  mime: z.enum(['image/jpeg', 'image/png', 'image/gif']), width: z.number().int().min(1).max(100_000), height: z.number().int().min(1).max(100_000),
+}).strict()
+function workflowResultSha256(output) {
+  return createHash('sha256').update(JSON.stringify([output.title, output.markdown, output.sha256, output.mediaAssets])).digest('hex')
+}
+const workflowResultSchema = z.object({
+  title: z.string().min(1).max(300), markdown: z.string().min(1).max(500_001), sha256: promptShaSchema,
+  mediaAssets: z.array(requestAssetClaimSchema).max(20),
 }).strict()
 const requestSchema = z.object({
   requestId: z.string(), generatorId: z.string(), generatorPromptVersion: promptVersionSchema.optional(), generatorPromptSha256: promptShaSchema.optional(),
@@ -122,6 +160,8 @@ const requestSchema = z.object({
   workflowInput: workflowInputSchema.optional(), workflowInputSha256: promptShaSchema.optional(),
   status: z.enum(['pending', 'running', 'completed', 'failed', 'cancelled']),
   createdAt: z.string(), updatedAt: z.string(), draftId: z.string().optional(), errorCode: z.string().optional(),
+  outputKind: z.enum(['cover-asset-v1', 'workflow-result-v1']).optional(), outputAsset: requestAssetClaimSchema.optional(),
+  outputResult: workflowResultSchema.optional(), outputResultSha256: promptShaSchema.optional(),
   derivation: presentationDerivationSchema.optional(),
 }).strict().superRefine((value, ctx) => {
   const workflowFields = [value.executionKind, value.generatorWorkflowVersion, value.generatorWorkflowSha256, value.generatorWorkflowSnapshot]
@@ -136,6 +176,24 @@ const requestSchema = z.object({
   } else if ((value.generatorPromptVersion === undefined) !== (value.generatorPromptSha256 === undefined)) {
     ctx.addIssue({ code: 'custom', message: 'Legacy request prompt provenance is incomplete' })
   }
+  if (value.outputKind === 'cover-asset-v1') {
+    if (value.generatorId !== COVER_ASSET_GENERATOR_ID || value.generatorPromptVersion !== COVER_ASSET_PROMPT_VERSION
+      || value.generatorPromptSha256 !== COVER_ASSET_PROMPT_SHA256 || value.draftId !== undefined
+      || (value.status === 'completed') !== (value.outputAsset !== undefined)) {
+      ctx.addIssue({ code: 'custom', message: 'Cover asset request output provenance is invalid' })
+    }
+  } else if (value.outputAsset !== undefined) ctx.addIssue({ code: 'custom', message: 'Draft request cannot contain an asset output' })
+  const resultOnly = value.executionKind === 'workflow-v1' && value.generatorWorkflowSnapshot?.saveAsDraft === false
+  if (value.outputKind === 'workflow-result-v1') {
+    if (!resultOnly || value.status !== 'completed' || value.draftId !== undefined || !value.outputResult
+      || artifactSha256(value.outputResult.markdown) !== value.outputResult.sha256
+      || workflowResultSha256(value.outputResult) !== value.outputResultSha256
+      || value.outputResult.markdown.length > value.generatorWorkflowSnapshot.executionProfile.ceilings.maxFinalOutputChars + 1) {
+      ctx.addIssue({ code: 'custom', message: 'Workflow result provenance is invalid' })
+    }
+  } else if (value.outputResult !== undefined || value.outputResultSha256 !== undefined || resultOnly && (value.status === 'completed' || value.draftId !== undefined)) {
+    ctx.addIssue({ code: 'custom', message: 'Workflow result output is missing or unexpected' })
+  }
   if ((value.workflowInput === undefined) !== (value.workflowInputSha256 === undefined)
     || value.contentStoreIds.length === 0 && value.workflowInput === undefined) {
     ctx.addIssue({ code: 'custom', message: 'Request input provenance is incomplete' })
@@ -146,10 +204,7 @@ const requestSchema = z.object({
     } catch { ctx.addIssue({ code: 'custom', message: 'Request workflowInput is invalid' }) }
   }
 })
-const mediaAssetClaimSchema = z.object({
-  assetId: promptShaSchema, sha256: promptShaSchema, bytes: z.number().int().min(1).max(32 * 1024 * 1024),
-  mime: z.enum(['image/jpeg', 'image/png', 'image/gif']), width: z.number().int().min(1).max(100_000), height: z.number().int().min(1).max(100_000),
-}).strict()
+const mediaAssetClaimSchema = requestAssetClaimSchema
 const cropSchema = z.object({ ratio: z.enum(['2.35_1', '1_1', '16_9']), x1: z.number().min(0).max(1), y1: z.number().min(0).max(1), x2: z.number().min(0).max(1), y2: z.number().min(0).max(1) }).strict()
 const presentationSchema = z.object({
   publisherId: z.string().regex(/^wechat-draft:[a-zA-Z0-9_-]{1,128}$/u), author: z.string().max(64).optional(), digest: z.string().max(512).optional(),
@@ -428,7 +483,8 @@ export class PrismProductionService extends Service {
   currentWorkflow(generatorId) { return this.workflowStore()?.currentSync(generatorId) }
   workflowReference(row) {
     const snapshot = normalizeWorkflowSnapshot({ format: row.format, generatorId: row.generatorId, generatorName: row.generatorName,
-      description: row.description, enabled: row.enabled, steps: row.steps, executionProfile: row.executionProfile })
+      description: row.description, enabled: row.enabled, steps: row.steps, executionProfile: row.executionProfile,
+      ...(row.saveAsDraft !== undefined ? { saveAsDraft: row.saveAsDraft } : {}) })
     const sha256 = generatorWorkflowSha256(snapshot)
     if (sha256 !== row.sha256) throw new Error('Current generator workflow hash is invalid')
     return { executionKind: 'workflow-v1', generatorWorkflowVersion: row.version,
@@ -436,7 +492,10 @@ export class PrismProductionService extends Service {
   }
 
   registerMaterialProvider(provider) {
-    if (!provider?.id || typeof provider.resolve !== 'function') throw new Error('A production material provider requires id and resolve()')
+    if (!provider?.id || typeof provider.resolve !== 'function'
+      || provider.revalidateClaims !== undefined && typeof provider.revalidateClaims !== 'function') {
+      throw new Error('A production material provider requires id, resolve(), and an optional valid revalidateClaims()')
+    }
     if (this.materialProviders.has(provider.id)) throw new Error(`Production material provider already registered: ${provider.id}`)
     this.materialProviders.set(provider.id, provider)
     return () => { if (this.materialProviders.get(provider.id) === provider) this.materialProviders.delete(provider.id) }
@@ -446,7 +505,7 @@ export class PrismProductionService extends Service {
     const workflows = this.workflowStore()?.listCurrent?.() ?? []
     const adopted = new Set(workflows.map(item => item.generatorId))
     const merged = workflows.filter(item => item.action !== 'delete' && item.enabled && this.workflowRunner(item.executionProfile))
-      .map(item => ({ id: item.generatorId, name: item.generatorName, description: item.description }))
+      .map(item => ({ id: item.generatorId, name: item.generatorName, description: item.description, ...(item.saveAsDraft !== undefined ? { saveAsDraft: item.saveAsDraft } : {}) }))
     for (const generator of this.generators.values()) {
       if (!adopted.has(generator.id)) merged.push({ id: generator.id, name: generator.name, description: generator.description ?? '' })
     }
@@ -494,6 +553,42 @@ export class PrismProductionService extends Service {
       await this.requireRequests().put(request.requestId, request)
       return request
     })
+  }
+
+  createCoverAssetRequestFromDraft(input) {
+    const source = this.getDraft(input?.sourceDraftId)
+    if (!source || !['approved', 'published'].includes(source.status)) throw new Error('Cover asset generation requires a stable approved or published source Draft')
+    if (!Number.isInteger(input.expectedVersion) || input.expectedVersion < 1 || !/^[a-f0-9]{64}$/u.test(input.expectedSha256 ?? '')
+      || source.version !== input.expectedVersion || source.sha256 !== input.expectedSha256) {
+      throw new Error('Source Draft version or SHA-256 changed before cover asset generation')
+    }
+    if (typeof input.selectedParagraph !== 'string' || !input.selectedParagraph.trim() || input.selectedParagraph.length > 3_000
+      || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(input.selectedParagraph)
+      || !source.markdown.includes(input.selectedParagraph)) throw new Error('selectedParagraph must be copied verbatim from the exact source Draft')
+    const binding = {
+      kind: 'PrismFlowDraftCoverAssetInput/v1',
+      sourceDraft: { draftId: source.draftId, version: source.version, sha256: source.sha256, title: source.title },
+      selectedParagraph: input.selectedParagraph,
+      mainTitle: boundedCoverInline(input.mainTitle, 'mainTitle', 100),
+      subtitle: boundedCoverInline(input.subtitle, 'subtitle', 200),
+      aspectRatio: input.aspectRatio,
+    }
+    parseCoverAssetBinding({ format: 'json', content: JSON.stringify(binding) })
+    const candidate = createGenerationRequest(COVER_ASSET_GENERATOR_ID, [], new Date(), { format: 'json', content: JSON.stringify(binding) })
+    const request = { ...candidate, generatorPromptVersion: COVER_ASSET_PROMPT_VERSION,
+      generatorPromptSha256: COVER_ASSET_PROMPT_SHA256, outputKind: 'cover-asset-v1' }
+    return this.mutate(async () => {
+      await this.requireRequests().put(request.requestId, request)
+      return request
+    })
+  }
+
+  assertCoverAssetBinding(binding) {
+    const source = this.getDraft(binding.sourceDraft.draftId)
+    if (!source || !['approved', 'published'].includes(source.status) || source.version !== binding.sourceDraft.version
+      || source.sha256 !== binding.sourceDraft.sha256 || source.title !== binding.sourceDraft.title
+      || !source.markdown.includes(binding.selectedParagraph)) throw new Error('Source Draft changed before cover asset generation completed')
+    return source
   }
 
   async createRequest(generatorId, contentStoreIds) {
@@ -583,6 +678,53 @@ export class PrismProductionService extends Service {
   }
 
   listDrafts({ status, limit = 50 } = {}) { return this.queryDrafts({ status, limit }).records }
+
+  publishedContentEntries() {
+    const publishedDrafts = []
+    for (const [draftId, raw] of this.requireDrafts().entries()) {
+      const parsed = draftSchema.safeParse(raw)
+      if (typeof draftId !== 'string' || !parsed.success || parsed.data.draftId !== draftId
+        || Object.keys(parsed.data).length !== Object.keys(raw).length) {
+        throw new Error('Production draft publication history is invalid')
+      }
+      const draft = parsed.data
+      const hasPublished = draft.status === 'published'
+        || draft.status === 'publishing' && draft.publishingPreviousStatus === 'published'
+        || (draft.publishedPublisherIds?.length ?? 0) > 0
+      if (hasPublished) publishedDrafts.push(draft)
+    }
+    publishedDrafts.sort((left, right) => (right.publishedAt ?? right.createdAt).localeCompare(left.publishedAt ?? left.createdAt)
+      || left.draftId.localeCompare(right.draftId))
+    const entries = new Map()
+    for (const draft of publishedDrafts) {
+      const rawRequest = this.requireRequests().get(draft.requestId)
+      const parsedRequest = requestSchema.safeParse(rawRequest)
+      if (!parsedRequest.success || Object.keys(parsedRequest.data).length !== Object.keys(rawRequest ?? {}).length
+        || !exactRequestDraftLink(parsedRequest.data, draft)) {
+        throw new Error('Published Draft generation provenance is invalid')
+      }
+      for (const storeId of draft.sourceContentStoreIds) {
+        if (entries.has(storeId)) continue
+        const material = parsedRequest.data.packedMaterials?.find(item => item.storeId === storeId)
+        const record = this.ctx.prismContentStore.get(storeId)
+        const item = record?.item ?? {}
+        const title = material?.title ?? (typeof item.title === 'string' ? item.title : '')
+        const summary = material?.aiSummary
+          ?? material?.excerpts?.map(excerpt => excerpt.text).join(' ')
+          ?? (typeof item.content === 'string' && item.content.trim() ? item.content : item.description)
+          ?? title
+        const publishedDateSource = [material?.publishedDate, item.published_date, draft.publishedAt, draft.createdAt]
+          .find(value => typeof value === 'string' && Number.isFinite(Date.parse(value)))
+        if (typeof title !== 'string' || typeof summary !== 'string' || !title.trim() || !summary.trim() || !publishedDateSource) {
+          throw new Error(`Published Draft semantic source is unavailable: ${storeId}`)
+        }
+        entries.set(storeId, { storeId, title, summary, eventPublishedAt: new Date(Date.parse(publishedDateSource)).toISOString() })
+      }
+    }
+    return [...entries.values()].sort((left, right) => left.storeId.localeCompare(right.storeId))
+  }
+
+  publishedContentStoreIds() { return new Set(this.publishedContentEntries().map(item => item.storeId)) }
 
   getDraft(draftId) { return this.draftDeletionSync(draftId) ? undefined : this.requireDrafts().get(draftId) }
 
@@ -1046,6 +1188,72 @@ export class PrismProductionService extends Service {
 
   getRequest(requestId) { return this.requireRequests().get(requestId) }
 
+  generateCoverAsset(requestId, execution, render) {
+    if (!execution?.agent) return Promise.reject(new Error('PrismFlow cover asset generation requires a calling DSH Agent'))
+    if (typeof render !== 'function') return Promise.reject(new Error('PrismFlow cover asset renderer is unavailable'))
+    if (this.stopping) return Promise.reject(new Error('PrismFlow production store is stopping'))
+    if (this.maintenanceDraining) return Promise.reject(new Error('PrismFlow production admission is paused for maintenance drain'))
+    const operation = this.generateCoverAssetInner(requestId, this.executionWithShutdown(execution), render)
+    this.inFlight.add(operation)
+    operation.finally(() => this.inFlight.delete(operation)).catch(() => {})
+    return operation
+  }
+
+  async generateCoverAssetInner(requestId, execution, render) {
+    const controller = new AbortController()
+    const abort = () => controller.abort(execution.signal?.reason ?? new Error('Cover asset generation aborted'))
+    if (execution.signal?.aborted) abort()
+    else execution.signal?.addEventListener('abort', abort, { once: true })
+    let claimed
+    try {
+      claimed = await this.mutate(async () => {
+        const request = this.requireRequests().get(requestId)
+        if (!request) throw new Error(`Unknown generation request: ${requestId}`)
+        if (request.outputKind !== 'cover-asset-v1') throw new Error('Generation request is not a cover asset request')
+        if (request.status !== 'pending' && request.status !== 'failed') throw new Error(`Generation request is not runnable: ${request.status}`)
+        if (request.generatorId !== COVER_ASSET_GENERATOR_ID || request.generatorPromptVersion !== COVER_ASSET_PROMPT_VERSION
+          || request.generatorPromptSha256 !== COVER_ASSET_PROMPT_SHA256 || !request.workflowInput
+          || productionWorkflowInputSha256(request.workflowInput) !== request.workflowInputSha256) {
+          throw new Error('Cover asset request provenance is invalid')
+        }
+        const binding = parseCoverAssetBinding(request.workflowInput)
+        this.assertCoverAssetBinding(binding)
+        const attempt = (request.attempt ?? 0) + 1
+        const next = { ...request, status: 'running', attempt, outputAsset: undefined, errorCode: undefined, updatedAt: new Date().toISOString() }
+        await this.requireRequests().put(requestId, next)
+        this.activeRuns.set(requestId, { attempt, controller })
+        return next
+      })
+      if (controller.signal.aborted) throw controller.signal.reason ?? new Error('Cover asset generation aborted')
+      const binding = parseCoverAssetBinding(claimed.workflowInput)
+      const output = await render(structuredClone(binding), { ...execution, signal: controller.signal })
+      if (controller.signal.aborted) throw controller.signal.reason ?? new Error('Cover asset generation aborted')
+      if (!output?.asset) throw new Error('Generated cover asset Claim is required')
+      this.assertCoverAssetBinding(binding)
+      const mediaStore = this.ctx.get?.('prismProductionMedia') ?? this.ctx.prismProductionMedia
+      if (!mediaStore?.assertClaims) throw new Error('Production media claim validation is unavailable')
+      await mediaStore.assertClaims([output.asset])
+      const completed = await this.mutate(async () => {
+        const current = this.requireRequests().get(requestId)
+        if (current?.status !== 'running' || current.attempt !== claimed.attempt) throw new Error('Cover asset request state changed during generation')
+        const next = { ...current, status: 'completed', outputAsset: structuredClone(output.asset), updatedAt: new Date().toISOString() }
+        await this.requireRequests().put(requestId, next)
+        const committed = this.requireRequests().get(requestId)
+        if (committed?.status !== 'completed' || committed.outputKind !== 'cover-asset-v1'
+          || JSON.stringify(committed.outputAsset) !== JSON.stringify(output.asset)) throw new Error('Cover asset generation commit could not be verified')
+        return committed
+      }, true)
+      return { request: completed, binding, ...output }
+    } catch (error) {
+      if (claimed) await this.failRequest(requestId, claimed.attempt, controller.signal.aborted ? 'cancelled' : 'generation-failed')
+      throw error
+    } finally {
+      execution.signal?.removeEventListener('abort', abort)
+      const active = this.activeRuns.get(requestId)
+      if (claimed && active?.attempt === claimed.attempt) this.activeRuns.delete(requestId)
+    }
+  }
+
   generate(requestId, execution) {
     if (!execution?.agent) return Promise.reject(new Error('PrismFlow draft generation requires a calling DSH Agent'))
     if (this.stopping) return Promise.reject(new Error('PrismFlow production store is stopping'))
@@ -1066,6 +1274,7 @@ export class PrismProductionService extends Service {
       claimed = await this.mutate(async () => {
         const request = this.requireRequests().get(requestId)
         if (!request) throw new Error(`Unknown generation request: ${requestId}`)
+        if (request.outputKind !== undefined) throw new Error('Cover asset requests must be run by prismflow_generate_cover_asset_from_draft')
         if (request.status !== 'pending' && request.status !== 'failed') throw new Error(`Generation request is not runnable: ${request.status}`)
         if (request.executionKind === 'workflow-v1') {
           if (!Number.isInteger(request.generatorWorkflowVersion) || !/^[a-f0-9]{64}$/u.test(request.generatorWorkflowSha256 ?? '')
@@ -1113,6 +1322,31 @@ export class PrismProductionService extends Service {
       if (controller.signal.aborted) throw controller.signal.reason ?? new Error('Generation aborted')
       const maxOutputChars = claimed.executionKind === 'workflow-v1'
         ? claimed.generatorWorkflowSnapshot.executionProfile.ceilings.maxFinalOutputChars : generator.maxOutputChars
+      if (claimed.generatorWorkflowSnapshot?.saveAsDraft === false) {
+        const result = workflowResultSchema.parse({ ...normalizeGeneratedContent(output, maxOutputChars), mediaAssets: output.mediaAssets ?? [] })
+        const media = this.ctx.get?.('prismProductionMedia') ?? this.ctx.prismProductionMedia
+        if (result.mediaAssets.length) {
+          if (!media?.assertClaims) throw new Error('Production media claim validation is unavailable')
+          await media.assertClaims(result.mediaAssets)
+        }
+        await this.mutate(async () => {
+          if (controller.signal.aborted) throw controller.signal.reason ?? new Error('Generation aborted')
+          const current = this.requireRequests().get(requestId)
+          if (current?.status !== 'running' || current.attempt !== claimed.attempt) throw new Error('Generation request state changed during generation')
+          const completed = requestSchema.parse({ ...current, status: 'completed', outputKind: 'workflow-result-v1',
+            outputResult: result, outputResultSha256: workflowResultSha256(result), updatedAt: new Date().toISOString() })
+          try {
+            await this.requireRequests().put(requestId, completed)
+            if (controller.signal.aborted) throw controller.signal.reason ?? new Error('Generation aborted')
+            const committed = requestSchema.parse(this.requireRequests().get(requestId))
+            if (committed.status !== 'completed' || committed.outputResultSha256 !== completed.outputResultSha256) throw new Error('Workflow result commit could not be verified')
+          } catch (error) {
+            await this.requireRequests().put(requestId, current)
+            throw error
+          }
+        }, true)
+        return this.getWorkflowResult(requestId)
+      }
       const draft = normalizeGeneratedDraft(claimed, output, maxOutputChars)
       await this.mutate(async () => {
         if (controller.signal.aborted) throw controller.signal.reason ?? new Error('Generation aborted')
@@ -1159,6 +1393,19 @@ export class PrismProductionService extends Service {
     }
   }
 
+  async getWorkflowResult(requestId) {
+    const request = requestSchema.parse(this.requireRequests().get(requestId))
+    if (request.status !== 'completed' || request.outputKind !== 'workflow-result-v1') throw new Error('Request has no completed workflow result')
+    if (request.outputResult.mediaAssets.length) {
+      const media = this.ctx.get?.('prismProductionMedia') ?? this.ctx.prismProductionMedia
+      if (!media?.assertClaims) throw new Error('Production media claim validation is unavailable')
+      await media.assertClaims(request.outputResult.mediaAssets)
+    }
+    return { requestId, generatorId: request.generatorId, generatorWorkflowVersion: request.generatorWorkflowVersion,
+      generatorWorkflowSha256: request.generatorWorkflowSha256, status: 'completed', draftCreated: false,
+      outputKind: request.outputKind, outputResultSha256: request.outputResultSha256, ...structuredClone(request.outputResult) }
+  }
+
   async cancel(requestId) {
     let active
     const request = await this.mutate(async () => {
@@ -1182,6 +1429,7 @@ export class PrismProductionService extends Service {
       const current = this.requireRequests().get(requestId)
       if (!current) throw new Error(`Unknown generation request: ${requestId}`)
       if (!['failed', 'cancelled'].includes(current.status)) throw new Error(`Generation request is not retryable: ${current.status}`)
+      if (current.outputKind === 'cover-asset-v1') throw new Error('Cover asset requests must be recreated from the exact source Draft inputs')
       const next = { ...current, status: 'pending', errorCode: undefined, draftId: undefined, updatedAt: new Date().toISOString() }
       await this.requireRequests().put(requestId, next)
       return next
@@ -1381,11 +1629,13 @@ export class PrismProductionService extends Service {
     if (!exactRequestDraftLink(linkedRequest, before)) throw new Error('Approved draft generation request is unavailable or inconsistent')
     if (before.selectionId) {
       const provider = this.materialProviders.get('ai-selection')
-      if (!provider) throw new Error('AI selection material provider is unavailable')
-      const current = await provider.resolve(before.selectionId)
-      if (current.selectionSha256 !== before.selectionSha256 || JSON.stringify(current.sourceContentClaims) !== JSON.stringify(before.sourceContentClaims)) {
-        throw new Error('Approved draft source selection claims are no longer valid')
+      if (!provider || typeof provider.revalidateClaims !== 'function') throw new Error('AI selection claim validator is unavailable')
+      if (!Array.isArray(before.sourceContentClaims)
+        || before.sourceContentClaims.length !== before.sourceContentStoreIds.length
+        || before.sourceContentClaims.some((claim, index) => claim.storeId !== before.sourceContentStoreIds[index])) {
+        throw new Error('Approved draft source selection claims are invalid')
       }
+      await provider.revalidateClaims(before.sourceContentClaims)
     }
     if (before.status === 'publishing') throw new Error('Production draft publication is already in progress or requires reconciliation')
     const records = before.sourceContentStoreIds.map(id => this.ctx.prismContentStore.get(id))
@@ -1628,7 +1878,10 @@ export class PrismProductionService extends Service {
     for (const [requestId, request] of requests) {
       const draft = request.draftId ? drafts.get(request.draftId) : undefined
       const completedLinked = exactRequestDraftLink(request, draft)
-      if (request.status === 'running' || request.status === 'completed' && !completedLinked) {
+      const completedCoverAsset = request.status === 'completed' && request.outputKind === 'cover-asset-v1'
+        && request.draftId === undefined && request.outputAsset !== undefined
+      const completedWorkflowResult = request.status === 'completed' && request.outputKind === 'workflow-result-v1'
+      if (request.status === 'running' || request.status === 'completed' && !completedLinked && !completedCoverAsset && !completedWorkflowResult) {
         if (draft?.requestId === requestId) deleteDraftIds.add(draft.draftId)
         requestUpdates.push([requestId, {
           ...request, status: 'failed', draftId: undefined,

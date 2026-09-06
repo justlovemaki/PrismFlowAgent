@@ -19,7 +19,7 @@ const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u
 
 function usage() {
   console.error('Usage: prismflow-dsh-install [--profile <name>] [--dsh-home <path>] [--dsh-version <version>] [--migrate-json --confirm-dsh-stopped]')
-  console.error('Legacy migration flags remain accepted, but JSON storage is now migrated automatically after active DSH processes are ruled out.')
+  console.error('Legacy migration flags remain accepted, but JSON storage is now migrated automatically after active DSH processes are ruled out. Use prismflow-dsh-update for automatic stop, update, restart, and health checking.')
 }
 function fail(message) { throw new Error(`PrismFlow DSH installer: ${message}`) }
 function takeValue(args, index, option) {
@@ -31,7 +31,7 @@ function parseArgs(argv) {
   const result = {
     profileName: '',
     dshHome: resolveInstallerDshHome(undefined, process.env, homedir()),
-    dshVersion: process.env.DSH_VERSION ?? '', migrateJson: false, confirmStopped: false,
+    dshVersion: process.env.DSH_VERSION ?? '', migrateJson: false, confirmStopped: false, recoverStoppedLocks: false,
   }
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index]
@@ -40,6 +40,7 @@ function parseArgs(argv) {
     else if (argument === '--dsh-version') { result.dshVersion = takeValue(argv, index, argument); index += 1 }
     else if (argument === '--migrate-json') result.migrateJson = true
     else if (argument === '--confirm-dsh-stopped') result.confirmStopped = true
+    else if (argument === '--recover-stopped-locks') result.recoverStoppedLocks = true
     else if (argument === '--help' || argument === '-h') return { help: true }
     else fail(`unknown option ${argument}`)
   }
@@ -171,7 +172,7 @@ function listSystemProcesses() {
     throw new AggregateError([result.error, procError].filter(Boolean), `ps failed (${psError}) and /proc inspection failed (${procError.message})`)
   }
 }
-function assertStorageMigrationIsOffline(options) {
+function assertDshIsOffline(options) {
   let entries
   try { entries = listSystemProcesses() } catch (error) {
     if (options.confirmStopped) {
@@ -182,14 +183,14 @@ function assertStorageMigrationIsOffline(options) {
   }
   const active = findActiveDshProcesses(entries)
   if (active.length) {
-    fail(`automatic JSON migration detected active DSH process${active.length === 1 ? '' : 'es'} (${active.slice(0, 8).map(entry => `PID ${entry.pid}`).join(', ')}); stop every DSH process and rerun the same installer command`)
+    fail(`detected active DSH process${active.length === 1 ? '' : 'es'} (${active.slice(0, 8).map(entry => `PID ${entry.pid}`).join(', ')}); stop every DSH process before installing or updating PrismFlow, then rerun the same installer command`)
   }
 }
 
-async function acquireInstallationLocks(paths) {
+async function acquireInstallationLocks(paths, recoverStoppedLocks = false) {
   const releases = []
   try {
-    for (const path of paths) releases.push(await acquireWriterLease(path))
+    for (const path of paths) releases.push(await acquireWriterLease(path, recoverStoppedLocks ? { staleAgeMs: 1 } : undefined))
     return async () => {
       const failures = []
       for (const release of releases.reverse()) try { await release() } catch (error) { failures.push(error) }
@@ -227,16 +228,19 @@ async function main() {
     binding,
   )
 
+  // Package installation, dependency mutation, Profile rewrites, and storage
+  // migration all require one offline boundary. On first install there are no
+  // PrismFlow writer leases yet, so process inspection must be unconditional.
+  assertDshIsOffline(options)
   const databaseExists = existsSync(databasePath)
   const jsonUnits = existsSync(storageRoot)
     ? readdirSync(storageRoot, { withFileTypes: true }).filter(entry => entry.isFile() && entry.name.endsWith('.json'))
     : []
   if (!databaseExists && jsonUnits.length) {
-    assertStorageMigrationIsOffline(options)
     console.log(`Detected ${jsonUnits.length} JSON storage units and no SQLite database; starting verified automatic migration.`)
   }
 
-  const releaseLocks = await acquireInstallationLocks(writerLockPaths(originalPatch, binding.dshHome))
+  const releaseLocks = await acquireInstallationLocks(writerLockPaths(originalPatch, binding.dshHome), options.recoverStoppedLocks)
   try {
     if (!databaseExists && jsonUnits.length) {
       const migrated = await migrateJsonStorageToSqlite({ storageRoot, databasePath })

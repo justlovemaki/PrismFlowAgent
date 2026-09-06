@@ -7,11 +7,33 @@ class Table {
   constructor() { this.map = new Map(); this.fail = false }
   get(key) { return this.map.get(key) }
   entries() { return this.map.entries() }
+  async delete(key) { if (this.fail) throw new Error('storage unavailable'); this.map.delete(key) }
   async put(key, value) { if (this.fail) throw new Error('storage unavailable'); this.map.set(key, structuredClone(value)) }
 }
 function item(id, description = `content-${id}`) {
   return { id, title: `Title ${id}`, url: `https://example.test/${id}`, description, published_date: '2026-01-01T00:00:00.000Z', source: 'Fixture', category: 'test' }
 }
+
+test('batch deletion is explicit, bounded, serialized with ingestion, and reports missing and failed IDs', async () => {
+  const store = new PrismContentStore(new Context()); store.items = new Table()
+  await store.putBatch('rss:fixture', [item('one'), item('two')])
+  const [one, two] = store.records().map(row => row.storeId)
+  for (const ids of [[], [one, one], ['bad'], Array(101).fill(one)]) await assert.rejects(store.deleteBatch(ids), /1 to 100 unique/)
+  assert.equal(store.count(), 2)
+  const queued = store.putBatch('rss:fixture', [item('one')], { overwrite: true })
+  const deleting = store.deleteBatch([one, 'f'.repeat(64)])
+  await queued
+  assert.deepEqual(await deleting, { deletedIds: [one], missingIds: ['f'.repeat(64)], failedIds: [] })
+  assert.equal(store.get(one), undefined); assert.ok(store.get(two)); assert.equal(store.count(), 1)
+  store.items.fail = true
+  assert.deepEqual(await store.deleteBatch([two]), { deletedIds: [], missingIds: [], failedIds: [two] })
+  assert.ok(store.get(two))
+  store.items.fail = false
+  await store.deleteBatch([two]); assert.equal(store.count(), 0)
+  await store.putBatch('rss:fixture', [item('one')]); assert.equal(store.get(one).externalId, 'one')
+  store.disposing = true
+  await assert.rejects(store.deleteBatch([one]), /disposing/)
+})
 
 test('content batch skips malformed and empty individual rows while persisting later valid rows', async () => {
   const store = new PrismContentStore(new Context()); store.items = new Table()

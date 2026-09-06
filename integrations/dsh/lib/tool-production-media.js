@@ -52,24 +52,31 @@ export function apply(ctx) {
 
   registerPrismFlowTool(ctx, defineTool({
     name: 'prismflow_inherit_draft_images',
-    description: 'Use this exact tool when the user asks to inherit or copy a published/approved Draft cover and other images, or add that Draft images to a WeChat image list. It securely resolves the source presentation and Markdown images, retries each body-image admission up to three times, fails without creating a Draft if any image is omitted, creates a new unapproved image-bound Draft for the selected WeChat publisher, and never publishes or changes the source. Dashboard approval is still required before prismflow_publish.',
+    description: 'Create a new unapproved image-bound Draft from an exact approved/published source. For the short-report cover workflow, pass the generated cover Production Media claim as coverAsset and set excludeTrailingBodyImages to 2; the generated cover remains first while only the retained source body images are inherited. Without those optional fields, the source cover and all admissible images are inherited. HTTPS body-image admission is retried up to three times; images that still cannot be admitted are skipped and reported in omittedBodyImageCount. The source is never changed and Dashboard approval remains required.',
     parameters: {
       sourceDraftId: { type: 'string', required: true, description: 'Exact approved or published source Draft id.' },
       expectedVersion: { type: 'integer', required: true, description: 'Exact source Draft version returned by prismflow_drafts.' },
       expectedSha256: { type: 'string', required: true, description: 'Exact source Draft Markdown SHA-256 returned by prismflow_drafts.' },
       publisherId: { type: 'string', required: true, description: 'Configured destination wechat-draft Publisher id.' },
+      coverAsset: { ...claimOutput, description: 'Optional complete generated-cover claim returned by prismflow_image_generation or prismflow_get_production_image_claim. It replaces the inherited source cover and remains first.' },
+      excludeTrailingBodyImages: { type: 'integer', description: 'Number of trailing source Markdown body images to deliberately exclude, from 0 to 20. Defaults to 0.' },
     },
     output: { schema: { type: 'object', additionalProperties: false, properties: {
       sourceDraftId: { type: 'string', required: true }, draftId: { type: 'string', required: true }, requestId: { type: 'string', required: true },
       version: { type: 'integer', required: true }, sha256: { type: 'string', required: true }, artifactBindingSha256: { type: 'string', required: true },
       status: { type: 'string', required: true }, imageCount: { type: 'integer', required: true }, inheritedImageCount: { type: 'integer', required: true },
       ingestedBodyImageCount: { type: 'integer', required: true }, omittedBodyImageCount: { type: 'integer', required: true },
-    } }, render: (_args, value) => [{ type: 'text', text: `Created unapproved Draft ${value.draftId} with ${value.inheritedImageCount} inherited images (${value.ingestedBodyImageCount} imported from body URLs, ${value.omittedBodyImageCount} omitted). Approve it in Dashboard before publishing.` }] },
+      excludedTrailingBodyImageCount: { type: 'integer', required: true },
+    } }, render: (_args, value) => [{ type: 'text', text: `Created unapproved Draft ${value.draftId} with ${value.inheritedImageCount} bound images (${value.excludedTrailingBodyImageCount} trailing body images deliberately excluded, ${value.ingestedBodyImageCount} imported, ${value.omittedBodyImageCount} unavailable body images skipped). Approve it in Dashboard before publishing.` }] },
     async execute(args, execution) {
       const source = ctx.prismProduction.getDraft(args.sourceDraftId)
       if (!source || !['approved', 'published'].includes(source.status)) throw new Error('Only an approved or published source Draft can inherit images')
       if (source.version !== args.expectedVersion || source.sha256 !== args.expectedSha256) throw new Error('Source Draft version or SHA-256 changed before image inheritance')
       if (!Number.isInteger(args.expectedVersion) || args.expectedVersion < 1 || typeof args.expectedSha256 !== 'string' || !SHA256.test(args.expectedSha256)) throw new Error('Source Draft version or SHA-256 is invalid')
+      const excludeTrailingBodyImages = args.excludeTrailingBodyImages ?? 0
+      if (!Number.isInteger(excludeTrailingBodyImages) || excludeTrailingBodyImages < 0 || excludeTrailingBodyImages > 20) {
+        throw new Error('excludeTrailingBodyImages must be an integer from 0 to 20')
+      }
       const sourceClaims = new Map((source.mediaAssets ?? []).map(claim => [claim.assetId, claim]))
       const presentations = source.destinationPresentations ?? []
       const sourcePresentation = presentations.find(item => item.publisherId === args.publisherId)
@@ -80,13 +87,18 @@ export function apply(ctx) {
         if (!claim || inheritedIds.has(claim.assetId) || inherited.length >= 20) return false
         inherited.push(claim); inheritedIds.add(claim.assetId); return true
       }
-      for (const assetId of [sourcePresentation?.cover?.assetId, ...(sourcePresentation?.imageOrder ?? [])]) {
-        if (assetId) addClaim(sourceClaims.get(assetId))
+      if (args.coverAsset) addClaim(args.coverAsset)
+      else if (sourcePresentation?.cover?.assetId) addClaim(sourceClaims.get(sourcePresentation.cover.assetId))
+      if (!args.coverAsset && excludeTrailingBodyImages === 0) {
+        for (const assetId of sourcePresentation?.imageOrder ?? []) if (assetId) addClaim(sourceClaims.get(assetId))
       }
-      const bodySources = [...new Set(renderWechatMarkdown(source.markdown).images.map(image => image.source))]
+      const allBodySources = [...new Set(renderWechatMarkdown(source.markdown).images.map(image => image.source))]
+      const retainedBodySources = excludeTrailingBodyImages > 0
+        ? allBodySources.slice(0, Math.max(0, allBodySources.length - excludeTrailingBodyImages)) : allBodySources
+      const excludedTrailingBodyImageCount = allBodySources.length - retainedBodySources.length
       let ingestedBodyImageCount = 0
       let omittedBodyImageCount = 0
-      for (const imageSource of bodySources) {
+      for (const imageSource of retainedBodySources) {
         const existingAssetId = mediaAssetId(imageSource)
         if (existingAssetId) {
           if (!addClaim(sourceClaims.get(existingAssetId)) && !inheritedIds.has(existingAssetId)) omittedBodyImageCount += 1
@@ -107,13 +119,13 @@ export function apply(ctx) {
         if (!admitted) omittedBodyImageCount += 1
       }
       if (!inherited.length) throw new Error('Source Draft has no inheritable Production Media or admissible HTTPS body images')
-      if (omittedBodyImageCount > 0) throw new Error(`Image inheritance omitted ${omittedBodyImageCount} body image(s) after three attempts; no derived Draft was created. Retry the operation.`)
       const draft = await ctx.prismProduction.createApprovedDraftImageRevision(
         args.sourceDraftId, args.expectedVersion, args.expectedSha256, args.publisherId, inherited, 'cover-and-first',
       )
       return { sourceDraftId: args.sourceDraftId, draftId: draft.draftId, requestId: draft.requestId,
         version: draft.version, sha256: draft.sha256, artifactBindingSha256: draft.artifactBindingSha256, status: draft.status,
-        imageCount: draft.mediaAssets.length, inheritedImageCount: inherited.length, ingestedBodyImageCount, omittedBodyImageCount }
+        imageCount: draft.mediaAssets.length, inheritedImageCount: inherited.length, ingestedBodyImageCount, omittedBodyImageCount,
+        excludedTrailingBodyImageCount }
     },
   }))
 

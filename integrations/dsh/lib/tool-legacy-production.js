@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process'
+import { createHash, randomUUID } from 'node:crypto'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,6 +15,7 @@ import { parseGitHubRepository, validateGitHubBranch, validateGitHubPathPrefix }
 import { createManagedMediaFetch } from './secure-rss-fetch.js'
 import { registerPrismFlowTool } from './store-prismflow-toolsets.js'
 import { resolveFfmpegPath } from './ffmpeg-runtime.js'
+import { buildCoverAssetPrompt } from './cover-asset-generation.js'
 export { resolveFfmpegPath } from './ffmpeg-runtime.js'
 
 export const name = 'prismflow-tool-legacy-production'
@@ -189,6 +191,44 @@ async function readJsonBounded(response, max = MAX_IMAGE_API_JSON_BYTES) {
   }
   const text = Buffer.concat(chunks, received).toString('utf8')
   try { return JSON.parse(text) } catch { throw new Error('Remote service returned invalid JSON') }
+}
+
+async function generateProductionImage(ctx, config, prompt, execution) {
+  const boundedPrompt = bounded(prompt, 'prompt', 4_000)
+  const r2PublisherId = ctx.prismPublishers.resolveMediaUploaderId(config.r2PublisherId)
+  const imageConfig = ctx.prismImageGenerationSettings.runtime()
+  const credential = await ctx.prismImageGenerationSettings.resolveCredential()
+  if (!credential?.value) throw new Error('OpenAI image API credential is unavailable')
+  const endpoint = openAiEndpoint(imageConfig.imageApiUrl)
+  const protocol = imageApiProtocol(imageConfig, endpoint)
+  const model = bounded(imageConfig.imageModel, 'imageModel', 256)
+  const requestBody = protocol === 'images-generations'
+    ? { model, prompt: boundedPrompt, n: 1, size: bounded(imageConfig.imageSize, 'imageSize', 64), response_format: 'url', stream: false }
+    : { model, messages: [{ role: 'user', content: boundedPrompt }], stream: false }
+  const response = await fetch(endpoint.toString(), { method: 'POST', redirect: 'error', signal: execution.signal,
+    headers: { authorization: `Bearer ${credential.value}`, accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify(requestBody) })
+  const value = await readJsonBounded(response)
+  if (!response.ok) throw new Error(`OpenAI-compatible image generation failed (${response.status})`)
+  const reference = generatedImageReference(value)
+  let bytes; let sourceMime; let encoded
+  if (reference.dataUrl) { const parsed = decodeDataUrl(reference.dataUrl); encoded = parsed.base64; sourceMime = parsed.mime } else encoded = reference.base64
+  if (typeof encoded === 'string') {
+    if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded) || encoded.length > 45 * 1024 * 1024) throw new Error('OpenAI-compatible response returned invalid base64 image data')
+    bytes = Buffer.from(encoded, 'base64')
+    if (!bytes.length || bytes.length > 32 * 1024 * 1024) throw new Error('OpenAI-compatible response returned oversized image data')
+    let metadata
+    try { metadata = await sharp(bytes, { failOn: 'error', limitInputPixels: 100_000_000 }).metadata() } catch { throw new Error('OpenAI image generation returned undecodable image data') }
+    sourceMime = imageMimeFromFormat(metadata.format)
+    if (!sourceMime) throw new Error('OpenAI image generation returned an unsupported image format')
+  } else {
+    const image = await (ctx.get?.('prismMediaFetch') ?? mediaFetch)(reference.url, { kind: 'image', signal: execution.signal })
+    bytes = Buffer.from(await image.arrayBuffer())
+    sourceMime = String(image.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase()
+  }
+  const converted = await convertImageForR2(bytes, sourceMime, imageConfig)
+  const asset = await ctx.prismProductionMedia.ingest(converted.claimBytes)
+  const upload = await ctx.prismPublishers.uploadMedia(r2PublisherId, converted.uploadBytes, converted.uploadMime, { signal: execution.signal })
+  return { content: `![生成图片](${upload.publicUrl})`, asset, model: imageConfig.imageModel, size: imageConfig.imageSize }
 }
 function renderPublication(value) { return [{ type: 'text', text: `Publication ${value.status}: receipt ${value.receiptId ?? 'unavailable'}.` }] }
 function shanghaiTimestamp() {
@@ -367,31 +407,40 @@ export function apply(ctx, config) {
     name: 'prismflow_image_generation', description: 'Generate one image with a Profile-configured OpenAI-compatible non-streaming endpoint (Chat Completions or Images Generations), then upload it to the deployment-pinned R2 destination. API URL, Credential Ref, model, and size are Profile-controlled.',
     parameters: { prompt: { type: 'string', required: true } },
     output: { schema: { type: 'object', additionalProperties: false, properties: { content: { type: 'string', required: true }, asset: { ...mediaClaimSchema, required: true }, model: { type: 'string', required: true }, size: { type: 'string', required: true } } }, render: (_args, value) => [{ type: 'text', text: `${value.content}\n\nProduction asset: ${value.asset.assetId}` }] },
+    async execute(args, execution) { return generateProductionImage(ctx, config, args.prompt, execution) },
+  }))
+
+  registerPrismFlowTool(ctx, defineTool({
+    name: 'prismflow_generate_cover_asset_from_draft',
+    description: 'Generate one source-bound Production Media cover requested at 2:3. This validates and freezes an approved/published source Draft version, SHA-256, verbatim paragraph, main title, and subtitle; returns the complete trusted media Claim; and never creates an intermediate Draft.',
+    parameters: {
+      sourceDraftId: { type: 'string', required: true, description: 'Exact approved or published source Draft id.' },
+      expectedVersion: { type: 'integer', required: true, description: 'Exact source Draft version returned by inspect.' },
+      expectedSha256: { type: 'string', required: true, description: 'Exact source Draft Markdown SHA-256.' },
+      selectedParagraph: { type: 'string', required: true, description: 'Verbatim paragraph copied from the inspected source Draft, at most 3000 characters.' },
+      mainTitle: { type: 'string', required: true, description: 'Cover main title, one line and at most 100 characters.' },
+      subtitle: { type: 'string', required: true, description: 'Cover subtitle, one line and at most 200 characters.' },
+      aspectRatio: { type: 'string', required: true, enum: ['2:3'], description: 'Requested portrait aspect ratio.' },
+    },
+    output: { schema: { type: 'object', additionalProperties: false, properties: {
+      requestId: { type: 'string', required: true }, status: { type: 'string', required: true }, bindingSha256: { type: 'string', required: true },
+      sourceDraftId: { type: 'string', required: true }, sourceDraftVersion: { type: 'integer', required: true }, sourceDraftSha256: { type: 'string', required: true },
+      selectedParagraphSha256: { type: 'string', required: true }, mainTitle: { type: 'string', required: true }, subtitle: { type: 'string', required: true },
+      aspectRatio: { type: 'string', required: true }, content: { type: 'string', required: true }, asset: { ...mediaClaimSchema, required: true },
+      model: { type: 'string', required: true }, size: { type: 'string', required: true }, draftCreated: { type: 'boolean', required: true },
+    } }, render: (_args, value) => [{ type: 'text', text: `${value.content}\n\nSource-bound cover asset ${value.asset.assetId} generated by request ${value.requestId}; no Draft was created.` }] },
     async execute(args, execution) {
-      const prompt = bounded(args.prompt, 'prompt', 4_000); const r2PublisherId = ctx.prismPublishers.resolveMediaUploaderId(config.r2PublisherId)
-      const imageConfig = ctx.prismImageGenerationSettings.runtime(); const credential = await ctx.prismImageGenerationSettings.resolveCredential()
-      if (!credential?.value) throw new Error('OpenAI image API credential is unavailable')
-      const endpoint = openAiEndpoint(imageConfig.imageApiUrl); const protocol = imageApiProtocol(imageConfig, endpoint); const model = bounded(imageConfig.imageModel, 'imageModel', 256)
-      const requestBody = protocol === 'images-generations'
-        ? { model, prompt, n: 1, size: bounded(imageConfig.imageSize, 'imageSize', 64), response_format: 'url', stream: false }
-        : { model, messages: [{ role: 'user', content: prompt }], stream: false }
-      const response = await fetch(endpoint.toString(), { method: 'POST', redirect: 'error', signal: execution.signal, headers: { authorization: `Bearer ${credential.value}`, accept: 'application/json', 'content-type': 'application/json' }, body: JSON.stringify(requestBody) })
-      const value = await readJsonBounded(response); if (!response.ok) throw new Error(`OpenAI-compatible image generation failed (${response.status})`)
-      const reference = generatedImageReference(value); let bytes; let sourceMime; let encoded
-      if (reference.dataUrl) { const parsed = decodeDataUrl(reference.dataUrl); encoded = parsed.base64; sourceMime = parsed.mime } else encoded = reference.base64
-      if (typeof encoded === 'string') {
-        if (!/^[A-Za-z0-9+/]+={0,2}$/u.test(encoded) || encoded.length > 45 * 1024 * 1024) throw new Error('OpenAI-compatible response returned invalid base64 image data')
-        bytes = Buffer.from(encoded, 'base64'); if (!bytes.length || bytes.length > 32 * 1024 * 1024) throw new Error('OpenAI-compatible response returned oversized image data')
-        let metadata; try { metadata = await sharp(bytes, { failOn: 'error', limitInputPixels: 100_000_000 }).metadata() } catch { throw new Error('OpenAI image generation returned undecodable image data') }
-        sourceMime = imageMimeFromFormat(metadata.format); if (!sourceMime) throw new Error('OpenAI image generation returned an unsupported image format')
-      } else {
-        const image = await (ctx.get?.('prismMediaFetch') ?? mediaFetch)(reference.url, { kind: 'image', signal: execution.signal }); bytes = Buffer.from(await image.arrayBuffer())
-        sourceMime = String(image.headers.get('content-type') ?? '').split(';', 1)[0].trim().toLowerCase()
+      const request = await ctx.prismProduction.createCoverAssetRequestFromDraft(args)
+      const generated = await ctx.prismProduction.generateCoverAsset(request.requestId, execution,
+        async (binding, runExecution) => generateProductionImage(ctx, config, buildCoverAssetPrompt(binding), runExecution))
+      return {
+        requestId: generated.request.requestId, status: generated.request.status, bindingSha256: generated.request.workflowInputSha256,
+        sourceDraftId: generated.binding.sourceDraft.draftId, sourceDraftVersion: generated.binding.sourceDraft.version,
+        sourceDraftSha256: generated.binding.sourceDraft.sha256,
+        selectedParagraphSha256: createHash('sha256').update(generated.binding.selectedParagraph).digest('hex'),
+        mainTitle: generated.binding.mainTitle, subtitle: generated.binding.subtitle, aspectRatio: generated.binding.aspectRatio,
+        content: generated.content, asset: generated.asset, model: generated.model, size: generated.size, draftCreated: false,
       }
-      const converted = await convertImageForR2(bytes, sourceMime, imageConfig)
-      const asset = await ctx.prismProductionMedia.ingest(converted.claimBytes)
-      const upload = await ctx.prismPublishers.uploadMedia(r2PublisherId, converted.uploadBytes, converted.uploadMime, { signal: execution.signal })
-      return { content: `![生成图片](${upload.publicUrl})`, asset, model: imageConfig.imageModel, size: imageConfig.imageSize }
     },
   }))
 
@@ -469,16 +518,45 @@ export function apply(ctx, config) {
   }))
 
   registerPrismFlowTool(ctx, defineTool({
+    name: 'prismflow_prepare_repeat_publication',
+    description: 'Prepare the exact arguments for one newly requested repeat publication. Call this only after the user explicitly asks to publish a previously published Draft again. It validates the published Artifact and previously used destination, then generates the canonical lowercase UUID idempotency key required by prismflow_publish. Copy the returned fields exactly; never invent an intentId. Reuse that same intentId only when replaying the same attempted repeat after a transport interruption. Call this tool again for a separate deliberate repeat.',
+    parameters: {
+      draftId: { type: 'string', required: true }, draftVersion: { type: 'integer', required: true },
+      artifactSha256: { type: 'string', required: true }, publisherId: { type: 'string', required: true },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: {
+        draftId: { type: 'string', required: true }, draftVersion: { type: 'integer', required: true },
+        artifactSha256: { type: 'string', required: true }, publisherId: { type: 'string', required: true },
+        intent: { type: 'string', required: true, enum: ['repeat'] }, intentId: { type: 'string', required: true },
+        publicationIntent: { type: 'string', required: true, enum: ['explicit-user-approved-publication'] },
+      } },
+      render: (_args, value) => [{ type: 'text', text: `Repeat publication prepared for ${value.draftId} through ${value.publisherId}. Pass the returned fields unchanged to prismflow_publish. Reuse intentId ${value.intentId} only for transport replay of this same repeat.` }],
+    },
+    async execute(args) {
+      const publisherId = bounded(args.publisherId, 'publisherId', 256)
+      const draft = approvedDraft(ctx, args)
+      if (draft.status !== 'published') throw new Error('Repeat publication preparation requires a published Draft')
+      if (!ctx.prismPublishers.list().some(item => item.id === publisherId)) throw new Error(`Unknown configured PrismFlow publisher: ${publisherId}`)
+      if (!Array.isArray(draft.publishedPublisherIds) || !draft.publishedPublisherIds.includes(publisherId)) {
+        throw new Error('Repeat publication preparation requires a destination previously used by this Draft')
+      }
+      return { draftId: draft.draftId, draftVersion: draft.version, artifactSha256: draft.sha256, publisherId,
+        intent: 'repeat', intentId: randomUUID().toLowerCase(), publicationIntent: 'explicit-user-approved-publication' }
+    },
+  }))
+
+  registerPrismFlowTool(ctx, defineTool({
     name: 'prismflow_publish',
-    description: 'Publish one exact approved PrismFlow Draft through a configured Local, GitHub, R2, or WeChat destination. It accepts no raw content or destination configuration and always uses the durable Attempt/Receipt barrier.',
-    parameters: { draftId: { type: 'string', required: true }, draftVersion: { type: 'integer', required: true }, artifactSha256: { type: 'string', required: true }, publisherId: { type: 'string', required: true }, intent: { type: 'string', required: true, enum: ['initial', 'repeat'] }, intentId: { type: 'string' }, publicationIntent: { type: 'string', required: true, enum: ['explicit-user-approved-publication'] } },
+    description: 'Publish one exact approved PrismFlow Draft through a configured Local, GitHub, R2, or WeChat destination. It accepts no raw content or destination configuration and always uses the durable Attempt/Receipt barrier. For a new repeat, first call prismflow_prepare_repeat_publication and copy its complete output unchanged. Never guess a repeat intentId; reuse one only to replay that exact attempted repeat after a transport interruption.',
+    parameters: { draftId: { type: 'string', required: true }, draftVersion: { type: 'integer', required: true }, artifactSha256: { type: 'string', required: true }, publisherId: { type: 'string', required: true }, intent: { type: 'string', required: true, enum: ['initial', 'repeat'] }, intentId: { type: 'string', description: 'Required for repeat. Obtain it from prismflow_prepare_repeat_publication; never invent it. Reuse it only for transport replay of the same repeat attempt.' }, publicationIntent: { type: 'string', required: true, enum: ['explicit-user-approved-publication'] } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => renderPublication(value) },
     async execute(args, execution) {
       if (args.publicationIntent !== 'explicit-user-approved-publication') throw new Error('An explicit user publication intent is required')
       const publisherId = bounded(args.publisherId, 'publisherId', 256); approvedDraft(ctx, args)
       if (!ctx.prismPublishers.list().some(item => item.id === publisherId)) throw new Error(`Unknown configured PrismFlow publisher: ${publisherId}`)
       if (args.intent === 'initial') return ctx.prismProduction.publish(args.draftId, publisherId, { signal: execution.signal, trigger: 'manual', surface: 'chat' })
-      if (!UUID.test(args.intentId ?? '')) throw new Error('Repeat publication requires a canonical intentId')
+      if (!UUID.test(args.intentId ?? '')) throw new Error('Repeat publication requires a canonical intentId from prismflow_prepare_repeat_publication')
       return ctx.prismProduction.republishExact(args.draftId, publisherId, args.draftVersion, args.artifactSha256, args.intentId, { signal: execution.signal, trigger: 'manual', surface: 'chat' })
     },
   }))

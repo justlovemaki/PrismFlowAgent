@@ -1,6 +1,6 @@
 // Generated from src/core/content/AIContentSelection.ts by integrations/dsh/scripts/sync-shared.mjs.
 import { createHash } from 'node:crypto';
-export const AI_CONTENT_SELECTION_STRATEGY_VERSION = 'ai-selection-v4';
+export const AI_CONTENT_SELECTION_STRATEGY_VERSION = 'ai-selection-v7';
 const STOPWORDS = new Set([
     'the', 'a', 'an', 'and', 'or', 'for', 'of', 'to', 'in', 'on', 'with', 'from', 'by',
     'new', 'latest', 'today', 'report', 'update', 'announces', 'launches',

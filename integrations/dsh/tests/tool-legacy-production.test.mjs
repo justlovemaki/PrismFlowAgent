@@ -11,7 +11,7 @@ const config = { imageApiKeyCredential: 'IMAGE_API_KEY', imageApiUrl: 'https://i
 function harness(runtimeConfig = config, services = {}) {
   const tools = new Map(); const calls = []
   const draft = { draftId: 'draft-1', version: 2, sha256: 'a'.repeat(64), status: 'approved', title: 'A & B', markdown: '# Safe & sound\n\n**Bold** and [source](https://example.com/a?x=1&y=2).', approvedAt: '2026-01-02T00:00:00.000Z' }
-  const history = { draftId: 'draft-0', version: 1, sha256: 'b'.repeat(64), status: 'published', title: 'Historical item', markdown: '# Earlier', approvedAt: '2026-01-01T00:00:00.000Z' }
+  const history = { draftId: 'draft-0', version: 1, sha256: 'b'.repeat(64), status: 'published', title: 'Historical item', markdown: '# Earlier', approvedAt: '2026-01-01T00:00:00.000Z', publishedPublisherIds: ['github-markdown:daily'] }
   const unapproved = { draftId: 'draft-pending', version: 1, sha256: 'c'.repeat(64), status: 'draft', title: 'Pending item', markdown: '# Pending', updatedAt: '2026-01-03T00:00:00.000Z' }
   const drafts = [draft, history, unapproved]
   const toolsets = { isToolEnabled: () => true }
@@ -42,7 +42,7 @@ test('FFmpeg supports cross-system defaults, manual paths, PATH executable names
 
 test('compatibility and publication tools are native, and RSS generation converts and locally persists exact-approved HTML', async () => {
   const { tools, persistedRss } = harness()
-  assert.deepEqual([...tools.keys()], ['prismflow_process_markdown_media', 'prismflow_image_generation', 'prismflow_trigger_insight_daily_build', 'prismflow_generate_rss_content', 'prismflow_publishers', 'prismflow_publish', 'prismflow_github_push'])
+  assert.deepEqual([...tools.keys()], ['prismflow_process_markdown_media', 'prismflow_image_generation', 'prismflow_generate_cover_asset_from_draft', 'prismflow_trigger_insight_daily_build', 'prismflow_generate_rss_content', 'prismflow_publishers', 'prismflow_prepare_repeat_publication', 'prismflow_publish', 'prismflow_github_push'])
   assert.equal(tools.get('prismflow_github_push').parameters.properties.targets.items.type, 'string')
   assert.equal(tools.get('prismflow_github_push').parameters.properties.targets.items.enum, undefined)
   const rss = await tools.get('prismflow_generate_rss_content').execute({ draftId: 'draft-1', draftVersion: 2, artifactSha256: 'a'.repeat(64) }, execution)
@@ -144,6 +144,40 @@ test('prismflow_image_generation streams and persists a multi-megabyte b64_json 
   assert.equal(request.url, config.imageApiUrl); assert.equal(request.body.stream, false); assert.equal(request.body.model, config.imageModel); assert.equal(request.init.headers.authorization, 'Bearer write-only-secret')
 })
 
+test('prismflow_generate_cover_asset_from_draft returns a source-bound Claim without creating a Draft or enforcing output pixel ratio', async () => {
+  const png = await sharp({ create: { width: 1024, height: 1024, channels: 3, background: '#203060' } }).png().toBuffer()
+  const tools = new Map(); const claim = { assetId: 'e'.repeat(64), sha256: 'e'.repeat(64), bytes: png.length, mime: 'image/png', width: 1024, height: 1024 }
+  let createArgs; let prompt; let draftCalls = 0
+  const binding = { kind: 'PrismFlowDraftCoverAssetInput/v1', sourceDraft: { draftId: 'published-1', version: 4, sha256: 'a'.repeat(64), title: 'AI 日报' },
+    selectedParagraph: '这是逐字复制的完整段落。', mainTitle: 'AI资讯日报', subtitle: '智能体商业化加速', aspectRatio: '2:3' }
+  const ctx = { get: key => key === 'prismToolsets' ? { isToolEnabled: () => true } : undefined,
+    tools: { register(tool) { tools.set(tool.name, tool); return () => {} } }, credentials: {},
+    prismImageGenerationSettings: { runtime() { return { imageApiUrl: config.imageApiUrl, imageApiProtocol: config.imageApiProtocol, imageModel: config.imageModel,
+      imageSize: '1024x1536', avifQuality: config.avifQuality, avifEffort: config.avifEffort } }, async resolveCredential() { return { value: 'secret' } } },
+    prismProductionMedia: { async ingest() { return claim } },
+    prismPublishers: { resolveMediaUploaderId() { return 'r2-markdown:media' }, async uploadMedia() { return { publicUrl: 'https://cdn.example/media/cover.avif' } } },
+    prismProduction: {
+      async createCoverAssetRequestFromDraft(args) { createArgs = structuredClone(args); return { requestId: 'cover-request-1', workflowInputSha256: 'f'.repeat(64) } },
+      async generateCoverAsset(requestId, runExecution, renderer) {
+        assert.equal(requestId, 'cover-request-1'); const output = await renderer(binding, runExecution)
+        return { request: { requestId, status: 'completed', workflowInputSha256: 'f'.repeat(64) }, binding, ...output }
+      },
+      async generate() { draftCalls += 1 },
+    } }
+  apply(ctx, { ...config, r2PublisherId: 'r2-markdown:media' })
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = async (_url, init) => { prompt = JSON.parse(init.body).prompt; return new Response(JSON.stringify({ data: [{ b64_json: png.toString('base64') }] }), { status: 200, headers: { 'content-type': 'application/json' } }) }
+  try {
+    const result = await tools.get('prismflow_generate_cover_asset_from_draft').execute({ sourceDraftId: 'published-1', expectedVersion: 4,
+      expectedSha256: 'a'.repeat(64), selectedParagraph: binding.selectedParagraph, mainTitle: binding.mainTitle, subtitle: binding.subtitle, aspectRatio: '2:3' }, { ...execution, agent: {} })
+    assert.equal(result.requestId, 'cover-request-1'); assert.equal(result.draftCreated, false); assert.deepEqual(result.asset, claim)
+    assert.equal(result.selectedParagraphSha256, createHash('sha256').update(binding.selectedParagraph).digest('hex'))
+    assert.match(prompt, /AI资讯日报/u); assert.match(prompt, /untrusted reference material/u); assert.equal(draftCalls, 0)
+    assert.deepEqual(createArgs, { sourceDraftId: 'published-1', expectedVersion: 4, expectedSha256: 'a'.repeat(64),
+      selectedParagraph: binding.selectedParagraph, mainTitle: binding.mainTitle, subtitle: binding.subtitle, aspectRatio: '2:3' })
+  } finally { globalThis.fetch = originalFetch }
+})
+
 test('prismflow_image_generation supports an explicitly configured HTTP Chat Completions endpoint and Markdown image response', async () => {
   const png = await sharp({ create: { width: 2, height: 2, channels: 3, background: '#654321' } }).png().toBuffer(); const tools = new Map(); let request
   const chatConfig = { ...config, imageApiUrl: 'http://images.example/v1/chat/completions', imageApiProtocol: 'auto' }; const claim = { assetId: 'd'.repeat(64), sha256: 'd'.repeat(64), bytes: 10, mime: 'image/png', width: 2, height: 2 }; const toolsets = { isToolEnabled: () => true }
@@ -154,13 +188,25 @@ test('prismflow_image_generation supports an explicitly configured HTTP Chat Com
   assert.equal(request.url, chatConfig.imageApiUrl); assert.equal(request.body.stream, false); assert.deepEqual(request.body.messages, [{ role: 'user', content: 'draw' }]); assert.equal(request.body.prompt, undefined)
 })
 
-test('generic Chat publication lists only configured destinations and enforces exact approved Artifact plus explicit intent', async () => {
+test('generic Chat publication lists configured destinations and prepares a server-generated repeat intent', async () => {
   const { tools, calls } = harness(); const publishers = await tools.get('prismflow_publishers').execute({}, execution)
   assert.deepEqual(publishers.map(item => item.id), ['github-markdown:daily'])
   const publish = tools.get('prismflow_publish')
   const receipt = await publish.execute({ draftId: 'draft-1', draftVersion: 2, artifactSha256: 'a'.repeat(64), publisherId: 'github-markdown:daily', intent: 'initial', publicationIntent: 'explicit-user-approved-publication' }, execution)
   assert.equal(receipt.receiptId, 'receipt-1'); assert.equal(calls[0][1], 'github-markdown:daily')
   await assert.rejects(publish.execute({ draftId: 'draft-1', draftVersion: 2, artifactSha256: 'a'.repeat(64), publisherId: 'wechat-draft:unknown', intent: 'initial', publicationIntent: 'explicit-user-approved-publication' }, execution), /Unknown configured/)
+
+  const prepare = tools.get('prismflow_prepare_repeat_publication')
+  const prepared = await prepare.execute({ draftId: 'draft-0', draftVersion: 1, artifactSha256: 'b'.repeat(64), publisherId: 'github-markdown:daily' }, execution)
+  assert.deepEqual({ ...prepared, intentId: undefined }, { draftId: 'draft-0', draftVersion: 1, artifactSha256: 'b'.repeat(64),
+    publisherId: 'github-markdown:daily', intent: 'repeat', intentId: undefined, publicationIntent: 'explicit-user-approved-publication' })
+  assert.match(prepared.intentId, /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u)
+  assert.match(prepare.output.render({}, prepared)[0].text, new RegExp(prepared.intentId, 'u'))
+  const repeated = await publish.execute(prepared, execution)
+  assert.equal(repeated.receiptId, 'receipt-2'); assert.equal(calls[1][4], prepared.intentId)
+  await assert.rejects(prepare.execute({ draftId: 'draft-1', draftVersion: 2, artifactSha256: 'a'.repeat(64), publisherId: 'github-markdown:daily' }, execution), /requires a published Draft/u)
+  const { intentId: _omittedIntentId, ...missingIntentId } = prepared
+  await assert.rejects(publish.execute(missingIntentId, execution), /from prismflow_prepare_repeat_publication/u)
 })
 
 test('prismflow_github_push extracts missing metadata once for a multi-target push', async () => {

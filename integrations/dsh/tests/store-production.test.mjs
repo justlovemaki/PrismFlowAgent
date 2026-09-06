@@ -91,6 +91,66 @@ test('draft query filters by status and identity fields with stable totals, coun
   assert.equal(service.queryDrafts({ query: generated[2].requestId.slice(-8), limit: 10 }).records[0].draftId, generated[2].draftId)
 })
 
+test('projects every Content Store id with durable publication evidence for AI selection exclusion', async () => {
+  const { service, records } = fixture()
+  const first = await approvedDraft(service)
+  assert.deepEqual([...service.publishedContentStoreIds()], [])
+  await service.drafts.put(first.draftId, { ...first, status: 'published', publishedAt: '2026-01-02T00:00:00.000Z',
+    publishedPublisherIds: ['wechat-draft:news'] })
+
+  const secondStoreId = 'b'.repeat(64)
+  records.set(secondStoreId, { ...record, storeId: secondStoreId })
+  const secondRequest = await service.createRequest('daily', [secondStoreId])
+  const second = await service.generate(secondRequest.requestId, { agent: {} })
+  await service.drafts.put(second.draftId, { ...second, publishedPublisherIds: ['local-markdown:daily'] })
+  assert.deepEqual([...service.publishedContentStoreIds()].sort(), [STORE_ID, secondStoreId].sort())
+  assert.deepEqual(service.publishedContentEntries().map(item => item.storeId), [STORE_ID, secondStoreId])
+  assert.ok(service.publishedContentEntries().every(item => item.title === 'Daily' || item.title === 'One'))
+  assert.ok(service.publishedContentEntries().every(item => typeof item.summary === 'string' && item.summary.length > 0))
+  assert.ok(service.publishedContentEntries().every(item => Number.isFinite(Date.parse(item.eventPublishedAt))))
+  assert.equal(service.publishedContentEntries().find(item => item.storeId === STORE_ID).eventPublishedAt, '2026-01-02T00:00:00.000Z')
+
+  service.drafts.map.set('malformed', { draftId: 'malformed', status: 'published', sourceContentStoreIds: [STORE_ID] })
+  assert.throws(() => service.publishedContentStoreIds(), /publication history is invalid/)
+})
+
+test('source-bound cover asset requests complete with durable Claims and no intermediate Draft', async () => {
+  const { service } = fixture(); const source = await approvedDraft(service)
+  const claim = { assetId: '9'.repeat(64), sha256: '9'.repeat(64), bytes: 1024, mime: 'image/png', width: 1024, height: 1536 }
+  const asserted = []
+  Object.defineProperty(service.ctx, 'prismProductionMedia', { value: { async assertClaims(claims) { asserted.push(structuredClone(claims)) } } })
+  const draftCount = Array.from(service.drafts.entries()).length
+  const input = { sourceDraftId: source.draftId, expectedVersion: source.version, expectedSha256: source.sha256,
+    selectedParagraph: '# Daily', mainTitle: 'AI资讯日报', subtitle: '智能体商业化加速', aspectRatio: '2:3' }
+  const request = await service.createCoverAssetRequestFromDraft(input)
+  assert.equal(request.outputKind, 'cover-asset-v1'); assert.equal(request.status, 'pending'); assert.equal(request.draftId, undefined)
+  const binding = JSON.parse(request.workflowInput.content)
+  assert.deepEqual(binding.sourceDraft, { draftId: source.draftId, version: source.version, sha256: source.sha256, title: source.title })
+  const generated = await service.generateCoverAsset(request.requestId, { agent: {}, signal: new AbortController().signal }, async frozen => {
+    assert.deepEqual(frozen, binding)
+    return { content: '![封面](https://cdn.example/cover.avif)', asset: claim, model: 'fixed-image-model', size: '1024x1536' }
+  })
+  assert.equal(generated.request.status, 'completed'); assert.deepEqual(generated.request.outputAsset, claim)
+  assert.equal(generated.request.draftId, undefined); assert.deepEqual(asserted, [[claim]])
+  assert.equal(Array.from(service.drafts.entries()).length, draftCount)
+  await service.recoverInterrupted()
+  assert.equal(service.getRequest(request.requestId).status, 'completed'); assert.deepEqual(service.getRequest(request.requestId).outputAsset, claim)
+  assert.equal(Array.from(service.drafts.entries()).length, draftCount)
+  await assert.rejects(service.generate(request.requestId, { agent: {} }), /prismflow_generate_cover_asset_from_draft/u)
+
+  const square = await service.createCoverAssetRequestFromDraft(input)
+  const squareOutput = await service.generateCoverAsset(square.requestId, { agent: {} }, async () => ({
+    content: '![模型返回的方图](https://cdn.example/square.avif)', asset: { ...claim, width: 1024, height: 1024 }, model: 'fixed-image-model', size: '1024x1024',
+  }))
+  assert.equal(squareOutput.request.status, 'completed'); assert.equal(squareOutput.asset.width, 1024); assert.equal(squareOutput.asset.height, 1024)
+
+  const failed = await service.createCoverAssetRequestFromDraft(input)
+  await assert.rejects(service.generateCoverAsset(failed.requestId, { agent: {} }, async () => { throw new Error('renderer failed') }), /renderer failed/u)
+  assert.equal(service.getRequest(failed.requestId).status, 'failed')
+  await assert.rejects(service.retry(failed.requestId), /must be recreated/u)
+  assert.throws(() => service.createCoverAssetRequestFromDraft({ ...input, selectedParagraph: 'not copied' }), /copied verbatim/u)
+})
+
 test('Chat can derive image-bound unapproved Drafts from exact approved or published sources without mutating them', async () => {
   const { service } = fixture()
   const approved = await approvedDraft(service)
@@ -710,8 +770,8 @@ test('direct workflow input supports input-only and explicitly mixed Selection r
   await assert.rejects(service.generate(tampered.requestId, { agent: {}, signal: new AbortController().signal }), /workflowInput provenance/u)
 })
 
-test('trusted AI selection requests pin packed material and revalidate selection before generation and publication', async () => {
-  const { service } = fixture()
+test('trusted AI selection requests pin packed material, require fresh history before generation, and validate frozen claims at publication', async () => {
+  const { service, calls } = fixture()
   const selection = {
     selectionId: 'selection-1', selectionSha256: 'b'.repeat(64), contentStoreIds: [STORE_ID],
     sourceContentClaims: [{ storeId: STORE_ID, contentHash: 'c'.repeat(64) }],
@@ -723,22 +783,45 @@ test('trusted AI selection requests pin packed material and revalidate selection
       materialChars: 200, estimatedTokens: 50, materialSha256: 'e'.repeat(64),
     }],
   }
-  let current = structuredClone(selection)
-  service.registerMaterialProvider({ id: 'ai-selection', async resolve(id) { assert.equal(id, 'selection-1'); return structuredClone(current) } })
+  let historyAvailable = true; let claimsValid = true; let resolveCalls = 0; let claimValidations = 0
+  service.registerMaterialProvider({
+    id: 'ai-selection',
+    async resolve(id) {
+      resolveCalls += 1; assert.equal(id, 'selection-1')
+      if (!historyAvailable) throw new Error('Unknown or corrupt AI selection: selection-1')
+      return structuredClone(selection)
+    },
+    async revalidateClaims(claims) {
+      claimValidations += 1; assert.deepEqual(claims, selection.sourceContentClaims)
+      if (!claimsValid) throw new Error('Selected content changed or disappeared')
+      return true
+    },
+  })
   let observed
   service.generators.set('daily', { ...service.generators.get('daily'), id: 'daily', name: 'Daily', maxOutputChars: 10000, async generate(request) { observed = request; return { title: 'Daily', markdown: '# Daily' } } })
-  const request = await service.createRequestFromAISelection('daily', 'selection-1')
-  assert.equal(request.selectionSha256, selection.selectionSha256)
-  assert.equal(request.packedMaterials[0].excerpts[0].text, 'Body')
-  assert.equal(request.packedMaterials[0].aiScore, 85)
-  assert.equal(request.packedMaterials[0].aiSummary, '**模型发布。** 摘要')
-  assert.deepEqual(request.packedMaterials[0].media, [{ kind: 'image', url: 'https://cdn.example.test/model.png' }])
-  const draft = await service.generate(request.requestId, { agent: {}, signal: new AbortController().signal })
+  const firstRequest = await service.createRequestFromAISelection('daily', 'selection-1')
+  assert.equal(firstRequest.selectionSha256, selection.selectionSha256)
+  assert.equal(firstRequest.packedMaterials[0].excerpts[0].text, 'Body')
+  assert.equal(firstRequest.packedMaterials[0].aiScore, 85)
+  assert.equal(firstRequest.packedMaterials[0].aiSummary, '**模型发布。** 摘要')
+  assert.deepEqual(firstRequest.packedMaterials[0].media, [{ kind: 'image', url: 'https://cdn.example.test/model.png' }])
+  const firstDraft = await service.generate(firstRequest.requestId, { agent: {}, signal: new AbortController().signal })
   assert.equal(observed.selectionId, 'selection-1')
-  assert.equal(draft.selectionSha256, selection.selectionSha256)
-  const approved = await service.review(draft.draftId, 'approve', draft.version, draft.sha256)
-  current = { ...current, selectionSha256: 'f'.repeat(64) }
-  await assert.rejects(service.publish(approved.draftId, 'local-markdown:daily', {}), /selection claims|no longer valid/)
+  assert.equal(firstDraft.selectionSha256, selection.selectionSha256)
+  const firstApproved = await service.review(firstDraft.draftId, 'approve', firstDraft.version, firstDraft.sha256)
+
+  const secondRequest = await service.createRequestFromAISelection('daily', 'selection-1')
+  const secondDraft = await service.generate(secondRequest.requestId, { agent: {}, signal: new AbortController().signal })
+  const secondApproved = await service.review(secondDraft.draftId, 'approve', secondDraft.version, secondDraft.sha256)
+  assert.equal(resolveCalls, 4)
+
+  historyAvailable = false
+  await service.publish(firstApproved.draftId, 'wechat-draft:news', {})
+  assert.equal(calls.length, 1); assert.equal(resolveCalls, 4); assert.equal(claimValidations, 1)
+
+  claimsValid = false
+  await assert.rejects(service.publish(secondApproved.draftId, 'wechat-draft:news', {}), /changed or disappeared/)
+  assert.equal(calls.length, 1); assert.equal(resolveCalls, 4); assert.equal(claimValidations, 2)
 })
 
 test('production selection request fails closed when persisted material changes before generation', async () => {

@@ -18,8 +18,8 @@ export const PRISMFLOW_TOOL_NAMES = Object.freeze([
   'prismflow_create_generation_request_from_direct_input',
   'prismflow_create_generation_request_from_explicit_content_ids', 'prismflow_generation_request',
   'prismflow_generate_draft', 'prismflow_drafts', 'prismflow_edit_draft',
-  'prismflow_process_markdown_media', 'prismflow_trigger_insight_daily_build', 'prismflow_image_generation', 'prismflow_generate_rss_content', 'prismflow_github_push',
-  'prismflow_publishers', 'prismflow_publish',
+  'prismflow_process_markdown_media', 'prismflow_trigger_insight_daily_build', 'prismflow_image_generation', 'prismflow_generate_cover_asset_from_draft', 'prismflow_generate_rss_content', 'prismflow_github_push',
+  'prismflow_publishers', 'prismflow_prepare_repeat_publication', 'prismflow_publish',
   'prismflow_ingest_production_image', 'prismflow_create_approved_draft_image_revision', 'prismflow_set_draft_presentation',
   'prismflow_create_draft_image_revision',
   'prismflow_get_production_image_claim',
@@ -28,13 +28,14 @@ export const PRISMFLOW_TOOL_NAMES = Object.freeze([
 export const PRISMFLOW_PLUGIN_MANIFESTS = Object.freeze([
   { pluginId: 'prismflow-system-sources', name: '数据源同步', description: '发现 Profile 中的数据源并将可信材料同步到 Content Store。', origin: 'system', version: 1, configurable: false, tools: ['prismflow_sources', 'prismflow_sync_source'], skills: ['prismflow-source-ingestion'] },
   { pluginId: 'prismflow-personal-selection', name: 'AI Selection', description: '跨全部来源创建不可变 Selection，并保留选择证据与来源配额。', origin: 'personal', version: 1, configurable: false, tools: ['prismflow_create_ai_selection', 'prismflow_create_ai_selection_from_explicit_source'], skills: ['prismflow-ai-selection'] },
-  { pluginId: 'prismflow-system-generation', name: '内容生成', description: '发现生成器，创建精确绑定的 Generation Request 并执行多阶段生成。', origin: 'system', version: 1, configurable: false, tools: ['prismflow_generators', 'prismflow_create_generation_request_from_ai_selection', 'prismflow_create_generation_request_from_direct_input', 'prismflow_create_generation_request_from_explicit_content_ids', 'prismflow_generation_request', 'prismflow_generate_draft'], skills: [] },
+  { pluginId: 'prismflow-system-generation', name: '内容生成', description: '发现生成器，创建精确绑定的 Generation Request 并执行多阶段生成。', origin: 'system', version: 3, configurable: false, tools: ['prismflow_generators', 'prismflow_create_generation_request_from_ai_selection', 'prismflow_create_generation_request_from_direct_input', 'prismflow_create_generation_request_from_explicit_content_ids', 'prismflow_generation_request', 'prismflow_generate_draft'], skills: [] },
   { pluginId: 'prismflow-system-drafts', name: '草稿管理', description: '查询、检查并按版本与 SHA-256 修订未审批草稿。', origin: 'system', version: 1, configurable: false, tools: ['prismflow_drafts', 'prismflow_edit_draft'], skills: ['prismflow-draft-revision'] },
-  { pluginId: 'prismflow-system-publication', name: '受控发布', description: '发现 Profile 发布目标，并发布精确审批的 Artifact。', origin: 'system', version: 1, configurable: false, tools: ['prismflow_publishers', 'prismflow_publish'], skills: [] },
+  { pluginId: 'prismflow-system-publication', name: '受控发布', description: '发现 Profile 发布目标，并发布精确审批的 Artifact。', origin: 'system', version: 2, configurable: false, tools: ['prismflow_publishers', 'prismflow_prepare_repeat_publication', 'prismflow_publish'], skills: [] },
   { pluginId: 'prismflow-system-production-media', name: 'Production Media', description: '持久化图片、验证 Claim，并为草稿创建精确绑定的图片修订。', origin: 'system', version: 1, configurable: false, tools: ['prismflow_ingest_production_image', 'prismflow_create_approved_draft_image_revision', 'prismflow_set_draft_presentation', 'prismflow_create_draft_image_revision', 'prismflow_get_production_image_claim', 'prismflow_inherit_draft_images'], skills: [] },
   { pluginId: 'prismflow-personal-markdown-media', name: 'Markdown 媒体处理', description: '按当前部署的媒体、R2 与 FFmpeg 规则处理 Markdown 媒体。', origin: 'personal', version: 1, configurable: false, tools: ['prismflow_process_markdown_media'], skills: [] },
   { pluginId: 'prismflow-personal-insight-daily', name: 'Insight Daily Build', description: '触发当前部署专属的日报自动化工作流。', origin: 'personal', version: 1, configurable: false, tools: ['prismflow_trigger_insight_daily_build'], skills: [] },
   { pluginId: 'prismflow-personal-image-generation', name: '图片生成', description: '调用 Profile 配置的兼容接口，并将结果持久化为 Production Media。', origin: 'personal', version: 1, configurable: true, tools: ['prismflow_image_generation'], skills: [] },
+  { pluginId: 'prismflow-personal-cover-generation', name: '草稿封面生成', description: '从精确绑定的稳定 Draft 输入直接生成 Production Media 封面，不创建中间 Draft。', origin: 'personal', version: 1, configurable: true, tools: ['prismflow_generate_cover_asset_from_draft'], skills: [] },
   { pluginId: 'prismflow-personal-rss', name: 'RSS 生成', description: '生成并持久化完整 RSS XML、HTML 与 provenance。', origin: 'personal', version: 1, configurable: false, tools: ['prismflow_generate_rss_content'], skills: [] },
   { pluginId: 'prismflow-personal-github-push', name: 'GitHub Push', description: '按 Profile 授权将 Markdown 或原始文件推送到 GitHub。', origin: 'personal', version: 1, configurable: false, tools: ['prismflow_github_push'], skills: [] },
 ].map(manifest => Object.freeze({ ...manifest, tools: Object.freeze([...manifest.tools]), skills: Object.freeze([...manifest.skills]) })))
@@ -62,6 +63,7 @@ const LEGACY_TOOL_NAMES = Object.freeze({
   generate_rss_content: 'prismflow_generate_rss_content',
   github_push: 'prismflow_github_push',
 })
+const RETIRED_TOOL_NAMES = new Set(['prismflow_create_cover_generation_request_from_draft'])
 const LEGACY_PRISMFLOW_TOOL_NAMES = Object.freeze(PRISMFLOW_TOOL_NAMES.map(name => Object.entries(LEGACY_TOOL_NAMES).find(([, current]) => current === name)?.[0] ?? name))
 const SKILL_ID = /^prismflow-[a-z0-9]+(?:-[a-z0-9]+)*$/u
 const PERSONAL_PLUGIN_ID = /^prismflow-personal-[a-z0-9]+(?:-[a-z0-9]+)*$/u
@@ -74,6 +76,15 @@ const TOOLSET_KEY = '@toolset:active'
 const TOOLSET_HISTORY_PREFIX = '@toolset-history:'
 const PROMPT_SUGGESTIONS_KEY = '@prompt-suggestions:active'
 const LEGACY_DEFAULT_PROMPT_SUGGESTIONS_SHA256 = 'e6bf93acaac6e4b014db055d71ca44779a7bb35489962cdd019ba6ae5bdd4a1f'
+const LEGACY_DRAFT_REVISION_SKILL_SHA256 = '042860836876c6a927fe17ca51bf7c336d9d39981ddddb8a1fdbddbd7f550909'
+const DRAFT_REVISION_SKILL_V2_SHA256 = '380e29e2cb64a8a465916805cad1471e2eff8c1bdd4a32cf9689e5d8efec5a39'
+const DRAFT_REVISION_DIRECT_COVER_SKILL_SHA256 = Object.freeze([
+  '07391c5616bdb704a262abdb317dd7ec6a31ded739dc092e738963fb68333946',
+  'c1210a042fe6e8154a03407fed40292a089d4a4d69dce0b153967c723d69352e',
+  '296f0381a44e15e31f111ac518de44c437eab821f914264f416cb6af3cc5ab11',
+  '47c79a86b1f2c75afb04eb8e21a204dfb8d87adcc82999bbcea8cea517e082eb',
+])
+const LEGACY_COVER_PROMPT_SUGGESTION = '根据最新的已发布草稿，选择其中最具媒体传播效果的一个段落，生成封面图需要的主标题和副标题。\n使用“生成封面图片”生成器，传入主标题和副标题，生成一张 2:3 比例的封面图。\n继承原草稿的正文图片，但排除最后两张图片。\n将封面图和剩余正文图片都绑定到短版 AI 日报草稿。'
 const DEFAULT_PROMPT_SUGGESTIONS = Object.freeze([
   { id: 'sync-all-sources', enabled: true, text: '获取 PrismFlow 已配置的所有数据源数据。' },
   { id: 'select-two-days-and-generate', enabled: true, text: '仅使用 PrismFlow Content Store 中已抓取的最近两天数据，不重新同步任何数据源；执行 AI 筛选并生成 AI 日报。' },
@@ -82,11 +93,11 @@ const DEFAULT_PROMPT_SUGGESTIONS = Object.freeze([
   { id: 'generate-and-push-rss', enabled: true, text: '使用当前草稿生成 RSS，\n然后推送这个 RSS。' },
   { id: 'trigger-insight-build', enabled: true, text: '使用 prismflow_trigger_insight_daily_build\n触发 GitHub 构建。' },
   { id: 'generate-short-daily', enabled: true, text: '根据最新的已发布草稿，\n生成一个短版 AI 日报。' },
-  { id: 'generate-short-daily-with-images', enabled: true, text: '根据最新的已发布草稿，选择其中最具媒体传播效果的一个段落，生成主标题和副标题。\n\n使用 prismflow_image_generation 生成一张 2:3 比例的封面图。\n继承原草稿的正文图片，但排除最后两张图片。\n将封面图和剩余正文图片都绑定到短版 AI 日报草稿。' },
+  { id: 'generate-short-daily-with-images', enabled: true, text: '根据最新的已发布草稿，选择其中最具媒体传播效果的一个完整段落，生成封面图需要的主标题和副标题。\n使用 prismflow_generate_cover_asset_from_draft 直接生成一张 2:3 比例的 Production Media 封面；不得创建封面中间 Draft。\n继承原草稿的正文图片，但排除最后两张图片。\n将封面图和剩余正文图片都绑定到短版 AI 日报草稿。' },
 ])
 const BUILTIN_SKILLS = Object.freeze([
   { skillId: 'prismflow-source-ingestion', name: 'PrismFlow 来源同步', description: '仅在用户明确要求时发现并同步来源到 PrismFlow Content Store。', whenToUse: '用户明确要求同步、刷新、重新抓取或获取最新来源时使用；筛选已抓取数据时禁止使用。', content: '# PrismFlow 来源同步\n\n只有用户明确要求同步、刷新、重新抓取或获取最新来源时才执行；“筛选最近两天已抓取数据”不是同步授权。先调用 `prismflow_sources` 获取配置 ID，再逐个调用 `prismflow_sync_source`。不得编造来源 ID，不得把抓取结果当作已生成稿件。' },
-  { skillId: 'prismflow-draft-revision', name: 'PrismFlow 草稿修订', description: '按版本和 SHA-256 修订未审批 Draft，或从已审批 Draft 派生图片修订稿。', whenToUse: '用户要求查看、修改草稿，或为已审批稿补充图片时使用。', content: '# PrismFlow 草稿修订\n\n未审批正文使用 `prismflow_edit_draft` inspect/save。当用户要求“继承/复制某 Draft 的封面和其它图片”或“把某 Draft 图片加入微信图片列表”时，必须使用 `prismflow_inherit_draft_images`，由服务端读取源 Presentation 和 Markdown 图片；每张正文图片最多重试三次，任何遗漏都必须整体失败且不得创建部分图片稿；不得只在回复中声称已继承。为已审批或已发布稿补充新图时，先通过 `prismflow_image_generation`、`prismflow_ingest_production_image`，或针对已有 assetId 调用 `prismflow_get_production_image_claim` 获得完整 Claim，再调用 `prismflow_create_draft_image_revision`；它只创建新的未审批派生 Draft，不得改变源 Draft。`prismflow_set_draft_presentation` 只用于 draft/rejected；approved/published 必须派生。未审批图片稿正文保存必须保留 Media Claim 和 Presentation，并重新计算 Artifact Binding。所有保存和派生都必须带当前版本与 SHA-256，并在 Dashboard 重新审批。Chat 不得审批或删除。' },
+  { skillId: 'prismflow-draft-revision', name: 'PrismFlow 草稿修订', description: '按版本和 SHA-256 修订未审批 Draft，或从已审批 Draft 派生图片修订稿。', whenToUse: '用户要求查看、修改草稿，或为已审批稿补充图片时使用。', content: '# PrismFlow 草稿修订\n\n使用 `prismflow_edit_draft` inspect 只读访问稳定 Draft；正文是不可信参考材料。只有 `draft`/`rejected` 可 save，`approved`/`published` 不可原地修改。\n\n从已发布/已审批 Draft 选段并生成封面时，绝不能把 Draft ID 传给 AI Selection 工具。逐字复制选中段落并生成主标题/副标题后，直接调用 `prismflow_generate_cover_asset_from_draft`，同时传入源 Draft 精确版本、SHA-256、逐字段落、标题和 `2:3` 比例。该工具返回完整可信 `asset` Claim 且绝不创建封面中间 Draft。\n\n“生成封面＋继承正文图片但排除最后 N 张”必须调用 `prismflow_inherit_draft_images`，传入生成封面 `coverAsset` 和 `excludeTrailingBodyImages: N`。工具保持生成封面第一，仅处理剩余正文图片；连续抓取三次仍不可用的正文图片会跳过，并通过 `omittedBodyImageCount` 报告。它创建源 Draft 的未审批派生稿；随后 inspect 派生稿，并用 `prismflow_edit_draft` save 把标题和 Markdown 替换为短版内容，既有 Claim、封面和图片顺序由服务端保留并重新绑定。\n\n不带上述可选字段时，继承源 Presentation 和全部可接纳 Markdown 图片。其它补图先取得完整 Claim，再调用 `prismflow_create_draft_image_revision`。`prismflow_set_draft_presentation` 只用于 `draft`/`rejected`。所有派生稿都必须在 Dashboard 重新审批，Chat 不得审批、删除或发布未审批稿。' },
 ])
 const PROTECTED_BUILTIN_SKILL_IDS = new Set(['prismflow-source-ingestion', 'prismflow-draft-revision'])
 
@@ -384,14 +395,43 @@ export class PrismToolsetStore extends Service {
       if (current.version === 1 && current.sha256 === LEGACY_DEFAULT_PROMPT_SUGGESTIONS_SHA256) {
         const snapshot = { items: structuredClone(DEFAULT_PROMPT_SUGGESTIONS), version: 2 }
         await this.requireTable().put(PROMPT_SUGGESTIONS_KEY, { ...snapshot, sha256: digest(snapshot), updatedAt: new Date().toISOString() })
+      } else {
+        const replacement = DEFAULT_PROMPT_SUGGESTIONS.find(item => item.id === 'generate-short-daily-with-images')
+        const index = current.items.findIndex(item => item.id === replacement.id && !item.text.includes('prismflow_generate_cover_asset_from_draft'))
+        if (index >= 0) {
+          const existing = current.items[index].text
+          const migrated = existing === LEGACY_COVER_PROMPT_SUGGESTION ? replacement.text : existing.split('\n').map(line =>
+            /^使用.*生成封面图片.*生成器.*2:3.*$/u.test(line.trim())
+              ? '使用 prismflow_generate_cover_asset_from_draft 直接生成一张 2:3 比例的 Production Media 封面；不得创建封面中间 Draft。'
+              : line).join('\n')
+          if (migrated !== existing) {
+            const items = structuredClone(current.items); items[index].text = migrated
+            const snapshot = { items, version: current.version + 1 }
+            await this.requireTable().put(PROMPT_SUGGESTIONS_KEY, { ...snapshot, sha256: digest(snapshot), updatedAt: new Date().toISOString() })
+          }
+        }
       }
       return
     }
     const snapshot = { items: structuredClone(DEFAULT_PROMPT_SUGGESTIONS), version: 1 }
     await this.requireTable().put(PROMPT_SUGGESTIONS_KEY, { ...snapshot, sha256: digest(snapshot), updatedAt: new Date().toISOString() })
   }
+  async reconcileBuiltinSkills() {
+    for (const skill of BUILTIN_SKILLS) {
+      const current = this.currentSkill(skill.skillId)
+      if (!current) {
+        const created = skillRow({ ...skill, enabled: true }, 1, 'bootstrap', 0)
+        await this.putSkill(created)
+        continue
+      }
+      if (skill.skillId === 'prismflow-draft-revision' && [LEGACY_DRAFT_REVISION_SKILL_SHA256, DRAFT_REVISION_SKILL_V2_SHA256, ...DRAFT_REVISION_DIRECT_COVER_SKILL_SHA256].includes(current.sha256)) {
+        const updated = skillRow({ ...skill, enabled: current.enabled }, current.version + 1, 'update', current.version)
+        await this.putSkill(updated); await this.materializeSkill(updated)
+      }
+    }
+  }
   async bootstrap() {
-    if (!this.skillIds().length) for (const skill of BUILTIN_SKILLS) await this.putSkill(skillRow({ ...skill, enabled: true }, 1, 'bootstrap', 0))
+    await this.reconcileBuiltinSkills()
     if (!this.requireTable().get(TOOLSET_KEY)) {
       const skills = this.skillIds().filter(id => this.currentSkill(id)?.enabled)
       const snapshot = { enabledPlugins: this.pluginIds().sort(), enabledTools: this.toolNames().sort(), enabledSkills: skills.sort(), mode: 'complete', version: 1 }
@@ -410,7 +450,7 @@ export class PrismToolsetStore extends Service {
           JSON.stringify([...LEGACY_PRISMFLOW_TOOL_NAMES.slice(0, length)].sort()),
         ])
         if (JSON.stringify(renamedTools) !== JSON.stringify(expectedComplete)
-          && !renamedTools.every(tool => PRISMFLOW_TOOL_NAMES.includes(tool))
+          && !renamedTools.every(tool => PRISMFLOW_TOOL_NAMES.includes(tool) || RETIRED_TOOL_NAMES.has(tool))
           && !supportedPrevious.includes(JSON.stringify(current.enabledTools))) {
           throw new Error('Complete PrismFlow Toolset does not match a supported schema revision')
         }
@@ -527,12 +567,12 @@ export class PrismToolsetStore extends Service {
     const catalog = allowUnavailable ? PRISMFLOW_PLUGIN_MANIFESTS : this.pluginCatalog()
     const catalogTools = catalog.flatMap(plugin => plugin.tools)
     const catalogPluginIds = catalog.map(plugin => plugin.pluginId)
-    sortedUnique(row.enabledTools, new Set([...catalogTools, ...Object.keys(LEGACY_TOOL_NAMES)]), 'enabledTools')
+    sortedUnique(row.enabledTools, new Set([...catalogTools, ...Object.keys(LEGACY_TOOL_NAMES), ...RETIRED_TOOL_NAMES]), 'enabledTools')
     if (current) {
       sortedUnique(row.enabledPlugins, new Set([...catalogPluginIds, ...Object.keys(LEGACY_PLUGIN_IDS)]), 'enabledPlugins')
       const normalizedPlugins = row.enabledPlugins.map(id => LEGACY_PLUGIN_IDS[id] ?? id)
       const allowedTools = new Set(catalog.filter(plugin => normalizedPlugins.includes(plugin.pluginId)).flatMap(plugin => plugin.tools))
-      if (row.enabledTools.some(tool => !allowedTools.has(LEGACY_TOOL_NAMES[tool] ?? tool))) throw new Error('PrismFlow Toolset contains a tool whose plugin is disabled')
+      if (row.enabledTools.some(tool => !RETIRED_TOOL_NAMES.has(tool) && !allowedTools.has(LEGACY_TOOL_NAMES[tool] ?? tool))) throw new Error('PrismFlow Toolset contains a tool whose plugin is disabled')
     }
     if (!Array.isArray(row.enabledSkills) || row.enabledSkills.length > 256 || new Set(row.enabledSkills).size !== row.enabledSkills.length || row.enabledSkills.some(id => !SKILL_ID.test(id))) throw new Error('PrismFlow Toolset is corrupt')
     return structuredClone(row)

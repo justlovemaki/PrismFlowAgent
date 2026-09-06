@@ -1,6 +1,6 @@
 {
   "name": "@prismflow/dsh",
-  "version": "0.24.66",
+  "version": "0.24.93",
   "description": "Native PrismFlow plugins and one-stop dashboard for DeepSeek Harness",
   "type": "module",
   "main": "./lib/core.js",
@@ -50,6 +50,7 @@
     "./package.json": "./package.json"
   },
   "bin": {
+    "prismflow-dsh-update": "./scripts/update.mjs",
     "prismflow-dsh-install": "./scripts/install.mjs",
     "prismflow-dsh-dashboard": "./scripts/install-dashboard.mjs",
     "prismflow-dsh-migrate-sqlite": "./scripts/migrate-storage-sqlite.mjs",
@@ -60,6 +61,7 @@
     "plugins",
     "skills",
     "manual-import",
+    "scripts/update.mjs",
     "scripts/install.mjs",
     "scripts/install-dashboard.mjs",
     "scripts/migrate-storage-sqlite.mjs",
@@ -114,7 +116,7 @@
     "marked": "^18.0.11",
     "rss": "^1.2.2",
     "rss-parser": "^3.13.0",
-    "sharp": "^0.34.5",
+    "sharp": "0.35.4",
     "yaml": "^2.8.2",
     "zod": "^4.4.3"
   },

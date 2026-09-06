@@ -50,11 +50,11 @@ function iso(value) {
   return Number.isFinite(parsed) && new Date(parsed).toISOString() === value
 }
 function snapshotOf(value) {
-  try { return normalizeWorkflowSnapshot(Object.fromEntries(SNAPSHOT_FIELDS.map(field => [field, value[field]]))) }
+  try { return normalizeWorkflowSnapshot(Object.fromEntries([...SNAPSHOT_FIELDS, ...(Object.hasOwn(value, 'saveAsDraft') ? ['saveAsDraft'] : [])].map(field => [field, value[field]]))) }
   catch (error) { throw new GeneratorWorkflowValidationError(error instanceof Error ? error.message : 'Workflow is invalid') }
 }
 function validRow(raw, generatorId) {
-  if (!exact(raw, ROW_FIELDS) || raw.generatorId !== generatorId || !ID.test(generatorId)
+  if (!exact(raw, [...ROW_FIELDS, ...(raw && Object.hasOwn(raw, 'saveAsDraft') ? ['saveAsDraft'] : [])]) || raw.generatorId !== generatorId || !ID.test(generatorId)
     || !Number.isInteger(raw.version) || raw.version < 1 || raw.version > 1_000_000_000
     || !SHA.test(raw.sha256 ?? '') || !iso(raw.updatedAt)
     || !['dashboard-admin', 'deployment'].includes(raw.actor) || !ACTIONS.includes(raw.action)
@@ -300,7 +300,7 @@ export class PrismGeneratorWorkflowStore extends Service {
   create(input) {
     return this.mutate(async () => {
       this.requireWriter()
-      this.definitionInput(input, ['generatorId', 'generatorName', 'description', 'steps'])
+      this.definitionInput(input, ['generatorId', 'generatorName', 'description', 'steps', ...(Object.hasOwn(input, 'saveAsDraft') ? ['saveAsDraft'] : [])])
       if (this.hasCurrent(input.generatorId) || this.legacy.has(input.generatorId)) throw new GeneratorWorkflowConflictError('Generator id is already in use')
       if (!this.defaultBuilderProfile) throw new GeneratorWorkflowValidationError('Dashboard workflow creation is not enabled by deployment')
       const row = this.makeRow({ format: 'workflow-v1', ...input, enabled: true, executionProfile: this.defaultBuilderProfile }, 1, 'dashboard-admin', 'create', 0)
@@ -311,7 +311,8 @@ export class PrismGeneratorWorkflowStore extends Service {
   save(input) {
     return this.mutate(async () => {
       this.requireWriter()
-      this.definitionInput(input, ['generatorId', 'generatorName', 'description', 'steps', 'expected'])
+      this.definitionInput(input, ['generatorId', 'generatorName', 'description', 'steps', 'expected', ...(Object.hasOwn(input, 'saveAsDraft') ? ['saveAsDraft'] : [])])
+      if (Object.hasOwn(input, 'saveAsDraft') && typeof input.saveAsDraft !== 'boolean') throw new GeneratorWorkflowValidationError('saveAsDraft must be a boolean')
       const expected = reference(input.expected)
       const current = this.currentSync(input.generatorId)
       if (!current) {
@@ -323,14 +324,14 @@ export class PrismGeneratorWorkflowStore extends Service {
           const actual = reference(legacyRead.reference)
           if (actual.kind !== 'legacy-v1' || actual.version !== expected.version || actual.sha256 !== expected.sha256) throw new GeneratorWorkflowConflictError('Legacy generator changed before adoption')
           const base = snapshotOf(legacyRead.snapshot)
-          const row = this.makeRow({ ...base, generatorName: input.generatorName, description: input.description, steps: input.steps, enabled: true }, 1, 'dashboard-admin', 'adopt', 0)
+          const row = this.makeRow({ ...base, generatorName: input.generatorName, description: input.description, steps: input.steps, enabled: true, ...(input.saveAsDraft !== undefined ? { saveAsDraft: input.saveAsDraft } : {}) }, 1, 'dashboard-admin', 'adopt', 0)
           await this.putRolling(row); return projected(row)
         }
         return typeof legacy.adopt === 'function' ? legacy.adopt(expected, adopt) : adopt(await legacy.read())
       }
       assertMutable(current)
       if (expected.kind !== 'workflow-v1' || current.version !== expected.version || current.sha256 !== expected.sha256) throw new GeneratorWorkflowConflictError('Generator workflow version conflict')
-      const row = this.makeRow({ ...current, generatorName: input.generatorName, description: input.description, steps: input.steps }, current.version + 1, 'dashboard-admin', 'update', current.version)
+      const row = this.makeRow({ ...current, generatorName: input.generatorName, description: input.description, steps: input.steps, ...(input.saveAsDraft !== undefined ? { saveAsDraft: input.saveAsDraft } : {}) }, current.version + 1, 'dashboard-admin', 'update', current.version)
       await this.putRolling(row); return projected(row)
     })
   }

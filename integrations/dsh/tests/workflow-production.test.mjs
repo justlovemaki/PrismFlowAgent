@@ -44,6 +44,60 @@ test('workflow requests embed exact snapshots and execute after history/current 
   assert.equal(service.listGenerators().length, 0)
 })
 
+test('result-only workflow pins the switch, validates Media Claims, survives restart and never writes a Draft', async () => {
+  const { service, profile, snapshot, setCurrent } = setup()
+  const resultSnapshot = { ...snapshot, saveAsDraft: false }
+  setCurrent({ ...resultSnapshot, version: 52, sha256: generatorWorkflowSha256(resultSnapshot) })
+  const claim = { assetId: 'c'.repeat(64), sha256: 'c'.repeat(64), mime: 'image/png', bytes: 40, width: 10, height: 10 }
+  let rejectClaim = false; let draftWrites = 0
+  Object.defineProperty(service.ctx, 'prismProductionMedia', { value: { async assertClaims(claims) {
+    assert.deepEqual(claims, [claim]); if (rejectClaim) throw new Error('Claim mismatch')
+  } } })
+  service.drafts.put = async () => { draftWrites += 1; throw new Error('Draft writes forbidden') }
+  service.registerWorkflowRunner(profile, { async generate() { return { title: 'Image', markdown: '![image](https://example.test/image.png)', mediaAssets: [claim] } } })
+  const request = await service.createRequest('dashboard', [STORE_ID])
+  assert.equal(service.listGenerators()[0].saveAsDraft, false)
+  setCurrent({ ...snapshot, version: 53, sha256: generatorWorkflowSha256(snapshot) })
+  const output = await service.generate(request.requestId, { agent: {} })
+  assert.equal(output.draftCreated, false); assert.equal(output.draftId, undefined); assert.deepEqual(output.mediaAssets, [claim])
+  assert.equal(service.getRequest(request.requestId).status, 'completed')
+  assert.equal(service.getRequest(request.requestId).draftId, undefined)
+  await service.recoverInterrupted()
+  assert.deepEqual(await service.getWorkflowResult(request.requestId), output)
+  assert.equal(draftWrites, 0); assert.equal(service.listDrafts().length, 0)
+  rejectClaim = true
+  await assert.rejects(service.getWorkflowResult(request.requestId), /Claim mismatch/)
+  rejectClaim = false
+  const stored = service.requests.get(request.requestId)
+  await service.requests.put(request.requestId, { ...stored, outputResult: { ...stored.outputResult, markdown: 'tampered' } })
+  await assert.rejects(service.recoverInterrupted(), /invalid|corrupt|malformed/i)
+  assert.equal(draftWrites, 0)
+})
+
+test('result-only workflow rejects malformed output and cancellation during commit without creating a Draft', async () => {
+  for (const scenario of ['invalid', 'cancel-commit', 'write-failure', 'claim-mismatch']) {
+    const { service, profile, snapshot, setCurrent } = setup()
+    const resultSnapshot = { ...snapshot, saveAsDraft: false }
+    setCurrent({ ...resultSnapshot, version: 52, sha256: generatorWorkflowSha256(resultSnapshot) })
+    Object.defineProperty(service.ctx, 'prismProductionMedia', { value: { async assertClaims() { throw new Error('Claim mismatch') } } })
+    service.registerWorkflowRunner(profile, { async generate() { return { title: 'Result', markdown: scenario === 'invalid' ? '' : '# Result',
+      mediaAssets: scenario === 'claim-mismatch' ? [{ assetId: 'b'.repeat(64), sha256: 'b'.repeat(64), mime: 'image/png', bytes: 40, width: 10, height: 10 }] : [] } } })
+    const request = await service.createRequest('dashboard', [STORE_ID])
+    const controller = new AbortController()
+    const put = service.requests.put.bind(service.requests)
+    service.requests.put = async (key, value) => {
+      await put(key, value)
+      if (value.status === 'completed' && scenario === 'cancel-commit') controller.abort()
+      if (value.status === 'completed' && scenario === 'write-failure') throw new Error('storage write failed')
+    }
+    await assert.rejects(service.generate(request.requestId, { agent: {}, signal: controller.signal }))
+    assert.equal(service.getRequest(request.requestId).status, scenario === 'cancel-commit' ? 'cancelled' : 'failed')
+    assert.equal(service.getRequest(request.requestId).outputResult, undefined)
+    assert.equal(service.listDrafts().length, 0)
+    await service.recoverInterrupted()
+  }
+})
+
 test('running cancellation aborts the exact attempt and stale completion cannot persist a Draft', async () => {
   const { service, profile } = setup()
   let started

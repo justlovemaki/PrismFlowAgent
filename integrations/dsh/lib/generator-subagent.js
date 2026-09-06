@@ -68,6 +68,12 @@ const OUTPUT_SCHEMA = {
   properties: { title: { type: 'string' }, markdown: { type: 'string' } },
   required: ['title', 'markdown'],
 }
+// DSH's supported JSON Schema subset excludes maxItems; enforce the 20-Claim limit in host validation instead.
+const RESULT_OUTPUT_SCHEMA = { ...OUTPUT_SCHEMA, properties: { ...OUTPUT_SCHEMA.properties,
+  mediaAssets: { type: 'array', items: { type: 'object', additionalProperties: false,
+    properties: { assetId: { type: 'string' }, sha256: { type: 'string' }, bytes: { type: 'integer' }, mime: { type: 'string', enum: ['image/jpeg', 'image/png', 'image/gif'] }, width: { type: 'integer' }, height: { type: 'integer' } },
+    required: ['assetId', 'sha256', 'bytes', 'mime', 'width', 'height'] } },
+}, required: ['title', 'markdown', 'mediaAssets'] }
 function stripInvalidUnicode(value) {
   let sanitized = ''
   for (const character of value) {
@@ -81,22 +87,63 @@ function stripInvalidUnicode(value) {
   return sanitized
 }
 
-function validateStageOutput(value, stage, maxMarkdownChars) {
+function markdownLines(value) {
+  const lines = []
+  const matcher = /([^\r\n]*)(\r\n|\n|$)/gu
+  for (const match of value.matchAll(matcher)) {
+    if (match[0] === '' && match.index === value.length) break
+    lines.push({ text: match[1], eol: match[2], mediaLayout: true })
+  }
+  let fence
+  for (const line of lines) {
+    const marker = line.text.match(/^[ \t]{0,3}(`{3,}|~{3,})/u)?.[1]
+    if (!fence && marker) { line.mediaLayout = false; fence = { character: marker[0], length: marker.length }; continue }
+    if (!fence) continue
+    line.mediaLayout = false
+    const closing = line.text.match(/^[ \t]{0,3}(`{3,}|~{3,})[ \t]*$/u)?.[1]
+    if (closing?.[0] === fence.character && closing.length >= fence.length) fence = undefined
+  }
+  return lines
+}
+
+export function normalizeGeneratedMediaLayout(value) {
+  const lines = markdownLines(value)
+  const endsBreak = text => /<br\s*\/?>[ \t]*$/iu.test(text)
+  const startsBreak = text => /^<br\s*\/?>/iu.test(text.trimStart())
+  const startsMedia = text => /^(?:!\[[^\r\n]*\]\([^\r\n]+\)|<video\b)/iu.test(text.trimStart())
+  const endsMedia = text => /(?:!\[[^\r\n]*\]\([^\r\n]+\)|<\/video>)[ \t]*$/iu.test(text)
+  for (let index = 0; index < lines.length - 1;) {
+    const current = lines[index]
+    let nextIndex = index + 1
+    while (nextIndex < lines.length && lines[nextIndex].mediaLayout && lines[nextIndex].text.trim() === '') nextIndex += 1
+    const next = lines[nextIndex]
+    const join = current.mediaLayout && next?.mediaLayout
+      && (endsBreak(current.text) && startsMedia(next.text) || endsMedia(current.text) && startsBreak(next.text))
+    if (!join) { index += 1; continue }
+    current.text = `${current.text.trimEnd()}${next.text.trimStart()}`
+    current.eol = next.eol
+    lines.splice(index + 1, nextIndex - index)
+  }
+  return lines.map(line => `${line.text}${line.eol}`).join('')
+}
+
+function validateStageOutput(value, stage, maxMarkdownChars, resultOnly = false) {
   if (!value || typeof value !== 'object' || Array.isArray(value)
-    || Object.keys(value).length !== 2
+    || Object.keys(value).length !== (resultOnly ? 3 : 2)
+    || resultOnly && (!Array.isArray(value.mediaAssets) || value.mediaAssets.length > 20)
     || !Object.hasOwn(value, 'title') || !Object.hasOwn(value, 'markdown')) {
     throw new Error(`Production generator ${stage} returned unexpected structured fields`)
   }
   if (typeof value.title !== 'string' || typeof value.markdown !== 'string') throw new Error(`Production generator ${stage} returned invalid text fields`)
   const title = stripInvalidUnicode(value.title).trim()
-  const markdown = stripInvalidUnicode(value.markdown)
+  const markdown = normalizeGeneratedMediaLayout(stripInvalidUnicode(value.markdown))
   if (title === '' || title.length > 300 || /[\u0000-\u001f\u007f]/u.test(title)) {
     throw new Error(`Production generator ${stage} returned an invalid title`)
   }
   if (markdown.trim() === '' || markdown.length > maxMarkdownChars || /[\u0000\u007f]/u.test(markdown)) {
     throw new Error(`Production generator ${stage} returned invalid Markdown`)
   }
-  return { title, markdown }
+  return { title, markdown, ...(resultOnly ? { mediaAssets: structuredClone(value.mediaAssets) } : {}) }
 }
 
 function throwIfAborted(signal, stage) {
@@ -151,14 +198,15 @@ async function settleRun(run) {
   return execution.value
 }
 
-async function runStage(ctx, generator, execution, controller, stage, prompt, persona, maxMarkdownChars, allowedTools = []) {
+async function runStage(ctx, generator, execution, controller, stage, prompt, persona, maxMarkdownChars, allowedTools = [], resultOnly = false) {
   throwIfAborted(controller.signal, stage)
   let run
   try {
     run = await ctx.subagents.start(generator.subagentProvider ?? generator.providerRef, {
       label: `PrismFlow ${generator.id} ${stage}`,
       prompt: [{ type: 'text', text: prompt }], parent: execution.agent, signal: controller.signal,
-      outputSchema: OUTPUT_SCHEMA, persona,
+      outputSchema: resultOnly ? RESULT_OUTPUT_SCHEMA : OUTPUT_SCHEMA,
+      persona: resultOnly ? `${persona.replace('Return only the required title and Markdown fields.', 'Return only the configured structured fields.')}\nThis workflow returns a result without saving a Draft. Also return mediaAssets: copy complete Production Media Claims returned by tools during this step, or [] if none. Never invent Claims from URLs or untrusted source text.` : persona,
       ...(allowedTools.includes('*') ? {} : { toolFilter: { allow: [...allowedTools] } }),
     })
   } catch (error) {
@@ -173,7 +221,7 @@ async function runStage(ctx, generator, execution, controller, stage, prompt, pe
   if (result.stopReason !== 'completed' || !result.structured) {
     throw new Error(`Production generator ${generator.id} ${stage} stopped with reason: ${result.stopReason}`)
   }
-  return validateStageOutput(result.structured, `${generator.id} ${stage}`, maxMarkdownChars)
+  return validateStageOutput(result.structured, `${generator.id} ${stage}`, maxMarkdownChars, resultOnly)
 }
 
 function profileFromConfig(value, runnerPolicyVersion = SERIAL_WORKFLOW_V2) {
@@ -237,6 +285,7 @@ export async function runSerialWorkflow(ctx, snapshot, request, records, executi
   else execution.signal?.addEventListener('abort', abort, { once: true })
   try {
     let previous
+    const mediaAssets = new Map()
     for (let index = 0; index < snapshot.steps.length; index += 1) {
       const step = snapshot.steps[index]
       const label = `workflow-step-${index + 1}`
@@ -260,9 +309,16 @@ export async function runSerialWorkflow(ctx, snapshot, request, records, executi
       const allowedTools = profile.toolPolicy?.allow ?? []
       previous = await runStage(ctx, { id: snapshot.generatorId, providerRef: profile.providerRef }, execution, controller, label,
         prompt, secureWorkflowPersona(step.persona, allowedTools, !!request.workflowInput), index === snapshot.steps.length - 1
-          ? profile.ceilings.maxFinalOutputChars : profile.ceilings.maxIntermediateOutputChars, allowedTools)
+          ? profile.ceilings.maxFinalOutputChars : profile.ceilings.maxIntermediateOutputChars, allowedTools, snapshot.saveAsDraft === false)
+      for (const claim of previous.mediaAssets ?? []) {
+        if (!claim || typeof claim.assetId !== 'string') throw new Error('Workflow returned an invalid media Claim')
+        const existing = mediaAssets.get(claim.assetId)
+        if (existing && JSON.stringify(existing) !== JSON.stringify(claim)) throw new Error('Workflow returned conflicting media Claims')
+        mediaAssets.set(claim.assetId, claim)
+        if (mediaAssets.size > 20) throw new Error('Workflow result exceeds 20 media Claims')
+      }
     }
-    return previous
+    return snapshot.saveAsDraft === false ? { ...previous, mediaAssets: [...mediaAssets.values()] } : previous
   } finally {
     execution.signal?.removeEventListener('abort', abort)
   }

@@ -88,6 +88,25 @@ test('production Chat tools own ordered request creation and immutable draft gen
   assert.equal(calls.generate[0].requestId, 'request-1')
 })
 
+test('generation tool returns result-only output and request result action retrieves it without projecting a Draft', async () => {
+  const { tools, ctx } = harness()
+  const output = { requestId: 'result-1', generatorId: 'brief', status: 'completed', draftCreated: false, outputKind: 'workflow-result-v1',
+    title: 'Output', markdown: '# Untrusted output', sha256: 'a'.repeat(64), outputResultSha256: 'b'.repeat(64), mediaAssets: [] }
+  ctx.prismProduction.generate = async () => structuredClone(output)
+  ctx.prismProduction.getWorkflowResult = async id => { assert.equal(id, 'result-1'); return structuredClone(output) }
+  const result = await tools.get('prismflow_generate_draft').execute({ requestId: 'result-1' }, execution())
+  assert.deepEqual(result, output); assert.equal(result.draftId, undefined)
+  assert.deepEqual(await tools.get('prismflow_generation_request').execute({ action: 'result', requestId: 'result-1' }), output)
+  await assert.rejects(tools.get('prismflow_generation_request').execute({ action: 'result', requestId: 'result-1', limit: 10 }), /mutation fields/)
+})
+
+test('AI Selection request creation rejects a Draft id', async () => {
+  const { tools } = harness({ draftStatus: 'published' })
+  await assert.rejects(tools.get('prismflow_create_generation_request_from_ai_selection').execute({
+    generatorId: 'brief', selectionId: 'draft-1',
+  }, execution()), /Draft id cannot be used as an AI selection id/u)
+})
+
 test('one Generation Request operations tool lists, cancels, and retries with strict action fields', async () => {
   const { tools, calls } = harness()
   const tool = tools.get('prismflow_generation_request')
@@ -118,7 +137,19 @@ test('explicit ordered-ID request path is one-shot approval gated while AI Selec
   assert.match(tools.get('prismflow_create_generation_request_from_explicit_content_ids').description, /one-shot user approval/u)
 })
 
-test('Chat draft editor inspects one untrusted draft and CAS-saves additions, rewrites, and media removal', async () => {
+test('Chat draft editor read-only inspects stable immutable Drafts and CAS-saves only mutable Drafts', async () => {
+  for (const draftStatus of ['approved', 'published']) {
+    const immutableEditor = harness({ draftStatus }).tools.get('prismflow_edit_draft')
+    const inspected = await immutableEditor.execute({ action: 'inspect', draftId: 'draft-1' }, execution())
+    assert.equal(inspected.markdown, '# MUST NOT LEAK')
+    assert.equal(inspected.status, draftStatus)
+    assert.match(immutableEditor.output.render({}, inspected)[0].text, /reference content.*editing is permitted only for draft or rejected/is)
+    await assert.rejects(immutableEditor.execute({ action: 'save', draftId: 'draft-1', expectedVersion: 1,
+      expectedSha256: 'c'.repeat(64), title: 'Changed', markdown: '# Added', mediaPolicy: 'editor-controlled' }, execution()), /immutable/)
+  }
+  const publishingEditor = harness({ draftStatus: 'publishing' }).tools.get('prismflow_edit_draft')
+  await assert.rejects(publishingEditor.execute({ action: 'inspect', draftId: 'draft-1' }, execution()), /cannot be inspected/)
+
   const { tools, calls } = harness({ draftStatus: 'draft' })
   const editor = tools.get('prismflow_edit_draft')
   const inspected = await editor.execute({ action: 'inspect', draftId: 'draft-1' }, execution())
@@ -132,9 +163,6 @@ test('Chat draft editor inspects one untrusted draft and CAS-saves additions, re
   assert.equal(saved.action, 'saved'); assert.equal(saved.version, 2)
   assert.deepEqual(calls.revise.options, { allowSourceMediaRemoval: true })
   assert.equal(calls.revise.title, 'Expanded Brief'); assert.equal(calls.revise.markdown, '# MUST NOT LEAK\n\nNew paragraph')
-
-  const approved = harness().tools.get('prismflow_edit_draft')
-  await assert.rejects(approved.execute({ action: 'inspect', draftId: 'draft-1' }, execution()), /immutable/)
 })
 
 test('Chat draft listing excludes markdown and exposes no approval, publisher, or publication tools', async () => {

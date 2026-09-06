@@ -4,9 +4,10 @@ import AdmZip from 'adm-zip'
 import Schema from '@deepseek-ai/schemastery'
 import YAML from 'yaml'
 import { managedMediaFetch } from './secure-rss-fetch.js'
-import { createPrismFlowDataBackup, decryptPrismFlowDataBackup, encryptPrismFlowDataBackup, MAX_PRISMFLOW_BACKUP_BYTES, parsePrismFlowDataBackup, PrismFlowDataBackupError, readSourceCredentialSlots, restorePrismFlowDataBackup } from './data-backup.js'
+import { createPrismFlowDataBackup, decryptPrismFlowDataBackup, encryptPrismFlowDataBackup, MAX_PRISMFLOW_BACKUP_BYTES, parsePrismFlowDataBackup, PrismFlowDataBackupError, readProfileGenerators, readSourceCredentialSlots, restorePrismFlowDataBackup } from './data-backup.js'
 import { publicationReconciliationResult } from './store-production.js'
 import { PRISMFLOW_CORE_TOOL_NAMES, PRISMFLOW_TOOL_NAMES } from './store-prismflow-toolsets.js'
+import { matchesStoredContentSearch } from './shared/content-store.js'
 import { isPublisherOutcomeError } from './shared/publisher-outcome.js'
 import {
   PublisherProfileCliError, beginPublisherProfileOperationDrain, cancelPendingPublisherProfileOperation,
@@ -64,6 +65,7 @@ function backupResponse(res, backup) {
     'x-prismflow-record-count': backup.recordCount,
     'x-prismflow-workflow-history-count': backup.workflowHistoryCount,
     'x-prismflow-workflow-id-count': backup.workflowIdCount,
+    'x-prismflow-profile-generator-count': backup.profileGeneratorCount,
     'x-prismflow-workflow-historical-id-count': backup.workflowHistoricalIdCount,
     'x-prismflow-deleted-workflow-id-count': backup.deletedWorkflowIdCount,
     'x-prismflow-fingerprint': backup.document.fingerprint,
@@ -517,17 +519,18 @@ function workflowExpected(value) {
 }
 function workflowDefinition(body, includeExpected) {
   plainObject(body, 'workflow')
-  allowFields(body, ['generatorId', 'generatorName', 'description', 'steps', ...(includeExpected ? ['expected'] : [])])
+  allowFields(body, ['generatorId', 'generatorName', 'description', 'steps', 'saveAsDraft', ...(includeExpected ? ['expected'] : [])])
+  if (Object.hasOwn(body, 'saveAsDraft') && typeof body.saveAsDraft !== 'boolean') throw new HttpError(400, 'saveAsDraft must be a boolean')
   if (typeof body.description !== 'string' || body.description.length > 2_000 || /[\u0000-\u001f\u007f]/u.test(body.description)) throw new HttpError(400, 'description is invalid')
   return { generatorId: generatorId(body.generatorId), generatorName: workflowText(body.generatorName, 'generatorName', 256),
-    description: body.description, steps: workflowSteps(body.steps), ...(includeExpected ? { expected: workflowExpected(body.expected) } : {}) }
+    description: body.description, steps: workflowSteps(body.steps), ...(body.saveAsDraft !== undefined ? { saveAsDraft: body.saveAsDraft } : {}), ...(includeExpected ? { expected: workflowExpected(body.expected) } : {}) }
 }
 function projectWorkflow(record) {
   const isLegacy = record?.kind === 'legacy-v1'
   const lifecycle = record?.action === 'delete' ? 'deleted' : record?.enabled === true ? 'active' : 'archived'
   return {
     kind: isLegacy ? 'legacy-v1' : 'workflow-v1', generatorId: boundedString(record?.generatorId, 128), generatorName: boundedString(record?.generatorName, 256),
-    description: boundedString(record?.description, 2_000), enabled: record?.enabled === true, lifecycle: isLegacy ? (record?.enabled === true ? 'active' : 'archived') : lifecycle,
+    description: boundedString(record?.description, 2_000), enabled: record?.enabled === true, saveAsDraft: record?.saveAsDraft !== false, lifecycle: isLegacy ? (record?.enabled === true ? 'active' : 'archived') : lifecycle,
     steps: lifecycle !== 'deleted' && Array.isArray(record?.steps) ? record.steps.slice(0, 8).map(step => ({ id: boundedString(step?.id, 128), name: boundedString(step?.name, 256), persona: boundedString(step?.persona, 10_000), processPrompt: boundedString(step?.processPrompt, 10_000) })) : [],
     ...(isLegacy ? { expected: { kind: 'legacy-v1', version: record.legacyVersion, sha256: record.legacySha256 } } : {
       version: record.version, sha256: boundedString(record?.sha256, 64), updatedAt: boundedString(record?.updatedAt, 64), actor: boundedString(record?.actor, 32),
@@ -896,7 +899,9 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
     const password = backupPassword(body.password)
     try {
       const patchPath = join(profileBinding.dshHome, 'profiles', profileBinding.profileName, 'cordis.patch.yml')
-      const slots = readSourceCredentialSlots(readFileSync(patchPath, 'utf8'))
+      const patch = readFileSync(patchPath, 'utf8')
+      const slots = readSourceCredentialSlots(patch)
+      const profileGenerators = readProfileGenerators(patch)
       const refs = slots.map(slot => slot.credentialRef)
       const imageCredentialRef = ctx.get('prismImageGenerationSettings')?.credentialRef ?? 'OPENAI_IMAGE_API_KEY'
       refs.push(imageCredentialRef)
@@ -905,7 +910,7 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
       refs.push(...publisherCredentialRows(publisherDocument).map(slot => slot.credentialRef))
       const credentials = await exportCredentialValues(ctx, refs)
       const publisherRows = publisherDocument.rows.map(row => ({ rowId: row.rowId, channelKind: row.channelKind, disabled: row.disabled, config: row.config }))
-      const backup = createPrismFlowDataBackup(join(profileBinding.dshHome, 'storages', 'domain.sqlite'), PLUGIN_VERSION, new Date(), slots, credentials, publisherRows)
+      const backup = createPrismFlowDataBackup(join(profileBinding.dshHome, 'storages', 'domain.sqlite'), PLUGIN_VERSION, new Date(), slots, credentials, publisherRows, profileGenerators)
       return backupResponse(res, { ...backup, buffer: encryptPrismFlowDataBackup(backup.buffer, password) })
     } catch (error) {
       if (error instanceof HttpError) throw error
@@ -978,6 +983,16 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
     })
   }
 
+  if (method === 'POST' && pathname === `${API_PREFIX}/content/delete`) {
+    allowQuery(requestUrl.searchParams, [])
+    const body = await readJson(req); allowFields(body, ['storeIds', 'confirm'])
+    if (body.confirm !== true || !Array.isArray(body.storeIds) || body.storeIds.length < 1 || body.storeIds.length > 100
+      || body.storeIds.some(id => typeof id !== 'string' || !/^[a-f0-9]{64}$/u.test(id))
+      || new Set(body.storeIds).size !== body.storeIds.length) throw new HttpError(400, 'Explicit confirmation and 1 to 100 unique storeIds are required')
+    const content = requireService(ctx, 'prismContentStore', 'Content Store')
+    return jsonResponse(res, 200, await content.deleteBatch(body.storeIds))
+  }
+
   if (method === 'GET' && pathname === `${API_PREFIX}/content`) {
     allowQuery(requestUrl.searchParams, ['search', 'category', 'aiProcessed', 'sortBy', 'sortOrder', 'limit', 'offset'])
     const search = text(requestUrl.searchParams.get('search') ?? undefined, 'search', 256)
@@ -1006,11 +1021,19 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
       return reviews.get(record.storeId) ?? undefined
     }
     const processedFilter = aiProcessed === undefined ? undefined : record => validContentReview(reviewFor(record)) === (aiProcessed === 'true')
-    const query = { search, category, sortBy, sortOrder }
+    const searchFilter = search === undefined ? undefined : record => {
+      if (matchesStoredContentSearch(record, search)) return true
+      const review = reviewFor(record)
+      return validContentReview(review) && review.aiSummary.toLocaleLowerCase().includes(search.toLocaleLowerCase())
+    }
+    const recordFilter = processedFilter || searchFilter
+      ? record => (!processedFilter || processedFilter(record)) && (!searchFilter || searchFilter(record))
+      : undefined
+    const query = { category, sortBy, sortOrder }
     const categories = content.categoryCounts(processedFilter).slice(0, 1_000).map(row => ({ category: boundedString(row.category, 256), count: Math.max(0, Math.min(1_000_000_000, Number(row.count) || 0)) }))
     return jsonResponse(res, 200, {
-      records: content.list({ ...query, limit, offset }, processedFilter).map(record => projectContentRecord(record, reviewFor(record))),
-      total: content.count(query, processedFilter), limit, offset, categories,
+      records: content.list({ ...query, limit, offset }, recordFilter).map(record => projectContentRecord(record, reviewFor(record))),
+      total: content.count(query, recordFilter), limit, offset, categories,
     })
   }
 

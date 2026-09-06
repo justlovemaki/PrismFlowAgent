@@ -39,6 +39,9 @@ export const Config = Schema.object({
   maxBucketSize: Schema.number().step(1).min(2).max(1000).default(200),
   maxPairComparisons: Schema.number().step(1).min(1).max(2000000).default(200000),
   maxMemberClaims: Schema.number().step(1).min(1).max(100000).default(10000),
+  maxPublishedSemanticItems: Schema.number().step(1).min(1).max(10000).default(2000),
+  maxPublishedSemanticComparisons: Schema.number().step(1).min(1).max(2000000).default(200000),
+  publishedSemanticLookbackDays: Schema.number().step(1).min(1).max(30).default(7),
   selectionHashMaxChars: Schema.number().step(1).min(10000000).max(20000000).default(12000000),
 })
 
@@ -70,6 +73,9 @@ function normalizeConfig(config) {
     maxBucketSize: integer(config.maxBucketSize, 200, 'maxBucketSize', 2, 1000),
     maxPairComparisons: integer(config.maxPairComparisons, 200000, 'maxPairComparisons', 1, 2000000),
     maxMemberClaims: integer(config.maxMemberClaims, 10000, 'maxMemberClaims', 1, 100000),
+    maxPublishedSemanticItems: integer(config.maxPublishedSemanticItems, 2000, 'maxPublishedSemanticItems', 1, 10000),
+    maxPublishedSemanticComparisons: integer(config.maxPublishedSemanticComparisons, 200000, 'maxPublishedSemanticComparisons', 1, 2000000),
+    publishedSemanticLookbackDays: integer(config.publishedSemanticLookbackDays, 7, 'publishedSemanticLookbackDays', 1, 30),
     selectionHashMaxChars: integer(config.selectionHashMaxChars, 12000000, 'selectionHashMaxChars', 10000000, 20000000),
   }
   if (result.defaultMaxItems > result.maxItems || result.defaultMaxInputTokens > result.maxInputTokens
@@ -176,8 +182,8 @@ function validMaterial(raw, strategyVersion) {
   return encoded.length === material.materialChars
     && createHash('sha256').update(encoded, 'utf8').digest('hex') === material.materialSha256 ? material : undefined
 }
-const COUNT_KEYS = ['candidate', 'localMatched', 'ambiguous', 'reviewed', 'reviewAccepted', 'reviewRejected', 'eventClusters', 'selected']
-const ROOT_KEYS = ['selectionId', 'version', 'createdAt', 'asOf', 'since', 'hours', 'classifierVersion', 'relevanceProfileFingerprint', 'reviewerProfileFingerprint', 'strategyVersion', 'strategyProfileFingerprint', 'counts', 'items', 'totalMaterialChars', 'estimatedTokens', 'selectionSha256']
+const COUNT_KEYS = ['candidate', 'publishedExcluded', 'semanticPublishedExcluded', 'localMatched', 'ambiguous', 'reviewed', 'reviewAccepted', 'reviewRejected', 'eventClusters', 'selected']
+const ROOT_KEYS = ['selectionId', 'version', 'createdAt', 'asOf', 'since', 'hours', 'classifierVersion', 'relevanceProfileFingerprint', 'reviewerProfileFingerprint', 'strategyVersion', 'strategyProfileFingerprint', 'publishedSemanticFingerprint', 'counts', 'items', 'totalMaterialChars', 'estimatedTokens', 'selectionSha256']
 const ITEM_KEYS = ['rank', 'storeId', 'sourceId', 'contentHash', 'clusterId', 'topics', 'signals', 'reasons', 'memberClaims', 'material']
 const SIGNAL_KEYS_V2 = ['distinctSourceCount', 'memberCount', 'recencyTimestamp', 'bodyChars', 'topicCount', 'localMatch']
 const SIGNAL_KEYS_V3 = [...SIGNAL_KEYS_V2, 'aiScore']
@@ -188,6 +194,7 @@ function validSelection(raw) {
     || !Number.isInteger(raw.hours) || raw.hours < 1 || raw.hours > 168
     || !bounded(raw.classifierVersion, 128) || !validHash(raw.relevanceProfileFingerprint) || !validHash(raw.reviewerProfileFingerprint)
     || raw.strategyVersion !== AI_CONTENT_SELECTION_STRATEGY_VERSION || !validHash(raw.strategyProfileFingerprint)
+    || !validHash(raw.publishedSemanticFingerprint)
     || !Array.isArray(raw.items) || raw.items.length < 1 || raw.items.length > 50
     || !Number.isInteger(raw.totalMaterialChars) || raw.totalMaterialChars < 0 || raw.totalMaterialChars > 200000
     || !Number.isInteger(raw.estimatedTokens) || raw.estimatedTokens < 0 || raw.estimatedTokens > 100000
@@ -234,7 +241,7 @@ function validSelection(raw) {
     selectionId: raw.selectionId, version: raw.version, createdAt: raw.createdAt, asOf: raw.asOf, since: raw.since, hours: raw.hours,
     classifierVersion: raw.classifierVersion, relevanceProfileFingerprint: raw.relevanceProfileFingerprint,
     reviewerProfileFingerprint: raw.reviewerProfileFingerprint, strategyVersion: raw.strategyVersion,
-    strategyProfileFingerprint: raw.strategyProfileFingerprint, counts, items,
+    strategyProfileFingerprint: raw.strategyProfileFingerprint, publishedSemanticFingerprint: raw.publishedSemanticFingerprint, counts, items,
     totalMaterialChars: raw.totalMaterialChars, estimatedTokens: raw.estimatedTokens,
   }
   if (selectionSha256(payload) !== raw.selectionSha256) return undefined
@@ -278,6 +285,59 @@ function reviewerCard(claim, maxChars) {
   if (JSON.stringify(card).length > maxChars) throw new Error('AI editorial card cannot fit configured limit')
   return card
 }
+function semanticText(value, maxChars) {
+  return String(value ?? '')
+    .replace(/<br\s*\/?>/giu, ' ')
+    .replace(/!\[([^\]]*)\]\([^)]*\)/gu, '$1')
+    .replace(/\[([^\]]+)\]\([^)]*\)/gu, '$1')
+    .replace(/<[^>]+>/gu, ' ')
+    .replace(/[*_`#>|~]+/gu, ' ')
+    .replace(/[\u0000-\u001f\u007f]+/gu, ' ')
+    .replace(/\s+/gu, ' ').trim().slice(0, maxChars)
+}
+function semanticCard(storeId, title, summary) {
+  const normalizedTitle = semanticText(title, 300) || '无标题'
+  const normalizedSummary = semanticText(summary, 600) || normalizedTitle
+  return { storeId, title: normalizedTitle, summary: normalizedSummary }
+}
+function semanticPayloadLength(cards) {
+  const sorted = [...cards].sort((left, right) => left.title.localeCompare(right.title) || left.storeId.localeCompare(right.storeId))
+  return JSON.stringify(sorted.map((card, clusterIndex) => ({ clusterIndex, title: card.title, summary: card.summary })))
+    .replace(/</g, '\\u003c').replace(/>/g, '\\u003e').length
+}
+const SHANGHAI_UTC_OFFSET_MS = 8 * 60 * 60 * 1000
+const NATURAL_DAY_MS = 24 * 60 * 60 * 1000
+function publishedSemanticWindow(now, lookbackDays) {
+  const timestamp = now instanceof Date ? now.getTime() : Number(now)
+  if (!Number.isFinite(timestamp)) throw new Error('Published semantic exclusion clock is invalid')
+  const shifted = new Date(timestamp + SHANGHAI_UTC_OFFSET_MS)
+  const endTimestamp = Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - SHANGHAI_UTC_OFFSET_MS
+  return {
+    timeZone: 'Asia/Shanghai', lookbackDays,
+    since: new Date(endTimestamp - lookbackDays * NATURAL_DAY_MS).toISOString(),
+    until: new Date(endTimestamp).toISOString(),
+  }
+}
+function publishedSemanticFingerprint(exactStoreIds, entries, window) {
+  return selectionSha256({ version: 2, exactStoreIds, window,
+    entries: entries.map(item => ({ storeId: item.storeId, title: item.title, summary: item.summary, eventPublishedAt: item.eventPublishedAt })) })
+}
+function semanticChunks(cards, maxCards, maxChars) {
+  if (!Number.isInteger(maxCards) || maxCards < 1 || !Number.isInteger(maxChars) || maxChars < 1000) {
+    throw new Error('AI semantic comparison capacity is invalid')
+  }
+  const chunks = []; let current = []
+  for (const card of cards) {
+    const next = [...current, card]
+    if (next.length > maxCards || semanticPayloadLength(next) > maxChars) {
+      if (current.length === 0) throw new Error('AI semantic comparison card exceeds its bounded batch capacity')
+      chunks.push(current); current = [card]
+      if (semanticPayloadLength(current) > maxChars) throw new Error('AI semantic comparison card exceeds its bounded batch capacity')
+    } else current = next
+  }
+  if (current.length > 0) chunks.push(current)
+  return chunks
+}
 function throwIfAborted(signal) {
   if (!signal?.aborted) return
   if (signal.reason instanceof Error) throw signal.reason
@@ -292,6 +352,7 @@ export class PrismContentSelectionStore extends Service {
     this.strategyProfileFingerprint = selectionSha256({ version: AI_CONTENT_SELECTION_STRATEGY_VERSION, ...this.config })
     this.reviews = undefined; this.selections = undefined; this.reviewer = undefined
     this.activeCreate = undefined; this.mutationTail = Promise.resolve(); this.stopping = false
+    this.now = () => new Date()
     this.shutdownController = new AbortController(); this.unregisterMaterialProvider = undefined
   }
   async [Service.init]() {
@@ -300,7 +361,9 @@ export class PrismContentSelectionStore extends Service {
     try {
       await this.purgeLegacyState()
       this.unregisterMaterialProvider = this.ctx.prismProduction.registerMaterialProvider({
-        id: 'ai-selection', resolve: selectionId => this.resolveMaterial(selectionId),
+        id: 'ai-selection',
+        resolve: selectionId => this.resolveMaterial(selectionId),
+        revalidateClaims: claims => this.revalidateSelectionClaims(claims),
       })
       this.ctx.effect(() => async () => {
         await this.shutdown(); this.unregisterMaterialProvider?.(); await domain.close()
@@ -310,7 +373,7 @@ export class PrismContentSelectionStore extends Service {
     }
   }
   async purgeLegacyState() {
-    const legacyStrategies = new Set(['ai-selection-v1', 'ai-selection-v2', 'ai-selection-v3'])
+    const legacyStrategies = new Set(['ai-selection-v1', 'ai-selection-v2', 'ai-selection-v3', 'ai-selection-v4', 'ai-selection-v5', 'ai-selection-v6'])
     for (const [storeId, raw] of [...this.requireReviews().entries()]) {
       if (!raw || typeof raw !== 'object' || Array.isArray(raw) || raw.version !== 2) await this.requireReviews().delete(storeId)
     }
@@ -328,6 +391,30 @@ export class PrismContentSelectionStore extends Service {
     if (this.reviewer) throw new Error('AI relevance reviewer is already registered')
     this.reviewer = provider
     return () => { if (this.reviewer === provider) this.reviewer = undefined }
+  }
+  publishedSemanticSnapshot() {
+    const raw = this.ctx.prismProduction.publishedContentEntries()
+    if (!Array.isArray(raw) || raw.length > 100000) throw new Error('Published exact exclusion item ceiling exceeded')
+    const seen = new Set(); const allEntries = []
+    for (const item of raw) {
+      if (!exactKeys(item, ['storeId', 'title', 'summary', 'eventPublishedAt']) || !bounded(item.storeId, 128) || seen.has(item.storeId)
+        || typeof item.title !== 'string' || typeof item.summary !== 'string' || !canonicalIso(item.eventPublishedAt)) {
+        throw new Error('Published semantic exclusion data is invalid')
+      }
+      seen.add(item.storeId)
+      const card = semanticCard(item.storeId, item.title, item.summary)
+      allEntries.push({ storeId: item.storeId, title: card.title, summary: card.summary, eventPublishedAt: item.eventPublishedAt })
+    }
+    allEntries.sort((left, right) => left.storeId.localeCompare(right.storeId))
+    const window = publishedSemanticWindow(this.now(), this.config.publishedSemanticLookbackDays)
+    const since = Date.parse(window.since); const until = Date.parse(window.until)
+    const entries = allEntries.filter(item => {
+      const timestamp = Date.parse(item.eventPublishedAt)
+      return timestamp >= since && timestamp < until
+    })
+    if (entries.length > this.config.maxPublishedSemanticItems) throw new Error('Published semantic exclusion item ceiling exceeded')
+    const exactStoreIds = allEntries.map(item => item.storeId)
+    return { entries, exactStoreIds, window, fingerprint: publishedSemanticFingerprint(exactStoreIds, entries, window) }
   }
   create(query = {}, execution = {}) {
     if (this.stopping) return Promise.reject(new Error('AI selection store is stopping'))
@@ -351,9 +438,15 @@ export class PrismContentSelectionStore extends Service {
     } : undefined
     const snapshot = await this.ctx.prismContentRelevance.snapshotCurrent(query, execution)
     throwIfAborted(execution.signal)
-    const reviewer = this.reviewer
-    const reviewClaims = [...snapshot.matched, ...snapshot.ambiguous, ...snapshot.unmatched]
+    const publishedSnapshot = this.publishedSemanticSnapshot()
+    const publishedContentStoreIds = new Set(publishedSnapshot.exactStoreIds)
+    const snapshotClaims = [...snapshot.matched, ...snapshot.ambiguous, ...snapshot.unmatched]
+    const reviewClaims = snapshotClaims
+      .filter(claim => !publishedContentStoreIds.has(claim.record.storeId))
       .sort((left, right) => left.record.storeId.localeCompare(right.record.storeId))
+    const publishedExcluded = snapshotClaims.length - reviewClaims.length
+    if (reviewClaims.length === 0) throw new Error('No unpublished content remains in the AI selection window')
+    const reviewer = this.reviewer
     if (!reviewer) throw new Error('AI editorial reviewer is unavailable')
     const acceptedReviews = []; let rejectedReviews = 0; const pending = []
     for (const claim of reviewClaims) {
@@ -395,19 +488,51 @@ export class PrismContentSelectionStore extends Service {
     const filtered = topic ? candidates.filter(item => item.assessment.topics.includes(topic)) : candidates
     if (filtered.length === 0) throw new Error('No AI-related content matched the selection policy')
     throwIfAborted(execution.signal)
-    const clusteringCards = filtered.map(candidate => {
-      const item = candidate.record.item ?? {}
-      const title = String(item.title ?? '').replace(/[\u0000-\u001f\u007f]+/gu, ' ').replace(/\s+/gu, ' ').trim().slice(0, 300) || '无标题'
-      const summary = candidate.editorial.aiSummary
-        .replace(/<br\/>[\s\S]*$/iu, '').replace(/!\[[^\]]*\]\([^)]*\)/gu, '')
-        .replace(/<video[\s\S]*$/iu, '').replace(/\[([^\]]+)\]\([^)]*\)/gu, '$1').replace(/\*\*/gu, '')
-        .replace(/[\u0000-\u001f\u007f]+/gu, ' ').replace(/\s+/gu, ' ').trim().slice(0, 600)
-      if (!summary) throw new Error(`AI event clustering summary is empty: ${candidate.record.storeId}`)
-      return { storeId: candidate.record.storeId, title, summary }
-    })
+    const candidateCards = filtered.map(candidate => semanticCard(
+      candidate.record.storeId, candidate.record.item?.title, candidate.editorial.aiSummary,
+    ))
+    let semanticPublishedExcluded = 0; let semanticallyFiltered = filtered
+    if (publishedSnapshot.entries.length > 0) {
+      const comparisons = candidateCards.length * publishedSnapshot.entries.length
+      if (comparisons > this.config.maxPublishedSemanticComparisons) {
+        throw new Error('Published semantic exclusion comparison ceiling exceeded')
+      }
+      const candidateSemanticCards = candidateCards.map(card => ({ ...card, storeId: `candidate:${card.storeId}` }))
+      // History dates remain in the snapshot for windowing/fingerprinting, not in the strict clustering DTO.
+      const publishedSemanticCards = publishedSnapshot.entries.map(card => ({
+        storeId: `published:${card.storeId}`, title: card.title, summary: card.summary,
+      }))
+      const maxBatchCards = Number.isInteger(reviewer.maxCards) ? reviewer.maxCards : 100000
+      const maxBatchChars = Number.isInteger(reviewer.maxClusterInputChars) ? reviewer.maxClusterInputChars : 2000000
+      const sideMaxCards = Math.max(1, Math.floor(maxBatchCards / 2))
+      const sideMaxChars = Math.max(1000, Math.floor(maxBatchChars / 2) - 100)
+      const candidateChunks = semanticChunks(candidateSemanticCards, sideMaxCards, sideMaxChars)
+      const publishedChunks = semanticChunks(publishedSemanticCards, sideMaxCards, sideMaxChars)
+      const matchedCandidateIds = new Set()
+      for (const candidateChunk of candidateChunks) {
+        for (const publishedChunk of publishedChunks) {
+          const comparisonCards = [...candidateChunk, ...publishedChunk]
+          if (comparisonCards.length > maxBatchCards || semanticPayloadLength(comparisonCards) > maxBatchChars) {
+            throw new Error('Published semantic exclusion batch construction exceeded its capacity')
+          }
+          const comparisonGroups = await reviewer.clusterAll(comparisonCards, execution, { failureMode: 'throw' })
+          throwIfAborted(execution.signal)
+          for (const group of comparisonGroups) {
+            if (!group.some(storeId => storeId.startsWith('published:'))) continue
+            for (const storeId of group) if (storeId.startsWith('candidate:')) matchedCandidateIds.add(storeId.slice('candidate:'.length))
+          }
+        }
+      }
+      semanticPublishedExcluded = matchedCandidateIds.size
+      semanticallyFiltered = filtered.filter(candidate => !matchedCandidateIds.has(candidate.record.storeId))
+      if (semanticallyFiltered.length === 0) throw new Error('No semantically new content remains after published Draft exclusion')
+    }
+    const clusteringCards = semanticallyFiltered.map(candidate => semanticCard(
+      candidate.record.storeId, candidate.record.item?.title, candidate.editorial.aiSummary,
+    ))
     const semanticGroups = await reviewer.clusterAll(clusteringCards, execution)
     throwIfAborted(execution.signal)
-    const clusters = clusterAIEventsFromGroups(filtered, semanticGroups)
+    const clusters = clusterAIEventsFromGroups(semanticallyFiltered, semanticGroups)
     throwIfAborted(execution.signal)
     const ranked = rankDiverseEvents(clusters, {
       maxItems, maxPerSource: this.config.maxPerSource, longTailPercent: this.config.longTailPercent, sourceQuota,
@@ -454,8 +579,10 @@ export class PrismContentSelectionStore extends Service {
       classifierVersion: snapshot.classifierVersion, relevanceProfileFingerprint: snapshot.relevanceProfileFingerprint,
       reviewerProfileFingerprint: reviewer?.fingerprint ?? createHash('sha256').update('no-reviewer').digest('hex'),
       strategyVersion: AI_CONTENT_SELECTION_STRATEGY_VERSION, strategyProfileFingerprint: this.strategyProfileFingerprint,
+      publishedSemanticFingerprint: publishedSnapshot.fingerprint,
       counts: {
-        candidate: snapshot.candidateCount, localMatched: snapshot.matched.length, ambiguous: snapshot.ambiguous.length,
+        candidate: snapshot.candidateCount, publishedExcluded, semanticPublishedExcluded,
+        localMatched: snapshot.matched.length, ambiguous: snapshot.ambiguous.length,
         reviewed: reviewClaims.length, reviewAccepted: acceptedReviews.length, reviewRejected: rejectedReviews,
         eventClusters: clusters.length, selected: items.length,
       },
@@ -469,6 +596,7 @@ export class PrismContentSelectionStore extends Service {
       if (this.requireSelections().get(selectionId)) throw new Error('Selection id collision')
       this.ctx.prismContentRelevance.revalidateClaims(relevanceClaims)
       this.revalidateSelectionClaims(memberClaims)
+      this.assertPublicationSnapshot(selection.publishedSemanticFingerprint)
       throwIfAborted(execution.signal)
       await this.requireSelections().put(selectionId, selection)
       if (execution.signal?.aborted) {
@@ -514,6 +642,7 @@ export class PrismContentSelectionStore extends Service {
     const memberClaims = selection.items.flatMap(item => item.memberClaims)
     if (memberClaims.length > this.config.maxMemberClaims) throw new Error('AI selection member claim ceiling exceeded')
     this.revalidateSelectionClaims(memberClaims)
+    this.assertPublicationSnapshot(selection.publishedSemanticFingerprint)
     for (const item of selection.items) {
       const record = this.ctx.prismContentStore.get(item.storeId)
       for (const excerpt of item.material.excerpts) {
@@ -552,6 +681,13 @@ export class PrismContentSelectionStore extends Service {
     for (const claim of claims) {
       const record = this.ctx.prismContentStore.get(claim.storeId)
       if (!record || aiSelectionContentHash(record, this.config.selectionHashMaxChars) !== claim.contentHash) throw new Error(`Selected content changed or disappeared: ${claim.storeId}`)
+    }
+    return true
+  }
+  assertPublicationSnapshot(expectedFingerprint) {
+    const current = this.publishedSemanticSnapshot()
+    if (current.fingerprint !== expectedFingerprint) {
+      throw new Error('Published Draft semantic history changed after AI selection; create a new Selection')
     }
     return true
   }

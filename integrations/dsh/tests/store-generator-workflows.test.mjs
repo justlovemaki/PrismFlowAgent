@@ -52,6 +52,25 @@ test('workflow store creates exact hash-bound rows without accepting deployment 
   await assert.rejects(store.save({ ...definition(' stale'), expected: { kind: 'workflow-v1', version: 1, sha256: first.sha256 } }), GeneratorWorkflowConflictError)
 })
 
+test('saveAsDraft is version-bound, defaults to enabled for historical rows and survives updates and rollback', async () => {
+  const store = fixture()
+  const first = await store.create(definition())
+  assert.equal(Object.hasOwn(first, 'saveAsDraft'), false)
+  const ref = row => ({ kind: 'workflow-v1', version: row.version, sha256: row.sha256 })
+  const disabled = await store.save({ ...definition(), saveAsDraft: false, expected: ref(first) })
+  assert.equal(disabled.saveAsDraft, false); assert.notEqual(disabled.sha256, first.sha256)
+  assert.equal((await store.snapshot(first.generatorId)).saveAsDraft, false)
+  const unchanged = await store.save({ ...definition(), expected: ref(disabled) })
+  assert.equal(unchanged.saveAsDraft, false)
+  const enabled = await store.save({ ...definition(), saveAsDraft: true, expected: ref(unchanged) })
+  assert.equal(enabled.saveAsDraft, true)
+  await assert.rejects(store.save({ ...definition(), saveAsDraft: 'false', expected: ref(enabled) }), /boolean/)
+  const rolled = await store.rollback({ generatorId: first.generatorId, targetVersion: first.version, expected: ref(enabled) })
+  assert.equal(Object.hasOwn(rolled, 'saveAsDraft'), false); assert.equal(rolled.sha256, first.sha256)
+  store.scanHistory()
+  assert.equal((await store.history(first.generatorId)).length, 5)
+})
+
 test('archived workflow deletion appends an irreversible exact-CAS tombstone and reserves its id', async () => {
   const store = fixture()
   const created = await store.create(definition())

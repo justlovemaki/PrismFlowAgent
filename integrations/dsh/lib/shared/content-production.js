@@ -195,12 +195,15 @@ export function validateDeploymentExecutionProfile(value, verifyHash = true) {
     return { ...normalized, sha256: expected };
 }
 export function normalizeWorkflowSnapshot(value) {
-    if (!exactObject(value, ['format', 'generatorId', 'generatorName', 'description', 'enabled', 'steps', 'executionProfile'])) {
+    if (!exactObject(value, ['format', 'generatorId', 'generatorName', 'description', 'enabled', 'steps', 'executionProfile',
+        ...(value && typeof value === 'object' && Object.hasOwn(value, 'saveAsDraft') ? ['saveAsDraft'] : [])])) {
         throw new Error('Workflow snapshot fields are invalid');
     }
     const raw = value;
     if (raw.format !== 'workflow-v1' || !WORKFLOW_ID.test(raw.generatorId) || typeof raw.enabled !== 'boolean')
         throw new Error('Workflow identity is invalid');
+    if (Object.hasOwn(raw, 'saveAsDraft') && typeof raw.saveAsDraft !== 'boolean')
+        throw new Error('saveAsDraft must be a boolean');
     const generatorName = workflowText(raw.generatorName, 'generatorName', 256);
     const description = typeof raw.description === 'string' && raw.description.length <= 2_000 && !/[\u0000-\u001f\u007f]/.test(raw.description)
         ? raw.description : (() => { throw new Error('Workflow description is invalid'); })();
@@ -228,7 +231,8 @@ export function normalizeWorkflowSnapshot(value) {
             : step.processPrompt.length), 0);
     if (aggregate > executionProfile.ceilings.maxPromptAggregateChars)
         throw new Error('Workflow prompt aggregate exceeds its deployment profile');
-    return { format: 'workflow-v1', generatorId: raw.generatorId, generatorName, description, enabled: raw.enabled, steps, executionProfile };
+    return { format: 'workflow-v1', generatorId: raw.generatorId, generatorName, description, enabled: raw.enabled, steps, executionProfile,
+        ...(raw.saveAsDraft !== undefined ? { saveAsDraft: raw.saveAsDraft } : {}) };
 }
 export function generatorWorkflowSha256(value) {
     const snapshot = normalizeWorkflowSnapshot(value);
@@ -399,6 +403,21 @@ export function hasInvalidGeneratedUnicode(value) {
     }
     return false;
 }
+export function normalizeGeneratedContent(output, maxOutputChars) {
+    if (!Number.isInteger(maxOutputChars) || maxOutputChars < 1_024 || maxOutputChars > 500_000)
+        throw new Error('maxOutputChars is invalid');
+    if (!output || typeof output !== 'object' || Array.isArray(output))
+        throw new Error('Generator output must be an object');
+    const raw = output;
+    const title = cleanInline(raw.title, 'Generated title', 300);
+    if (typeof raw.markdown !== 'string' || raw.markdown.trim() === '' || raw.markdown.length > maxOutputChars || /[\u0000\u007f]/.test(raw.markdown)) {
+        throw new Error(`Generated markdown must be non-empty and at most ${maxOutputChars} characters`);
+    }
+    if (hasInvalidGeneratedUnicode(title) || hasInvalidGeneratedUnicode(raw.markdown))
+        throw new Error('Generated draft contains a Unicode replacement character or unpaired surrogate');
+    const markdown = `${raw.markdown.trimEnd()}\n`;
+    return { title, markdown, sha256: artifactSha256(markdown) };
+}
 export function normalizeGeneratedDraft(request, output, maxOutputChars, now = new Date()) {
     if (!Number.isInteger(maxOutputChars) || maxOutputChars < 1_024 || maxOutputChars > 500_000)
         throw new Error('maxOutputChars is invalid');
@@ -418,15 +437,7 @@ export function normalizeGeneratedDraft(request, output, maxOutputChars, now = n
         || typeof generatorPromptSha256 !== 'string' || !SHA256.test(generatorPromptSha256)) {
         throw new Error('Generation request has no valid pinned prompt provenance');
     }
-    const raw = output;
-    const title = cleanInline(raw.title, 'Generated title', 300);
-    if (typeof raw.markdown !== 'string' || raw.markdown.trim() === '' || raw.markdown.length > maxOutputChars || /[\u0000\u007f]/.test(raw.markdown)) {
-        throw new Error(`Generated markdown must be non-empty and at most ${maxOutputChars} characters`);
-    }
-    if (hasInvalidGeneratedUnicode(title) || hasInvalidGeneratedUnicode(raw.markdown)) {
-        throw new Error('Generated draft contains a Unicode replacement character or unpaired surrogate');
-    }
-    const markdown = `${raw.markdown.trimEnd()}\n`;
+    const { title, markdown } = normalizeGeneratedContent(output, maxOutputChars);
     const at = now.toISOString();
     const draft = {
         draftId: randomUUID(), requestId: request.requestId, generatorId: request.generatorId,

@@ -14,6 +14,25 @@ import { PublisherOutcomeError } from '../lib/shared/publisher-outcome.js'
 
 const PACKAGE_VERSION = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version
 
+test('captured-content bulk delete requires exact IDs, confirmation and same-origin Dashboard authority', async () => {
+  const calls = []
+  const app = await dashboard({ prismContentStore: { async deleteBatch(ids) {
+    calls.push(ids); return { deletedIds: ids, missingIds: [], failedIds: [] }
+  } } })
+  const id = 'a'.repeat(64)
+  try {
+    for (const body of [{ storeIds: [id] }, { storeIds: [id], confirm: false }, { storeIds: [], confirm: true },
+      { storeIds: [id, id], confirm: true }, { storeIds: ['bad'], confirm: true },
+      { storeIds: Array(101).fill(id), confirm: true }, { storeIds: [id], confirm: true, search: '*' }]) {
+      assert.equal((await request(app.origin, '/content/delete', body)).status, 400)
+    }
+    assert.equal((await request(app.origin, '/content/delete', { storeIds: [id], confirm: true }, { origin: 'https://evil.example' })).status, 403)
+    assert.equal(calls.length, 0)
+    const result = await request(app.origin, '/content/delete', { storeIds: [id], confirm: true })
+    assert.equal(result.status, 200); assert.deepEqual(result.value.deletedIds, [id]); assert.deepEqual(calls, [[id]])
+  } finally { await app.close() }
+})
+
 async function dashboard(services = {}, listenHost = '127.0.0.1', requestHost = listenHost, config) {
   let route
   const warnings = []
@@ -227,7 +246,7 @@ test('dashboard exports Follow and other operator configuration while preserving
   try {
     const profile = join(home, 'profiles', 'web'); const storage = join(home, 'storages')
     await mkdir(profile, { recursive: true }); await mkdir(storage, { recursive: true })
-    await writeFile(join(profile, 'package.json'), '{}\n'); await writeFile(join(profile, 'cordis.patch.yml'), '- id: prismflow-store-source-settings\n  disabled: false\n  config:\n    credentialSlots:\n      - id: follow-cookie\n        name: Follow Cookie\n        usage: follow-cookie\n        credentialRef: PRISMFLOW_FOLLOW_COOKIE\n        allowDashboardWrite: true\n- id: prismflow-publisher-github-markdown\n  disabled: false\n  config:\n    destinations:\n      - id: archive\n        name: GitHub Archive\n        repository: owner/repository\n        tokenCredential: GITHUB_TOKEN\n')
+    await writeFile(join(profile, 'package.json'), '{}\n'); await writeFile(join(profile, 'cordis.patch.yml'), '- id: prismflow-store-source-settings\n  disabled: false\n  config:\n    credentialSlots:\n      - id: follow-cookie\n        name: Follow Cookie\n        usage: follow-cookie\n        credentialRef: PRISMFLOW_FOLLOW_COOKIE\n        allowDashboardWrite: true\n- id: prismflow-generator-subagent\n  disabled: false\n  config:\n    generators:\n      - id: daily-brief\n        name: Daily Brief\n        instruction: Write a daily brief.\n        persona: You are an editor.\n- id: prismflow-publisher-github-markdown\n  disabled: false\n  config:\n    destinations:\n      - id: archive\n        name: GitHub Archive\n        repository: owner/repository\n        tokenCredential: GITHUB_TOKEN\n')
     const databasePath = join(storage, 'domain.sqlite'); createBackupDatabase(databasePath, 'exported')
     const maintenanceService = { async beginMaintenanceDrain() {}, maintenanceStatus() { return { active: 0, restartAllowed: true } } }
     const credentialValues = new Map([['GITHUB_TOKEN', 'github-token-secret'], ['PRISMFLOW_FOLLOW_COOKIE', 'follow-cookie-secret'], ['OPENAI_IMAGE_API_KEY', 'image-api-secret']])
@@ -240,11 +259,13 @@ test('dashboard exports Follow and other operator configuration while preserving
     assert.match(exported.headers.get('content-disposition'), /^attachment; filename="prismflow-configuration-backup-\d{4}-\d{2}-\d{2}\.pfbackup"$/u)
     assert.equal(exported.body.includes('follow-cookie-secret'), false); assert.equal(exported.body.includes('image-api-secret'), false); assert.equal(exported.body.includes('github-token-secret'), false)
     const parsed = parsePrismFlowDataBackup(decryptPrismFlowDataBackup(exported.body, password))
-    assert.equal(parsed.payload.kind, 'PrismFlowConfigurationBackup/v4'); assert.equal(parsed.payload.sourceCredentialSlots[0].id, 'follow-cookie')
+    assert.equal(parsed.payload.kind, 'PrismFlowConfigurationBackup/v5'); assert.equal(parsed.payload.sourceCredentialSlots[0].id, 'follow-cookie')
+    assert.equal(parsed.payload.profileGenerators.length, 1); assert.equal(parsed.payload.profileGenerators[0].id, 'daily-brief')
     assert.equal(parsed.payload.publisherRows[1].disabled, false); assert.equal(parsed.payload.publisherRows[1].config.destinations[0].repository, 'owner/repository')
     assert.equal(parsed.payload.units.some(unit => unit.name === 'prismflow_content'), false)
     assert.equal(Number(exported.headers.get('x-prismflow-record-count')), parsed.recordCount)
     assert.equal(Number(exported.headers.get('x-prismflow-workflow-history-count')), 1); assert.equal(Number(exported.headers.get('x-prismflow-workflow-id-count')), 0)
+    assert.equal(Number(exported.headers.get('x-prismflow-profile-generator-count')), 1)
     assert.equal(Number(exported.headers.get('x-prismflow-workflow-historical-id-count')), 0); assert.equal(Number(exported.headers.get('x-prismflow-deleted-workflow-id-count')), 0)
     assert.equal(exported.headers.get('x-prismflow-fingerprint'), parsed.fingerprint)
     assert.deepEqual(parsed.payload.credentials, [{ ref: 'GITHUB_TOKEN', value: 'github-token-secret' }, { ref: 'OPENAI_IMAGE_API_KEY', value: 'image-api-secret' }, { ref: 'PRISMFLOW_FOLLOW_COOKIE', value: 'follow-cookie-secret' }])
@@ -257,7 +278,7 @@ test('dashboard exports Follow and other operator configuration while preserving
     db.close()
     const restored = await request(app.origin, '/configuration-backup/import', { password, document: JSON.parse(exported.body) })
     assert.equal(restored.status, 200); assert.equal(restored.value.restored, true); assert.equal(restored.value.restartRequired, true)
-    assert.equal(restored.value.recordCount, parsed.recordCount); assert.equal(restored.value.credentialCount, 3); assert.equal(restored.value.publisherDestinationCount, 1); assert.equal(restored.value.maintenance, true)
+    assert.equal(restored.value.recordCount, parsed.recordCount); assert.equal(restored.value.credentialCount, 3); assert.equal(restored.value.profileGeneratorCount, 1); assert.equal(restored.value.publisherDestinationCount, 1); assert.equal(restored.value.maintenance, true)
     assert.equal(restored.value.workflowHistoryCount, 1); assert.equal(restored.value.workflowIdCount, 0)
     assert.equal(restored.value.workflowHistoricalIdCount, 0); assert.equal(restored.value.deletedWorkflowIdCount, 0)
     assert.equal(credentialValues.get('PRISMFLOW_FOLLOW_COOKIE'), 'follow-cookie-secret'); assert.equal(credentialValues.get('OPENAI_IMAGE_API_KEY'), 'image-api-secret'); assert.equal(credentialValues.get('GITHUB_TOKEN'), 'github-token-secret')
@@ -336,6 +357,10 @@ test('dashboard API exposes only configuration, immutable draft review/publicati
       title: 'AI News', description: 'Summary', url: 'https://example.com/entry-1', publishedAt: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author',
       sourceAiSummary: 'Source AI summary', aiSummary: 'Reviewer AI summary', aiScore: 85, aiReason: 'Weighted review reason', aiReviewedAt: '2026-01-01T00:00:03.000Z' })
     assert.deepEqual(content.value.categories, [{ category: 'news', count: 1 }]); assert.equal(JSON.stringify(content.value).includes('must-not-project'), false)
+    const reviewerSummarySearch = await request(app.origin, '/content?search=Reviewer%20AI%20summary')
+    assert.equal(reviewerSummarySearch.status, 200); assert.equal(reviewerSummarySearch.value.total, 1)
+    const missingSummarySearch = await request(app.origin, '/content?search=summary-that-does-not-exist')
+    assert.equal(missingSummarySearch.status, 200); assert.equal(missingSummarySearch.value.total, 0); assert.deepEqual(missingSummarySearch.value.records, [])
     const unprocessedContent = await request(app.origin, '/content?aiProcessed=false')
     assert.equal(unprocessedContent.status, 200); assert.equal(unprocessedContent.value.total, 0); assert.deepEqual(unprocessedContent.value.records, [])
     assert.equal((await request(app.origin, '/content?status=unread')).status, 400)
@@ -644,6 +669,10 @@ test('dashboard workflow builder and request administration routes use strict se
     const create = { generatorId: 'new-brief', generatorName: 'New brief', description: '', steps: [{ id: 'draft', name: 'Draft', persona: 'Writer', processPrompt: '' }] }
     const created = await request(app.origin, '/generator-workflows', create)
     assert.equal(created.status, 201); assert.equal(created.value.record.steps[0].processPrompt, '')
+    assert.equal(created.value.record.saveAsDraft, true)
+    const resultOnly = await request(app.origin, '/generator-workflows', { ...create, generatorId: 'result-only', saveAsDraft: false })
+    assert.equal(resultOnly.status, 201); assert.equal(resultOnly.value.record.saveAsDraft, false)
+    assert.equal((await request(app.origin, '/generator-workflows', { ...create, saveAsDraft: 'false' })).status, 400)
     assert.equal((await request(app.origin, '/generator-workflows', { ...create, generatorId: 'whitespace', steps: [{ ...create.steps[0], processPrompt: '  ' }] })).status, 400)
     assert.equal((await request(app.origin, '/generator-workflows', { ...create, generatorId: 'no-persona', steps: [{ ...create.steps[0], persona: '' }] })).status, 400)
     assert.equal((await request(app.origin, '/generator-workflows', { ...create, generatorId: 'missing-prompt', steps: [{ id: 'draft', name: 'Draft', persona: 'Writer' }] })).status, 400)

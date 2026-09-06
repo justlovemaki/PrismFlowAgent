@@ -11,8 +11,8 @@ const TOPICS = [
 ]
 
 const DEFAULT_CLUSTER_INSTRUCTION = `你是AI资讯事件聚类专家。只根据每条记录的标题和AI摘要判断它们是否描述同一个现实事件。
-同一主体、同一核心动作、同一对象且属于同一发布或进展的报道应合并；同一模型的发布、评测、量化、框架适配和后续应用属于不同事件，除非摘要明确说明它们是同一次公告。
-不得根据索引相邻、措辞相似或同属宽泛主题而合并。只输出需要合并的clusterIndex组；不确定或无需合并的候选不要输出，系统会将它们安全地保留为单例。`
+同一主体、同一核心动作、同一对象且属于同一发布或进展的报道应合并；即使标题、语序和措辞不同，只要核心事实、结论和现实指向语义等价，也应合并。同一模型的发布、评测、量化、框架适配和后续应用属于不同事件，除非摘要明确说明它们是同一次公告。
+不得仅根据索引相邻、表面词句相似或同属宽泛主题而合并。只输出需要合并的clusterIndex组；不确定或无需合并的候选不要输出，系统会将它们安全地保留为单例。`
 
 const DEFAULT_INSTRUCTION = `你是AI内容主编与资深资讯评委。对每条原始Markdown独立判断、彻底重写并评分，不得依赖关键词词典。
 内容要求：ai_summary以加粗标题开头并使用中文新闻播报风格；不校验标题或正文的句数和每句话字数。避免排比、转折和连接词；允许少量自然口语感。标题和正文之间只能用空格。
@@ -238,7 +238,7 @@ function clusterBatches(cards, maxCards, maxChars) {
 export function apply(ctx, rawConfig) {
   const config = cleanConfig(rawConfig)
   const fingerprint = createHash('sha256').update(JSON.stringify({
-    version: 4, provider: config.subagentProvider, batchSize: config.batchSize, maxCards: config.maxCards,
+    version: 5, provider: config.subagentProvider, batchSize: config.batchSize, maxCards: config.maxCards,
     maxCardChars: config.maxCardChars, maxClusterInputChars: config.maxClusterInputChars, minimumAiScore: config.minimumAiScore,
     instruction: config.instruction, clusterInstruction: config.clusterInstruction, persona: config.persona,
     output: OUTPUT_SCHEMA, clusterOutput: CLUSTER_OUTPUT_SCHEMA,
@@ -306,8 +306,13 @@ export function apply(ctx, rawConfig) {
       })
       active.add(operation); return operation
     },
-    clusterAll(cards, execution) {
+    clusterAll(cards, execution, options = {}) {
       if (!execution?.agent) return Promise.reject(new Error('AI event clustering requires a calling DSH Agent'))
+      if (!options || typeof options !== 'object' || Array.isArray(options)
+        || Object.keys(options).some(key => key !== 'failureMode')
+        || options.failureMode !== undefined && options.failureMode !== 'throw') {
+        return Promise.reject(new Error('AI event clustering options are invalid'))
+      }
       if (stopping) return Promise.reject(new Error('AI editorial reviewer is stopping'))
       if (!Array.isArray(cards) || cards.length < 1 || cards.length > 100_000) return Promise.reject(new Error('AI event clustering card set is invalid'))
       const bounded = cards.map(card => {
@@ -348,8 +353,10 @@ export function apply(ctx, rawConfig) {
               lastError = error
             }
           }
-          // Invalid clustering must never discard scored content. After bounded
-          // retries, preserve the whole batch as conservative singleton events.
+          // Normal event clustering preserves scored content after bounded
+          // format failures. Published-history comparison opts into strict mode
+          // so a malformed result cannot silently admit a possible duplicate.
+          if (!clustered && options.failureMode === 'throw') throw lastError
           groups.push(...(clustered ?? batch.cards.map(card => [card.storeId])))
         }
         return groups.sort((left, right) => left[0].localeCompare(right[0]))

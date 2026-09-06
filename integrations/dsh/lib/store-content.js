@@ -98,6 +98,26 @@ export class PrismContentStore extends Service {
     })
   }
 
+  /** Delete only explicitly selected IDs; serialize against ingestion and report partial storage failures. */
+  deleteBatch(storeIds) {
+    if (!Array.isArray(storeIds) || storeIds.length < 1 || storeIds.length > 100
+      || storeIds.some(id => typeof id !== 'string' || !/^[a-f0-9]{64}$/u.test(id))
+      || new Set(storeIds).size !== storeIds.length) {
+      return Promise.reject(new Error('storeIds must contain 1 to 100 unique SHA-256 IDs'))
+    }
+    const ids = [...storeIds]
+    return this.enqueueMutation(async () => {
+      const table = this.requireItems()
+      const result = { deletedIds: [], missingIds: [], failedIds: [] }
+      for (const id of ids) {
+        if (!table.get(id)) { result.missingIds.push(id); continue }
+        try { await table.delete(id); result.deletedIds.push(id) }
+        catch { result.failedIds.push(id) }
+      }
+      return result
+    })
+  }
+
   get(storeId) {
     return this.requireItems().get(storeId)
   }

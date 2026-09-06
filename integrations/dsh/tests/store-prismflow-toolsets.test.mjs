@@ -29,16 +29,17 @@ test('Chat tool origins distinguish personal-plugin tools from system defaults',
     'prismflow_process_markdown_media',
     'prismflow_trigger_insight_daily_build',
     'prismflow_image_generation',
+    'prismflow_generate_cover_asset_from_draft',
     'prismflow_generate_rss_content',
     'prismflow_github_push',
   ])
   assert.equal(prismFlowToolOrigin('prismflow_image_generation'), 'personal-custom')
   assert.equal(prismFlowToolOrigin('prismflow_create_ai_selection'), 'personal-custom')
   assert.equal(prismFlowToolOrigin('prismflow_sources'), 'system-default')
-  assert.equal(PRISMFLOW_CORE_TOOL_NAMES.length, 18)
+  assert.equal(PRISMFLOW_CORE_TOOL_NAMES.length, 19)
   assert.equal(PRISMFLOW_CORE_TOOL_NAMES.every(name => prismFlowToolOrigin(name) === 'system-default'), true)
   assert.equal(PRISMFLOW_SYSTEM_PLUGIN_IDS.length, 5)
-  assert.equal(PRISMFLOW_PERSONAL_PLUGIN_IDS.length, 6)
+  assert.equal(PRISMFLOW_PERSONAL_PLUGIN_IDS.length, 7)
   assert.deepEqual([...new Set(PRISMFLOW_PLUGIN_MANIFESTS.flatMap(plugin => plugin.tools))].sort(), [...PRISMFLOW_TOOL_NAMES].sort())
 })
 
@@ -63,12 +64,24 @@ test('Chat prompt suggestions bootstrap in SQLite and save with exact version/SH
   assert.equal(current.items.length, 8)
   assert.equal(current.items[0].text, '获取 PrismFlow 已配置的所有数据源数据。')
   assert.match(current.items[1].text, /不重新同步任何数据源/u)
-  assert.match(current.items[7].text, /prismflow_image_generation/u); assert.match(current.items[7].text, /\n\n/u)
+  assert.match(current.items[7].text, /prismflow_generate_cover_asset_from_draft/u); assert.match(current.items[7].text, /不得创建封面中间 Draft/u); assert.match(current.items[7].text, /排除最后两张图片/u)
   const saved = await store.savePromptSuggestions({ items: current.items.map((item, index) => ({ ...item, enabled: index !== 1 })),
     expected: { version: current.version, sha256: current.sha256 } })
   assert.equal(saved.version, 2); assert.equal(saved.items[1].enabled, false)
   assert.deepEqual(store.getPromptSuggestions(), saved)
   await assert.rejects(store.savePromptSuggestions({ items: saved.items, expected: { version: current.version, sha256: current.sha256 } }), /version conflict/)
+})
+
+test('cover prompt migration preserves customized source wording while replacing the Draft-producing cover path', async () => {
+  const store = await fixture(); const current = store.getPromptSuggestions()
+  const items = current.items.map(item => item.id === 'generate-short-daily-with-images' ? { ...item,
+    text: '根据最新的已审批草稿，选择其中最具媒体传播效果的一个段落。\n使用 生成封面图片生成器，传入主标题和副标题， 生成一张 2:3 比例的封面图。\n保留我的其它要求。' } : item)
+  const snapshot = { items, version: 9 }
+  await store.table.put('@prompt-suggestions:active', { ...snapshot, sha256: digest(snapshot), updatedAt: '2026-01-01T00:00:00.000Z' })
+  await store.bootstrapPromptSuggestions()
+  const migrated = store.getPromptSuggestions(); const cover = migrated.items.find(item => item.id === 'generate-short-daily-with-images')
+  assert.equal(migrated.version, 10); assert.match(cover.text, /最新的已审批草稿/u); assert.match(cover.text, /prismflow_generate_cover_asset_from_draft/u)
+  assert.match(cover.text, /不得创建封面中间 Draft/u); assert.match(cover.text, /保留我的其它要求/u)
 })
 
 test('core preset checks every system-default tool and Skill while excluding personal customization', async () => {
@@ -122,13 +135,14 @@ test('toolset migrates every legacy unprefixed compatibility name to its prismfl
 test('toolset migration removes unavailable formerly bundled personal plugins until manual import', async () => {
   const store = await fixture(); const current = store.getToolset()
   const enabledPlugins = PRISMFLOW_PLUGIN_MANIFESTS.map(plugin => plugin.pluginId === 'prismflow-personal-selection' ? 'prismflow-system-selection' : plugin.pluginId).sort()
-  const snapshot = { mode: 'complete', enabledPlugins, enabledTools: [...PRISMFLOW_TOOL_NAMES].sort(), enabledSkills: current.enabledSkills, version: 7 }
+  const snapshot = { mode: 'complete', enabledPlugins, enabledTools: [...PRISMFLOW_TOOL_NAMES, 'prismflow_create_cover_generation_request_from_draft'].sort(), enabledSkills: current.enabledSkills, version: 7 }
   await store.table.put('@toolset:active', { ...snapshot, sha256: digest(snapshot), updatedAt: '2026-01-01T00:00:00.000Z' })
   await store.bootstrap()
   const migrated = store.getToolset()
   assert.equal(migrated.version, 8)
   assert.deepEqual(migrated.enabledPlugins, [...PRISMFLOW_SYSTEM_PLUGIN_IDS].sort())
   assert.deepEqual(migrated.enabledTools, [...PRISMFLOW_CORE_TOOL_NAMES].sort())
+  assert.equal(migrated.enabledTools.includes('prismflow_create_cover_generation_request_from_draft'), false)
 })
 
 test('custom plugin activation owns its tool boundary and rejects tools from disabled plugins', async () => {

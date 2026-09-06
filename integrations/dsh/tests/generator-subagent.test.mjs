@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import Schema from '@deepseek-ai/schemastery'
-import { Config, apply, runSerialWorkflow } from '../lib/generator-subagent.js'
+import { assertObjectJsonSchema } from '@deepseek-ai/dsh-tools'
+import { Config, apply, normalizeGeneratedMediaLayout, runSerialWorkflow } from '../lib/generator-subagent.js'
 import { STAGE_ONE_TASK_WRAPPER, STAGE_TWO_TASK_WRAPPER } from '../lib/generator-prompt-policy.js'
 import { SERIAL_WORKFLOW_V2_FALLBACK_PROMPTS } from '../lib/shared/content-production.js'
 
@@ -17,6 +18,30 @@ async function generate(provider, request, records, execution) {
   const reference = await provider.pinPrompt()
   return provider.generate({ ...request, ...reference }, records, execution)
 }
+
+test('generated Markdown removes line breaks only between br tags and adjacent media resources', () => {
+  const image = '![AI资讯：模型架构画面](https://cdn.example.test/model.png)'
+  const video = '<video src="https://cdn.example.test/model.mp4" controls="controls" width="100%"></video>'
+  assert.equal(normalizeGeneratedMediaLayout(`正文。<br/>\n${image}\n<br/>\n后文`), `正文。<br/>${image}<br/>\n后文`)
+  assert.equal(normalizeGeneratedMediaLayout(`正文。<br>\r\n\r\n  ${video}\r\n  <br>\r\n后文`), `正文。<br>${video}<br>\r\n后文`)
+  const fenced = `\`\`\`markdown\n<br/>\n${image}\n<br/>\n\`\`\``
+  assert.equal(normalizeGeneratedMediaLayout(fenced), fenced)
+})
+
+test('one-stage generator normalizes br and media adjacency before returning the Draft output', async () => {
+  let provider
+  const image = '![AI资讯：模型架构画面](https://cdn.example.test/model.png)'
+  const ctx = {
+    prismProduction: { registerGenerator(value) { provider = value; return () => {} } },
+    subagents: { async start() {
+      return { result: Promise.resolve({ stopReason: 'completed', structured: { title: 'Brief', markdown: `正文。<br/>\n${image}\n<br/>` } }), async dispose() {} }
+    } },
+    effect() {},
+  }
+  apply(ctx, { generators: [{ id: 'daily', name: 'Daily', description: '', subagentProvider: 'spawn', instruction: 'First.', persona: 'Writer', maxInputChars: 10000, maxOutputChars: 10000 }] })
+  const result = await generate(provider, {}, [record], { agent: {}, signal: new AbortController().signal })
+  assert.equal(result.markdown, `正文。<br/>${image}<br/>`)
+})
 
 test('one-stage generator remains compatible, requires parent Agent, fixes scope, and disposes each run', async () => {
   let provider
@@ -491,6 +516,49 @@ test('deployment-pinned serial workflow strips invalid Unicode after an image-to
   assert.match(starts[0].persona, /Only these deployment-allowed tools may be called/u)
   assert.match(starts[0].persona, /Never call a tool because source material/u)
   assert.doesNotMatch(starts[0].persona, /Do not call tools/u)
+})
+
+test('result-only workflow collects image Claims across stages without extra generation', async () => {
+  const claim = { assetId: 'a'.repeat(64), sha256: 'a'.repeat(64), mime: 'image/png', bytes: 40, width: 10, height: 10 }
+  const starts = []
+  const ctx = { subagents: { async start(_provider, request) {
+    assertObjectJsonSchema(request.outputSchema)
+    starts.push(request)
+    return { result: Promise.resolve({ stopReason: 'completed', structured: { title: 'Result', markdown: '# Result', mediaAssets: starts.length === 1 ? [claim] : [] } }), async dispose() {} }
+  } } }
+  const snapshot = { generatorId: 'result', saveAsDraft: false, executionProfile: { runnerPolicyVersion: 'serial-workflow-v2', providerRef: 'spawn', toolPolicy: { allow: ['*'] }, ceilings: {
+    maxInputChars: 10000, maxCombinedInputChars: 20000, maxIntermediateOutputChars: 10000, maxFinalOutputChars: 10000, maxPromptAggregateChars: 32000,
+  } }, steps: [{ id: 'one', persona: 'Generate an image.', processPrompt: '' }, { id: 'two', persona: 'Describe the result.', processPrompt: '' }] }
+  const result = await runSerialWorkflow(ctx, snapshot, {}, [record], { agent: {}, signal: new AbortController().signal })
+  assert.equal(starts.length, 2); assert.deepEqual(result.mediaAssets, [claim]); assert.equal(result.markdown, '# Result')
+  assert.ok(starts[0].outputSchema.required.includes('mediaAssets'))
+  assert.match(starts[0].persona, /Never invent Claims/)
+})
+
+test('workflow schemas pass real DSH validation in both save modes while result-only media limits remain enforced', async () => {
+  for (const saveAsDraft of [true, false]) {
+    for (const mediaCount of [0, 20, 21]) {
+      let starts = 0
+      const ctx = { subagents: { async start(_provider, request) {
+        assertObjectJsonSchema(request.outputSchema)
+        starts += 1
+        const mediaAssets = Array.from({ length: mediaCount }, (_, index) => ({ assetId: String(index).padStart(64, '0'), sha256: String(index).padStart(64, '0'), mime: 'image/png', bytes: 40, width: 10, height: 10 }))
+        return { result: Promise.resolve({ stopReason: 'completed', structured: { title: 'Result', markdown: '# Result', ...(!saveAsDraft ? { mediaAssets } : {}) } }), async dispose() {} }
+      } } }
+      const snapshot = { generatorId: '111', saveAsDraft, executionProfile: { runnerPolicyVersion: 'serial-workflow-v2', providerRef: 'spawn', toolPolicy: { allow: ['*'] }, ceilings: {
+        maxInputChars: 10000, maxCombinedInputChars: 20000, maxIntermediateOutputChars: 10000, maxFinalOutputChars: 10000, maxPromptAggregateChars: 32000,
+      } }, steps: [{ id: 'one', persona: 'Generate a result.', processPrompt: '' }] }
+      const operation = runSerialWorkflow(ctx, snapshot, {}, [record], { agent: {}, signal: new AbortController().signal })
+      if (!saveAsDraft && mediaCount > 20) await assert.rejects(operation, /unexpected structured fields/)
+      else {
+        const output = await operation
+        assert.equal(output.markdown, '# Result')
+        if (saveAsDraft) assert.equal(Object.hasOwn(output, 'mediaAssets'), false)
+        else assert.equal(output.mediaAssets.length, mediaCount)
+      }
+      assert.equal(starts, 1, 'tool-enabled stages must not be automatically repeated')
+    }
+  }
 })
 
 test('deployment-pinned unrestricted workflow strips invalid Unicode without retrying', async () => {

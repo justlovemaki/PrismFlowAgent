@@ -123,15 +123,8 @@ function compareStoredContent(left, right, sortBy, sortOrder) {
         return sortOrder === 'asc' ? compared : -compared;
     return right.updatedAt.localeCompare(left.updatedAt) || left.storeId.localeCompare(right.storeId);
 }
-function matchesStoredContent(record, query, needle) {
-    if (query.storeId && record.storeId !== query.storeId)
-        return false;
-    if (query.sourceId && record.sourceId !== query.sourceId)
-        return false;
-    if (query.category && record.item.category !== query.category)
-        return false;
-    if (query.status && record.status !== query.status)
-        return false;
+export function matchesStoredContentSearch(record, search) {
+    const needle = search?.trim().toLocaleLowerCase();
     if (!needle)
         return true;
     return [
@@ -141,6 +134,17 @@ function matchesStoredContent(record, query, needle) {
         record.item.author,
         record.item.metadata?.ai_summary,
     ].some(value => typeof value === 'string' && value.toLocaleLowerCase().includes(needle));
+}
+function matchesStoredContent(record, query, needle) {
+    if (query.storeId && record.storeId !== query.storeId)
+        return false;
+    if (query.sourceId && record.sourceId !== query.sourceId)
+        return false;
+    if (query.category && record.item.category !== query.category)
+        return false;
+    if (query.status && record.status !== query.status)
+        return false;
+    return !needle || matchesStoredContentSearch(record, needle);
 }
 export function countStoredContent(records, query = {}) {
     const needle = query.search?.trim().toLocaleLowerCase();

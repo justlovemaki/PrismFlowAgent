@@ -220,15 +220,60 @@ test('captured-content tab renders server-paged searchable sortable category-fil
     storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', aiProcessed: true, firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', fetchedAt: '2026-01-02T00:00:00.000Z',
     title: 'AI News', description: '完整摘要', sourceAiSummary: '来源摘要', aiSummary: 'AI 摘要', aiScore: 85, aiReason: '四维加权评分理由', aiReviewedAt: '2026-01-02T01:02:03.000Z', url: 'https://example.com/news', publishedAt: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author',
   }] }
+  page.records.push({ ...page.records[0], storeId: 'b'.repeat(64), externalId: 'entry-2', title: '未处理资讯', description: '未处理原始摘要',
+    aiProcessed: false, sourceAiSummary: '', aiSummary: '', aiScore: null, aiReason: '', aiReviewedAt: '' })
   const client = await loadClient(new Map([[0, 'content'], [3, status], [51, query], [52, page]]))
   const values = descendants(client.renderDashboard())
-  for (const label of ['已抓取数据', '搜索', '分类', '排序字段', '顺序', 'AI 处理', '每页', '标题与摘要', '抓取时间', '上一页', '下一页']) assert.ok(values.includes(label) || values.some(node => node?.props?.label === label), label)
-  assert.ok(values.includes('AI News')); assert.ok(values.includes('完整摘要')); assert.ok(values.includes('查看完整记录')); assert.ok(values.includes('第 2 / 3 页 · 共 45 条')); assert.ok(values.includes('已处理'))
+  for (const label of ['已抓取数据', '搜索', '分类', '排序字段', '顺序', 'AI 处理', '每页', '来源', '作者', '发布时间', '抓取时间', '最后更新', '上一页', '下一页']) assert.ok(values.includes(label) || values.some(node => node?.props?.label === label), label)
+  assert.ok(values.includes('AI News')); assert.ok(values.includes('完整摘要')); assert.ok(values.includes('展开完整信息')); assert.ok(values.includes('第 2 / 3 页 · 共 45 条')); assert.ok(values.includes('AI 已处理'))
+  const cards = values.filter(node => node?.type === 'article' && node?.props?.className?.split?.(' ').includes('pf-content-card'))
+  assert.equal(cards.length, 2)
+  assert.ok(cards[0].props.className.includes('pf-content-card-processed'))
+  assert.equal(cards[1].props.className.includes('pf-content-card-processed'), false)
+  const summaries = values.filter(node => node?.props?.className === 'pf-content-summary')
+  assert.deepEqual(summaries.map(node => childrenOf(node)[0]), ['AI 摘要', '未处理原始摘要'])
+  const processedValues = descendants(cards[0])
+  const unprocessedValues = descendants(cards[1])
+  assert.ok(processedValues.includes('原始摘要'))
+  assert.equal(processedValues.filter(value => value === '完整摘要').length, 1)
+  assert.equal(unprocessedValues.filter(value => value === '原始摘要').length, 1)
+  assert.equal(unprocessedValues.filter(value => value === '未处理原始摘要').length, 1)
+  assert.equal(values.some(node => node?.type === 'table'), false)
   assert.equal(values.includes('未读'), false); assert.equal(values.includes('已读'), false); assert.equal(values.includes('已归档'), false)
-  for (const value of ['来源AI摘要', '来源摘要', 'AI评分', '85 / 100', 'AI摘要', 'AI 摘要', '评分理由', '四维加权评分理由', '审核时间']) assert.ok(values.includes(value), value)
+  for (const value of ['来源 AI 摘要', '来源摘要', 'AI 审核', 'AI 摘要', '评分理由', '四维加权评分理由', '记录标识']) assert.ok(values.includes(value), value)
+  assert.ok(values.some(value => typeof value === 'string' && value.startsWith('评分：85 / 100\n审核时间：')))
+  assert.equal(values.includes('AI摘要'), false)
+  assert.match(client.source, /标题、原始摘要、AI 摘要、来源或作者/u)
   assert.match(client.source, /params\.set\('aiProcessed', query\.aiProcessed\)/u)
   assert.match(client.source, /api\(`\/content\?\$\{params\.toString\(\)\}`/u)
-  assert.match(client.appendedStyle.textContent, /\.pf-content-table-wrap\{[^}]*overflow:auto/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-content-list\{[^}]*flex-direction:column/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-content-card-body\{[^}]*grid-template-columns/u)
+})
+
+test('captured-content selection deletes only current-page IDs after confirmation and clears on reload', async () => {
+  const id = 'a'.repeat(64)
+  const query = { search: '', category: '', aiProcessed: '', sortBy: 'title', sortOrder: 'asc', page: 2, pageSize: 20 }
+  const page = { total: 21, categories: [], records: [{ storeId: id, title: 'Selected news' }] }
+  const client = await loadClient(new Map([[0, 'content'], [3, status], [51, query], [52, page]]))
+  const values = () => descendants(client.renderDashboard())
+  const remove = () => values().find(node => node?.type?.name === 'Button' && childrenOf(node).includes('删除所选'))
+  assert.equal(remove().props.disabled, true)
+  values().find(node => node?.props?.['aria-label'] === '全选当前页').props.onChange({ target: { checked: true } })
+  assert.equal(remove().props.disabled, false)
+  assert.equal(values().find(node => node?.props?.['aria-label'] === '选择记录：Selected news').props.checked, true)
+  const active = remove().props.onClick()
+  assert.match(client.confirmCalls[0], /不可撤销/)
+  assert.deepEqual(JSON.parse(client.fetchCalls[0].body), { storeIds: [id], confirm: true })
+  client.pendingFetches[0]({ ok: true, async json() { return { deletedIds: [id], missingIds: [], failedIds: [] } } })
+  await new Promise(resolve => setImmediate(resolve))
+  assert.match(client.fetchCalls[1].url, /offset=0/)
+  client.pendingFetches[1]({ ok: true, async json() { return { records: [], total: 20, categories: [] } } })
+  await active
+  assert.equal(remove().props.disabled, true)
+  assert.ok(values().some(value => typeof value === 'string' && value.includes('已删除 1 条')))
+  const cancelled = await loadClient(new Map([[0, 'content'], [3, status], [51, query], [52, page], [54, [id]]]), { confirmResult: false })
+  await descendants(cancelled.renderDashboard()).find(node => node?.type?.name === 'Button' && childrenOf(node).includes('删除所选')).props.onClick()
+  assert.equal(cancelled.fetchCalls.length, 0)
 })
 
 test('Chat prompt suggestion dock loads above the composer and fills without auto-submitting', async () => {
@@ -532,7 +577,7 @@ test('legacy projected generators are clearly marked and migrate through the exi
   assert.equal(client.fetchCalls[0].url, '/api/prismflow/generator-workflows')
   assert.equal(client.fetchCalls[0].method, 'PUT')
   assert.deepEqual(JSON.parse(client.fetchCalls[0].body), {
-    generatorId: legacy.generatorId, generatorName: legacy.generatorName, description: legacy.description, steps: legacy.steps,
+    generatorId: legacy.generatorId, generatorName: legacy.generatorName, description: legacy.description, steps: legacy.steps, saveAsDraft: true,
     expected: legacy.expected,
   })
   assert.match(client.source, /if \(value\) await loadWorkflows\(value\.record\.generatorId\)/u, 'successful adoption reloads normal workflow state')
@@ -546,6 +591,21 @@ test('new workflow footer offers save only because there is no baseline to resto
   const footer = values.find(node => node?.type === 'footer' && node.props.className === 'pf-workflow-actions')
   assert.deepEqual(descendants(footer).filter(node => typeof node?.type === 'function' && node.type.name === 'Button').map(node => childrenOf(node)[0]), ['创建工作流'])
   assert.equal(values.some(node => node?.props?.className === 'pf-workflow-management'), false)
+})
+
+test('workflow save-as-Draft switch defaults on, tracks changes and sends false through CAS save', async () => {
+  const baseline = { kind: 'workflow-v1', generatorId: 'daily', generatorName: 'Daily', description: '', enabled: true,
+    steps: [{ id: 'one', name: 'One', persona: 'Writer', processPrompt: '' }], expected: { kind: 'workflow-v1', version: 1, sha256: 'a'.repeat(64) } }
+  const client = await loadClient(new Map([[0, 'workflows'], [3, status], [16, structuredClone(baseline)], [17, baseline]]))
+  const label = descendants(client.renderDashboard()).find(node => node?.type === 'label' && childrenOf(node).includes('保存为草稿'))
+  const toggle = descendants(label).find(node => node?.type === 'input')
+  assert.equal(toggle.props.checked, true)
+  toggle.props.onChange({ target: { checked: false } })
+  client.renderDashboard()
+  client.effects.filter(item => String(item.effect).includes('saveWorkflowShortcut')).at(-1).effect()
+  client.eventListeners.get('keydown')({ key: 's', ctrlKey: true, preventDefault() {} })
+  assert.equal(JSON.parse(client.fetchCalls[0].body).saveAsDraft, false)
+  assert.deepEqual(JSON.parse(client.fetchCalls[0].body).expected, baseline.expected)
 })
 
 test('workflow Ctrl/Cmd+S uses the guarded existing CAS save only for an active valid changed or adoptable editor', async () => {
@@ -565,7 +625,7 @@ test('workflow Ctrl/Cmd+S uses the guarded existing CAS save only for an active 
   assert.equal(client.fetchCalls[0].url, '/api/prismflow/generator-workflows')
   assert.equal(client.fetchCalls[0].method, 'PUT')
   assert.deepEqual(JSON.parse(client.fetchCalls[0].body), {
-    generatorId: dirty.generatorId, generatorName: dirty.generatorName, description: dirty.description, steps: dirty.steps, expected: baseline.expected,
+    generatorId: dirty.generatorId, generatorName: dirty.generatorName, description: dirty.description, steps: dirty.steps, expected: baseline.expected, saveAsDraft: true,
   })
 
   const legacy = { ...baseline, kind: 'legacy-v1', expected: { kind: 'legacy-v1', version: 7, sha256: 'b'.repeat(64) } }

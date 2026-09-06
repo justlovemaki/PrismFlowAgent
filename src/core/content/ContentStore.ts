@@ -176,11 +176,8 @@ function compareStoredContent(left: StoredContentRecord, right: StoredContentRec
   return right.updatedAt.localeCompare(left.updatedAt) || left.storeId.localeCompare(right.storeId);
 }
 
-function matchesStoredContent(record: StoredContentRecord, query: ContentQuery, needle?: string): boolean {
-  if (query.storeId && record.storeId !== query.storeId) return false;
-  if (query.sourceId && record.sourceId !== query.sourceId) return false;
-  if (query.category && record.item.category !== query.category) return false;
-  if (query.status && record.status !== query.status) return false;
+export function matchesStoredContentSearch(record: StoredContentRecord, search?: string): boolean {
+  const needle = search?.trim().toLocaleLowerCase();
   if (!needle) return true;
   return [
     record.item.title,
@@ -189,6 +186,14 @@ function matchesStoredContent(record: StoredContentRecord, query: ContentQuery, 
     record.item.author,
     record.item.metadata?.ai_summary,
   ].some(value => typeof value === 'string' && value.toLocaleLowerCase().includes(needle));
+}
+
+function matchesStoredContent(record: StoredContentRecord, query: ContentQuery, needle?: string): boolean {
+  if (query.storeId && record.storeId !== query.storeId) return false;
+  if (query.sourceId && record.sourceId !== query.sourceId) return false;
+  if (query.category && record.item.category !== query.category) return false;
+  if (query.status && record.status !== query.status) return false;
+  return !needle || matchesStoredContentSearch(record, needle);
 }
 
 export function countStoredContent(

@@ -184,6 +184,10 @@ test('reviewer performs sparse global clustering and conservatively keeps omitte
   assert.deepEqual(await alwaysDuplicate.provider().clusterAll(clusteringCards, { agent: {} }),
     clusteringCards.map(card => [card.storeId]))
   assert.equal(alwaysDuplicate.starts.length, 3)
+
+  const strictFailure = fixture(() => ({ groups: [{ members: [0] }, { members: [0] }] }))
+  await assert.rejects(strictFailure.provider().clusterAll(clusteringCards, { agent: {} }, { failureMode: 'throw' }), /duplicate or forged/)
+  assert.equal(strictFailure.starts.length, 3)
 })
 
 test('reviewer partitions a card set larger than one clustering-call ceiling', async () => {

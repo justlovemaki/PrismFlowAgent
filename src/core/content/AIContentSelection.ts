@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { RelevanceRecordLike, AIRelevanceAssessment, AIRelevanceTopic } from './AIRelevance.js';
 
-export const AI_CONTENT_SELECTION_STRATEGY_VERSION = 'ai-selection-v4';
+export const AI_CONTENT_SELECTION_STRATEGY_VERSION = 'ai-selection-v7';
 
 export type RelevanceOrigin = 'local-match' | 'reviewed-ambiguous' | 'reviewed-audit' | 'ai-editorial';
 
