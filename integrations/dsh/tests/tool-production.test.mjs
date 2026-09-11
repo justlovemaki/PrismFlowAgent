@@ -6,7 +6,7 @@ import { apply } from '../lib/tool-production.js'
 function harness({ draftStatus = 'approved' } = {}) {
   const tools = new Map()
   const listeners = new Map()
-  const calls = { create: [], directInput: [], selection: [], generate: [], cancel: [], retry: [], review: 0 }
+  const calls = { create: [], directInput: [], selection: [], selectionList: [], generate: [], cancel: [], retry: [], review: 0 }
   const request = { requestId: 'request-1', generatorId: 'brief', generatorPromptVersion: 4, generatorPromptSha256: 'd'.repeat(64), contentStoreIds: ['b', 'a'], status: 'pending', createdAt: '2026-01-01T00:00:00.000Z' }
   const draft = {
     draftId: 'draft-1', requestId: 'request-1', generatorId: 'brief', generatorPromptVersion: 4, generatorPromptSha256: 'd'.repeat(64), title: 'Brief', markdown: '# MUST NOT LEAK',
@@ -15,6 +15,14 @@ function harness({ draftStatus = 'approved' } = {}) {
   const ctx = {
     on(name, listener) { listeners.set(name, listener); return () => listeners.delete(name) },
     tools: { register(tool) { tools.set(tool.name, tool); return () => {} } },
+    prismContentSelections: {
+      list(query) {
+        calls.selectionList.push(query)
+        return [{ selectionId: 'selection-1', selectionSha256: 'a'.repeat(64), createdAt: '2026-01-01T00:00:00.000Z',
+          asOf: '2026-01-01T00:00:00.000Z', since: '2025-12-30T00:00:00.000Z', hours: 48, counts: {},
+          selectedCount: 2, totalMaterialChars: 1000, estimatedTokens: 300, contentStoreIds: ['b', 'a'], sourceIds: ['rss:news'] }]
+      },
+    },
     prismProduction: {
       listGenerators: () => [{ id: 'brief', name: 'Brief', description: 'Configured' }],
       async createRequest(generatorId, contentStoreIds) { calls.create.push({ generatorId, contentStoreIds: [...contentStoreIds] }); return { ...request, generatorId, contentStoreIds } },
@@ -46,6 +54,7 @@ test('production Chat tools own ordered request creation and immutable draft gen
   const { tools, calls } = harness()
   assert.deepEqual([...tools.keys()], [
     'prismflow_generators',
+    'prismflow_ai_selections',
     'prismflow_create_generation_request_from_explicit_content_ids',
     'prismflow_create_generation_request_from_direct_input',
     'prismflow_create_generation_request_from_ai_selection',
@@ -58,6 +67,10 @@ test('production Chat tools own ordered request creation and immutable draft gen
 
   const generators = await tools.get('prismflow_generators').execute({}, execution())
   assert.equal(generators[0].id, 'brief')
+  const selections = await tools.get('prismflow_ai_selections').execute({ limit: 7 }, execution())
+  assert.equal(selections[0].selectionId, 'selection-1')
+  assert.deepEqual(calls.selectionList, [{ limit: 7 }])
+  await assert.rejects(tools.get('prismflow_ai_selections').execute({ limit: 0 }, execution()), /limit must be an integer/u)
   const direct = tools.get('prismflow_create_generation_request_from_explicit_content_ids')
   const intent = 'explicit-user-ordered-content-ids'
   assert.equal(tools.has('prismflow_create_generation_request'), false)

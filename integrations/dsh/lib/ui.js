@@ -1001,7 +1001,7 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
     const sortBy = text(requestUrl.searchParams.get('sortBy') ?? undefined, 'sortBy', 16) ?? 'publishedAt'
     const sortOrder = text(requestUrl.searchParams.get('sortOrder') ?? undefined, 'sortOrder', 4) ?? 'desc'
     if (aiProcessed !== undefined && !['true', 'false'].includes(aiProcessed)) throw new HttpError(400, 'aiProcessed is invalid')
-    if (!['publishedAt', 'fetchedAt', 'updatedAt', 'title', 'source', 'category'].includes(sortBy)) throw new HttpError(400, 'sortBy is invalid')
+    if (!['publishedAt', 'fetchedAt', 'aiReviewedAt', 'title', 'source', 'category'].includes(sortBy)) throw new HttpError(400, 'sortBy is invalid')
     if (!['asc', 'desc'].includes(sortOrder)) throw new HttpError(400, 'sortOrder is invalid')
     const parsePageInteger = (field, fallback, min, max) => {
       const raw = requestUrl.searchParams.get(field)
@@ -1029,10 +1029,21 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
     const recordFilter = processedFilter || searchFilter
       ? record => (!processedFilter || processedFilter(record)) && (!searchFilter || searchFilter(record))
       : undefined
-    const query = { category, sortBy, sortOrder }
+    const query = { category }
+    const pageRecords = sortBy === 'aiReviewedAt'
+      ? content.records(record => (!category || record.item?.category === category) && (!recordFilter || recordFilter(record)))
+        .sort((left, right) => {
+          const leftTime = Date.parse(validContentReview(reviewFor(left)) ? reviewFor(left).reviewedAt : '')
+          const rightTime = Date.parse(validContentReview(reviewFor(right)) ? reviewFor(right).reviewedAt : '')
+          const compared = (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0)
+          if (compared !== 0) return sortOrder === 'asc' ? compared : -compared
+          return boundedString(left.storeId, 64).localeCompare(boundedString(right.storeId, 64))
+        })
+        .slice(offset, offset + limit)
+      : content.list({ ...query, sortBy, sortOrder, limit, offset }, recordFilter)
     const categories = content.categoryCounts(processedFilter).slice(0, 1_000).map(row => ({ category: boundedString(row.category, 256), count: Math.max(0, Math.min(1_000_000_000, Number(row.count) || 0)) }))
     return jsonResponse(res, 200, {
-      records: content.list({ ...query, limit, offset }, recordFilter).map(record => projectContentRecord(record, reviewFor(record))),
+      records: pageRecords.map(record => projectContentRecord(record, reviewFor(record))),
       total: content.count(query, recordFilter), limit, offset, categories,
       ...(ctx.get('prismSourceSettings')?.categoryCatalog ? { categoryCatalog: ctx.get('prismSourceSettings').categoryCatalog() } : {}),
     })

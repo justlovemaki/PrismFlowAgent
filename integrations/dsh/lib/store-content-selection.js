@@ -319,8 +319,9 @@ function publishedSemanticWindow(now, lookbackDays) {
   }
 }
 function publishedSemanticFingerprint(exactStoreIds, entries, window) {
-  return selectionSha256({ version: 2, exactStoreIds, window,
-    entries: entries.map(item => ({ storeId: item.storeId, title: item.title, summary: item.summary, eventPublishedAt: item.eventPublishedAt })) })
+  return selectionSha256({ version: 3, exactStoreIds, window,
+    entries: entries.map(item => ({ storeId: item.storeId, title: item.title, summary: item.summary,
+      eventPublishedAt: item.eventPublishedAt, draftCreatedAt: item.draftCreatedAt })) })
 }
 function semanticChunks(cards, maxCards, maxChars) {
   if (!Number.isInteger(maxCards) || maxCards < 1 || !Number.isInteger(maxChars) || maxChars < 1000) {
@@ -397,23 +398,28 @@ export class PrismContentSelectionStore extends Service {
     if (!Array.isArray(raw) || raw.length > 100000) throw new Error('Published exact exclusion item ceiling exceeded')
     const seen = new Set(); const allEntries = []
     for (const item of raw) {
-      if (!exactKeys(item, ['storeId', 'title', 'summary', 'eventPublishedAt']) || !bounded(item.storeId, 128) || seen.has(item.storeId)
-        || typeof item.title !== 'string' || typeof item.summary !== 'string' || !canonicalIso(item.eventPublishedAt)) {
+      if (!exactKeys(item, ['storeId', 'title', 'summary', 'eventPublishedAt', 'draftCreatedAt']) || !bounded(item.storeId, 128) || seen.has(item.storeId)
+        || typeof item.title !== 'string' || typeof item.summary !== 'string'
+        || !canonicalIso(item.eventPublishedAt) || !canonicalIso(item.draftCreatedAt)) {
         throw new Error('Published semantic exclusion data is invalid')
       }
       seen.add(item.storeId)
       const card = semanticCard(item.storeId, item.title, item.summary)
-      allEntries.push({ storeId: item.storeId, title: card.title, summary: card.summary, eventPublishedAt: item.eventPublishedAt })
+      allEntries.push({ storeId: item.storeId, title: card.title, summary: card.summary,
+        eventPublishedAt: item.eventPublishedAt, draftCreatedAt: item.draftCreatedAt })
     }
     allEntries.sort((left, right) => left.storeId.localeCompare(right.storeId))
     const window = publishedSemanticWindow(this.now(), this.config.publishedSemanticLookbackDays)
     const since = Date.parse(window.since); const until = Date.parse(window.until)
-    const entries = allEntries.filter(item => {
+    // Same-day Drafts are intentionally outside both exact and semantic exclusion.
+    // Selection artifacts are never read into this history at all.
+    const historicalEntries = allEntries.filter(item => Date.parse(item.draftCreatedAt) < until)
+    const entries = historicalEntries.filter(item => {
       const timestamp = Date.parse(item.eventPublishedAt)
       return timestamp >= since && timestamp < until
     })
     if (entries.length > this.config.maxPublishedSemanticItems) throw new Error('Published semantic exclusion item ceiling exceeded')
-    const exactStoreIds = allEntries.map(item => item.storeId)
+    const exactStoreIds = historicalEntries.map(item => item.storeId)
     return { entries, exactStoreIds, window, fingerprint: publishedSemanticFingerprint(exactStoreIds, entries, window) }
   }
   create(query = {}, execution = {}) {
@@ -642,7 +648,10 @@ export class PrismContentSelectionStore extends Service {
     const memberClaims = selection.items.flatMap(item => item.memberClaims)
     if (memberClaims.length > this.config.maxMemberClaims) throw new Error('AI selection member claim ceiling exceeded')
     this.revalidateSelectionClaims(memberClaims)
-    this.assertPublicationSnapshot(selection.publishedSemanticFingerprint)
+    // The published-history fingerprint freezes the exclusion context used when this
+    // immutable Selection was created. It still guards the create-time commit race,
+    // but it must not turn a persisted Selection into a lease that expires whenever
+    // another Draft is published (or the Shanghai-day window advances).
     for (const item of selection.items) {
       const record = this.ctx.prismContentStore.get(item.storeId)
       for (const excerpt of item.material.excerpts) {

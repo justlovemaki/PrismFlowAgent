@@ -173,6 +173,7 @@ function services() {
     prismContentStore: {
       count: (_query, filter) => filteredContent(filter).length,
       categoryCounts: filter => filteredContent(filter).length ? [{ category: 'news', count: 1 }] : [],
+      records: filter => filteredContent(filter),
       list: (_query, filter) => filteredContent(filter),
     },
     prismContentSelections: {
@@ -386,6 +387,8 @@ test('dashboard API exposes only configuration, immutable draft review/publicati
     assert.deepEqual(content.value.categories, [{ category: 'news', count: 1 }]); assert.equal(JSON.stringify(content.value).includes('must-not-project'), false)
     const reviewerSummarySearch = await request(app.origin, '/content?search=Reviewer%20AI%20summary')
     assert.equal(reviewerSummarySearch.status, 200); assert.equal(reviewerSummarySearch.value.total, 1)
+    const aiSummaryUpdated = await request(app.origin, '/content?sortBy=aiReviewedAt&sortOrder=desc')
+    assert.equal(aiSummaryUpdated.status, 200); assert.equal(aiSummaryUpdated.value.records[0].aiReviewedAt, '2026-01-01T00:00:03.000Z')
     const missingSummarySearch = await request(app.origin, '/content?search=summary-that-does-not-exist')
     assert.equal(missingSummarySearch.status, 200); assert.equal(missingSummarySearch.value.total, 0); assert.deepEqual(missingSummarySearch.value.records, [])
     const unprocessedContent = await request(app.origin, '/content?aiProcessed=false')

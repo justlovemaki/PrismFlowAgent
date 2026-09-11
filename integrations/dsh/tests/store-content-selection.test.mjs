@@ -49,7 +49,7 @@ function defaultReviewer(service) {
   })
 }
 function fixture({ matched = [claim('1')], ambiguous = [], unmatched = [], revalidate = () => true, config = {}, reviewer = true,
-  published = new Set(), publishedDates = new Map(), now = '2026-08-21T04:00:00.000Z' } = {}) {
+  published = new Set(), publishedDates = new Map(), publishedDraftDates = new Map(), now = '2026-08-21T04:00:00.000Z' } = {}) {
   const ctx = new Context(); const providers = new Map()
   Object.defineProperty(ctx, 'prismContentRelevance', { value: {
     async snapshotCurrent() { return { asOf: '2026-08-20T12:00:00.000Z', since: '2026-08-18T12:00:00.000Z', hours: 48, classifierVersion: 'v1', relevanceProfileFingerprint: 'a'.repeat(64), candidateCount: matched.length + ambiguous.length + unmatched.length, matched, ambiguous, unmatched } },
@@ -63,7 +63,8 @@ function fixture({ matched = [claim('1')], ambiguous = [], unmatched = [], reval
       return [...published].map(storeId => {
         const source = [...matched, ...ambiguous, ...unmatched].find(item => item.record.storeId === storeId)?.record
         return { storeId, title: source?.item?.title ?? `Published ${storeId}`, summary: source?.item?.description ?? `Published ${storeId}`,
-          eventPublishedAt: publishedDates.get(storeId) ?? source?.item?.published_date ?? '2026-08-20T00:00:00.000Z' }
+          eventPublishedAt: publishedDates.get(storeId) ?? source?.item?.published_date ?? '2026-08-20T00:00:00.000Z',
+          draftCreatedAt: publishedDraftDates.get(storeId) ?? '2026-08-20T08:00:00.000Z' }
       })
     },
   } })
@@ -122,6 +123,17 @@ test('fails closed on unavailable reviewer, content race, overlapping creation a
   await assert.rejects(raced.service.create({}, { agent: {} }), /changed during selection/)
   assert.equal(raced.service.selections.map.size, 0)
 
+  const publishedDuringCreate = new Set()
+  const publicationRaced = fixture({ published: publishedDuringCreate })
+  const revalidateSelectionClaims = publicationRaced.service.revalidateSelectionClaims.bind(publicationRaced.service)
+  publicationRaced.service.revalidateSelectionClaims = claims => {
+    revalidateSelectionClaims(claims)
+    publishedDuringCreate.add(claims[0].storeId)
+    return true
+  }
+  await assert.rejects(publicationRaced.service.create({}, { agent: {} }), /semantic history changed/)
+  assert.equal(publicationRaced.service.selections.map.size, 0)
+
   let release; let enteredResolve
   const blocked = fixture({ ambiguous, reviewer: false })
   blocked.service.registerReviewer({ id: 'r', fingerprint: 'c'.repeat(64), batchSize: 10, maxCards: 20, maxCardChars: 6000, minimumAiScore: 60, clusterAll: clusterCards,
@@ -135,7 +147,7 @@ test('fails closed on unavailable reviewer, content race, overlapping creation a
   await stopped
 })
 
-test('excludes exact and semantically equivalent published-Draft records and rejects stale selections after publication', async () => {
+test('excludes published-Draft records while keeping an immutable Selection reusable after later publications', async () => {
   const matched = [claim('1', 'matched-ai', 'Shared model launch'), claim('2', 'matched-ai', 'Shared model launch'), claim('3', 'matched-ai', 'Unique agent release')]
   const published = new Set([matched[0].record.storeId])
   const { service } = fixture({ matched, published, reviewer: false })
@@ -154,7 +166,11 @@ test('excludes exact and semantically equivalent published-Draft records and rej
   assert.deepEqual(result.contentStoreIds, [matched[2].record.storeId])
 
   published.add(result.contentStoreIds[0])
-  assert.throws(() => service.resolveMaterial(result.selectionId), /semantic history changed/)
+  const reused = service.resolveMaterial(result.selectionId)
+  assert.equal(reused.selectionId, result.selectionId)
+  assert.equal(reused.selectionSha256, result.selectionSha256)
+  assert.deepEqual(reused.contentStoreIds, result.contentStoreIds)
+  assert.equal(reused.packedMaterials.length, 1)
 
   const exhausted = fixture({ matched, published: new Set(matched.map(item => item.record.storeId)) })
   await assert.rejects(exhausted.service.create({}, {}), /No unpublished content remains/)
@@ -194,18 +210,18 @@ test('published-history comparison passes the real clustering validator without 
     assert.equal(result.counts.semanticPublishedExcluded, 1)
     assert.deepEqual(result.contentStoreIds, [matched[2].record.storeId])
     assert.equal(prompts.length, 2)
-    assert.ok(prompts.every(text => !text.includes('eventPublishedAt')))
+    assert.ok(prompts.every(text => !text.includes('eventPublishedAt') && !text.includes('draftCreatedAt')))
     assert.deepEqual(matched, before, 'source records and dates remain unchanged')
     assert.equal(service.resolveMaterial(result.selectionId).packedMaterials.length, 1)
   } finally { await cleanup() }
 })
 
-test('published semantic history uses the previous seven complete Shanghai calendar days while exact IDs cover all history', async () => {
+test('published exclusion ignores same-day Drafts, uses seven complete days semantically, and keeps older exact IDs', async () => {
   const matched = [claim('1', 'matched-ai', 'Shared model launch'), claim('2', 'matched-ai', 'Shared model launch'), claim('3', 'matched-ai', 'Unique agent release')]
   const publishedId = matched[0].record.storeId
-  const run = async eventPublishedAt => {
+  const run = async (eventPublishedAt, draftCreatedAt) => {
     const value = fixture({ matched: structuredClone(matched), published: new Set([publishedId]), reviewer: false,
-      publishedDates: new Map([[publishedId, eventPublishedAt]]) })
+      publishedDates: new Map([[publishedId, eventPublishedAt]]), publishedDraftDates: new Map([[publishedId, draftCreatedAt]]) })
     value.service.registerReviewer({
       id: 'dated-published-reviewer', fingerprint: '6'.repeat(64), batchSize: 10, maxCards: 10,
       maxCardChars: 6000, minimumAiScore: 60, clusterAll: clusterCards,
@@ -214,17 +230,17 @@ test('published semantic history uses the previous seven complete Shanghai calen
     return value.service.create({ maxItems: 3 }, { agent: {} })
   }
 
-  const yesterday = await run('2026-08-20T00:00:00.000Z')
+  const yesterday = await run('2026-08-20T00:00:00.000Z', '2026-08-20T08:00:00.000Z')
   assert.equal(yesterday.counts.publishedExcluded, 1)
   assert.equal(yesterday.counts.semanticPublishedExcluded, 1)
   assert.deepEqual(yesterday.contentStoreIds, [matched[2].record.storeId])
 
-  const today = await run('2026-08-20T20:00:00.000Z')
-  assert.equal(today.counts.publishedExcluded, 1)
+  const today = await run('2026-08-20T00:00:00.000Z', '2026-08-20T20:00:00.000Z')
+  assert.equal(today.counts.publishedExcluded, 0)
   assert.equal(today.counts.semanticPublishedExcluded, 0)
-  assert.deepEqual(today.contentStoreIds.sort(), matched.slice(1).map(item => item.record.storeId).sort())
+  assert.deepEqual(today.contentStoreIds.sort(), [matched[0].record.storeId, matched[2].record.storeId].sort())
 
-  const eightDaysAgo = await run('2026-08-12T00:00:00.000Z')
+  const eightDaysAgo = await run('2026-08-12T00:00:00.000Z', '2026-08-12T08:00:00.000Z')
   assert.equal(eightDaysAgo.counts.publishedExcluded, 1)
   assert.equal(eightDaysAgo.counts.semanticPublishedExcluded, 0)
 })

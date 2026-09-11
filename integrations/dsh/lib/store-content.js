@@ -82,6 +82,7 @@ export class PrismContentStore extends Service {
 
         const existing = table.get(candidate.storeId)
         if (existing && !options.overwrite) {
+          await table.put(existing.storeId, { ...existing, fetchedAt: candidate.fetchedAt })
           summary.skipped += 1
           continue
         }

@@ -24,11 +24,13 @@ export const PRISMFLOW_TOOL_NAMES = Object.freeze([
   'prismflow_create_draft_image_revision',
   'prismflow_get_production_image_claim',
   'prismflow_inherit_draft_images',
+  'prismflow_ai_selections',
+  'prismflow_content',
 ])
 export const PRISMFLOW_PLUGIN_MANIFESTS = Object.freeze([
-  { pluginId: 'prismflow-system-sources', name: '数据源同步', description: '发现 Profile 中的数据源并将可信材料同步到 Content Store。', origin: 'system', version: 1, configurable: false, tools: ['prismflow_sources', 'prismflow_sync_source'], skills: ['prismflow-source-ingestion'] },
+  { pluginId: 'prismflow-system-sources', name: '数据源与已抓取内容', description: '发现 Profile 数据源、读取已抓取内容，并按明确请求同步可信材料到 Content Store。', origin: 'system', version: 2, configurable: false, tools: ['prismflow_sources', 'prismflow_content', 'prismflow_sync_source'], skills: ['prismflow-source-ingestion'] },
   { pluginId: 'prismflow-personal-selection', name: 'AI Selection', description: '跨全部来源创建不可变 Selection，并保留选择证据与来源配额。', origin: 'personal', version: 1, configurable: false, tools: ['prismflow_create_ai_selection', 'prismflow_create_ai_selection_from_explicit_source'], skills: ['prismflow-ai-selection'] },
-  { pluginId: 'prismflow-system-generation', name: '内容生成', description: '发现生成器，创建精确绑定的 Generation Request 并执行多阶段生成。', origin: 'system', version: 3, configurable: false, tools: ['prismflow_generators', 'prismflow_create_generation_request_from_ai_selection', 'prismflow_create_generation_request_from_direct_input', 'prismflow_create_generation_request_from_explicit_content_ids', 'prismflow_generation_request', 'prismflow_generate_draft'], skills: [] },
+  { pluginId: 'prismflow-system-generation', name: '内容生成', description: '查找已有 Selection，发现生成器，创建精确绑定的 Generation Request 并执行多阶段生成。', origin: 'system', version: 4, configurable: false, tools: ['prismflow_ai_selections', 'prismflow_generators', 'prismflow_create_generation_request_from_ai_selection', 'prismflow_create_generation_request_from_direct_input', 'prismflow_create_generation_request_from_explicit_content_ids', 'prismflow_generation_request', 'prismflow_generate_draft'], skills: [] },
   { pluginId: 'prismflow-system-drafts', name: '草稿管理', description: '查询、检查并按版本与 SHA-256 修订未审批草稿。', origin: 'system', version: 1, configurable: false, tools: ['prismflow_drafts', 'prismflow_edit_draft'], skills: ['prismflow-draft-revision'] },
   { pluginId: 'prismflow-system-publication', name: '受控发布', description: '发现 Profile 发布目标，并发布精确审批的 Artifact。', origin: 'system', version: 2, configurable: false, tools: ['prismflow_publishers', 'prismflow_prepare_repeat_publication', 'prismflow_publish'], skills: [] },
   { pluginId: 'prismflow-system-production-media', name: 'Production Media', description: '持久化图片、验证 Claim，并为草稿创建精确绑定的图片修订。', origin: 'system', version: 1, configurable: false, tools: ['prismflow_ingest_production_image', 'prismflow_create_approved_draft_image_revision', 'prismflow_set_draft_presentation', 'prismflow_create_draft_image_revision', 'prismflow_get_production_image_claim', 'prismflow_inherit_draft_images'], skills: [] },

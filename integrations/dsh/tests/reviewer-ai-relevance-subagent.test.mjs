@@ -79,11 +79,12 @@ test('reviewer does not enforce media placement or br layout formatting', async 
   const imageCards = [{ ...cards[0], allowedUrls: [...cards[0].allowedUrls, imageUrl], media: [{ kind: 'image', url: imageUrl }] }]
   const f = fixture(() => {
     const first = editorial(0, 80)
-    first.editorial.ai_summary += `![画面](${imageUrl})媒体后的补充正文`
+    first.editorial.ai_summary = first.editorial.ai_summary.slice(0, -15)
+    first.editorial.ai_summary += `![画面](${imageUrl})媒体后的补充正文。`
     return { decisions: [first] }
   })
   const result = await f.provider().reviewBatch(imageCards, { agent: {}, signal: new AbortController().signal })
-  assert.match(result[0].aiSummary, /!\[AI资讯：画面\].*媒体后的补充正文$/u)
+  assert.match(result[0].aiSummary, /!\[AI资讯：画面\].*媒体后的补充正文。$/u)
   assert.equal(f.starts.length, 1)
 })
 
@@ -100,7 +101,7 @@ test('reviewer deterministically derives the weighted total from AI-scored dimen
   assert.equal(f.starts.length, 1)
 })
 
-test('reviewer accepts summaries without enforcing sentence counts or per-sentence character counts', async () => {
+test('reviewer accepts concise four-sentence summaries', async () => {
   const f = fixture(() => {
     const first = editorial(0, 88, ['foundation-models'])
     first.editorial.ai_summary = first.editorial.ai_summary.replace('用户落地速度正在逐步加快', '落地速度正持续加快')
@@ -112,15 +113,58 @@ test('reviewer accepts summaries without enforcing sentence counts or per-senten
   assert.equal(f.starts.length, 1)
 })
 
-test('reviewer preserves a sixth sentence without structural rewriting', async () => {
+test('reviewer rejects summaries outside the required complete sentence count', async () => {
   const f = fixture(() => {
     const first = editorial(0, 88, ['foundation-models'])
-    first.editorial.ai_summary += ' 额外背景继续补充。'
+    first.editorial.ai_summary = `**人工智能模型正式发布。** 主体公布核心进展。[查看完整内容说明](${cards[0].articleUrl})介绍关键变化。`
+    return { decisions: [first, editorial(1, 10)] }
+  })
+  await assert.rejects(f.provider().reviewBatch(cards, { agent: {}, signal: new AbortController().signal }), /editorial sentence contract/u)
+  assert.equal(f.starts.length, 3)
+  assert.match(f.starts[1].options.prompt[0].text, /expected 3-4 complete sentences/u)
+})
+
+test('reviewer rejects an incomplete trailing sentence', async () => {
+  const f = fixture(() => {
+    const first = editorial(0, 88, ['foundation-models'])
+    first.editorial.ai_summary = first.editorial.ai_summary.replace(/。$/u, '未完')
+    return { decisions: [first, editorial(1, 10)] }
+  })
+  await assert.rejects(f.provider().reviewBatch(cards, { agent: {}, signal: new AbortController().signal }), /editorial sentence contract/u)
+  assert.equal(f.starts.length, 3)
+})
+
+test('reviewer does not impose a total visible-character ceiling on complete body sentences', async () => {
+  const f = fixture(() => {
+    const first = editorial(0, 88, ['foundation-models'])
+    first.editorial.ai_summary = `**人工智能模型迎来重要发布。** 行业主体正式公布面向企业用户的核心技术进展与最新部署计划。[查看完整内容说明](${cards[0].articleUrl})系统介绍本次发布的关键能力与适用场景。新的技术方案将降低模型运行成本并改善实际部署效率。开发者与行业用户可据此评估后续接入和规模化应用价值。`
     return { decisions: [first, editorial(1, 10)] }
   })
   const result = await f.provider().reviewBatch(cards, { agent: {}, signal: new AbortController().signal })
-  assert.match(result[0].aiSummary, /用户落地速度正在逐步加快。 额外背景继续补充。$/u)
+  assert.match(result[0].aiSummary, /规模化应用价值。$/u)
   assert.equal(f.starts.length, 1)
+})
+
+test('reviewer rejects a title below the editorial minimum', async () => {
+  const f = fixture(() => {
+    const first = editorial(0, 88, ['foundation-models'])
+    first.editorial.ai_summary = first.editorial.ai_summary.replace('**人工智能模型迎来重要发布。**', '**模型发布。**')
+    return { decisions: [first, editorial(1, 10)] }
+  })
+  await assert.rejects(f.provider().reviewBatch(cards, { agent: {}, signal: new AbortController().signal }), /editorial title length contract/u)
+  assert.equal(f.starts.length, 3)
+  assert.match(f.starts[1].options.prompt[0].text, /expected 10-18/u)
+})
+
+test('reviewer rejects an overlong editorial title and requests a bounded repair', async () => {
+  const f = fixture(() => {
+    const first = editorial(0, 88, ['foundation-models'])
+    first.editorial.ai_summary = first.editorial.ai_summary.replace('**人工智能模型迎来重要发布。**', '**这是一个明显超过十八个可见字符限制的人工智能新闻标题。**')
+    return { decisions: [first, editorial(1, 10)] }
+  })
+  await assert.rejects(f.provider().reviewBatch(cards, { agent: {}, signal: new AbortController().signal }), /editorial title length contract/u)
+  assert.equal(f.starts.length, 3)
+  assert.match(f.starts[1].options.prompt[0].text, /editorial title length contract/u)
 })
 
 test('reviewer performs bounded no-tool validation-only format repair before persisting a batch result', async () => {

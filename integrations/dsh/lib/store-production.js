@@ -704,7 +704,11 @@ export class PrismProductionService extends Service {
         throw new Error('Published Draft generation provenance is invalid')
       }
       for (const storeId of draft.sourceContentStoreIds) {
-        if (entries.has(storeId)) continue
+        const existing = entries.get(storeId)
+        if (existing) {
+          if (draft.createdAt < existing.draftCreatedAt) existing.draftCreatedAt = draft.createdAt
+          continue
+        }
         const material = parsedRequest.data.packedMaterials?.find(item => item.storeId === storeId)
         const record = this.ctx.prismContentStore.get(storeId)
         const item = record?.item ?? {}
@@ -718,7 +722,8 @@ export class PrismProductionService extends Service {
         if (typeof title !== 'string' || typeof summary !== 'string' || !title.trim() || !summary.trim() || !publishedDateSource) {
           throw new Error(`Published Draft semantic source is unavailable: ${storeId}`)
         }
-        entries.set(storeId, { storeId, title, summary, eventPublishedAt: new Date(Date.parse(publishedDateSource)).toISOString() })
+        entries.set(storeId, { storeId, title, summary, eventPublishedAt: new Date(Date.parse(publishedDateSource)).toISOString(),
+          draftCreatedAt: draft.createdAt })
       }
     }
     return [...entries.values()].sort((left, right) => left.storeId.localeCompare(right.storeId))

@@ -43,6 +43,26 @@ test('content batch skips malformed and empty individual rows while persisting l
   assert.deepEqual([...store.items.map.values()].map(record => record.externalId), ['one', 'two'])
 })
 
+test('repeat ingestion advances fetch time without falsifying content update time', async () => {
+  const store = new PrismContentStore(new Context()); store.items = new Table()
+  const sourceId = 'rss:fixture'; const first = new Date('2026-01-01T00:00:00.000Z')
+  await store.putBatch(sourceId, [item('one')], { now: first })
+  const storeId = store.records()[0].storeId
+
+  const skipped = await store.putBatch(sourceId, [item('one')], { now: new Date('2026-01-02T00:00:00.000Z') })
+  assert.deepEqual(skipped, { inserted: 0, updated: 0, skipped: 1, total: 1 })
+  assert.equal(store.get(storeId).updatedAt, first.toISOString())
+  assert.equal(store.get(storeId).fetchedAt, '2026-01-02T00:00:00.000Z')
+
+  await store.putBatch(sourceId, [item('one')], { overwrite: true, now: new Date('2026-01-03T00:00:00.000Z') })
+  assert.equal(store.get(storeId).updatedAt, first.toISOString())
+  assert.equal(store.get(storeId).fetchedAt, '2026-01-03T00:00:00.000Z')
+
+  await store.putBatch(sourceId, [{ ...item('one'), title: 'Changed title' }], { overwrite: true, now: new Date('2026-01-04T00:00:00.000Z') })
+  assert.equal(store.get(storeId).updatedAt, '2026-01-04T00:00:00.000Z')
+  assert.equal(store.get(storeId).fetchedAt, '2026-01-04T00:00:00.000Z')
+})
+
 test('content batch still fails closed for storage errors and cancellation', async () => {
   const store = new PrismContentStore(new Context()); store.items = new Table(); store.items.fail = true
   await assert.rejects(store.putBatch('rss:fixture', [item('one')]), /storage unavailable/u)

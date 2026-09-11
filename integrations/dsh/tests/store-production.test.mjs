@@ -108,7 +108,9 @@ test('projects every Content Store id with durable publication evidence for AI s
   assert.ok(service.publishedContentEntries().every(item => item.title === 'Daily' || item.title === 'One'))
   assert.ok(service.publishedContentEntries().every(item => typeof item.summary === 'string' && item.summary.length > 0))
   assert.ok(service.publishedContentEntries().every(item => Number.isFinite(Date.parse(item.eventPublishedAt))))
+  assert.ok(service.publishedContentEntries().every(item => Number.isFinite(Date.parse(item.draftCreatedAt))))
   assert.equal(service.publishedContentEntries().find(item => item.storeId === STORE_ID).eventPublishedAt, '2026-01-02T00:00:00.000Z')
+  assert.equal(service.publishedContentEntries().find(item => item.storeId === STORE_ID).draftCreatedAt, first.createdAt)
 
   service.drafts.map.set('malformed', { draftId: 'malformed', status: 'published', sourceContentStoreIds: [STORE_ID] })
   assert.throws(() => service.publishedContentStoreIds(), /publication history is invalid/)
@@ -770,7 +772,7 @@ test('direct workflow input supports input-only and explicitly mixed Selection r
   await assert.rejects(service.generate(tampered.requestId, { agent: {}, signal: new AbortController().signal }), /workflowInput provenance/u)
 })
 
-test('trusted AI selection requests pin packed material, require fresh history before generation, and validate frozen claims at publication', async () => {
+test('trusted AI selection requests pin and revalidate material before generation and validate frozen claims at publication', async () => {
   const { service, calls } = fixture()
   const selection = {
     selectionId: 'selection-1', selectionSha256: 'b'.repeat(64), contentStoreIds: [STORE_ID],

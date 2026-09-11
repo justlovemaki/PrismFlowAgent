@@ -43,7 +43,17 @@ test('prepares JSON-safe stored records and preserves first-seen state on overwr
   assert.equal(refreshed.status, 'read');
   assert.equal(refreshed.firstSeenAt, initial.firstSeenAt);
   assert.equal(refreshed.updatedAt, '2025-01-04T00:00:00.000Z');
+  assert.equal(refreshed.fetchedAt, '2025-01-04T00:00:00.000Z');
   assert.equal(refreshed.item.title, 'DeepSeek Harness updated');
+
+  const unchanged = prepareStoredContentRecord(
+    'rss:deepseek',
+    { ...baseItem, title: 'DeepSeek Harness updated', status: 'unread' },
+    refreshed,
+    new Date('2025-01-05T00:00:00.000Z'),
+  );
+  assert.equal(unchanged.updatedAt, refreshed.updatedAt);
+  assert.equal(unchanged.fetchedAt, '2025-01-05T00:00:00.000Z');
 
   const malformedOptional = prepareStoredContentRecord('rss:deepseek', {
     ...baseItem,

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 
 export type ContentStatus = 'unread' | 'read' | 'archived';
 
@@ -141,12 +142,13 @@ export function prepareStoredContentRecord(
     throw new Error(`Existing content record does not match ${sourceId}:${item.id}`);
   }
 
+  const contentChanged = !existing || !isDeepStrictEqual(existing.item, item);
   return {
     storeId,
     sourceId,
     externalId: item.id,
     firstSeenAt: existing?.firstSeenAt ?? timestamp,
-    updatedAt: timestamp,
+    updatedAt: contentChanged ? timestamp : existing.updatedAt,
     fetchedAt: timestamp,
     status: existing?.status ?? normalizeStatus(item.status),
     item,

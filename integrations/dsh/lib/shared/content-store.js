@@ -1,5 +1,6 @@
 // Generated from src/core/content/ContentStore.ts by integrations/dsh/scripts/sync-shared.mjs.
 import { createHash } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
 function requireString(value, field) {
     if (typeof value !== 'string' || value.trim() === '') {
         throw new Error(`Content item ${field} must be a non-empty string`);
@@ -88,12 +89,13 @@ export function prepareStoredContentRecord(sourceId, input, existing, now = new 
     if (existing && existing.storeId !== storeId) {
         throw new Error(`Existing content record does not match ${sourceId}:${item.id}`);
     }
+    const contentChanged = !existing || !isDeepStrictEqual(existing.item, item);
     return {
         storeId,
         sourceId,
         externalId: item.id,
         firstSeenAt: existing?.firstSeenAt ?? timestamp,
-        updatedAt: timestamp,
+        updatedAt: contentChanged ? timestamp : existing.updatedAt,
         fetchedAt: timestamp,
         status: existing?.status ?? normalizeStatus(item.status),
         item,

@@ -211,7 +211,7 @@ test('dashboard client is a nine-tab controlled admin, local Profile planning, a
   assert.equal(descendants(scrollingContent).some(node => node?.props?.className === 'pf-tabs'), false)
   const values = descendants(dashboard)
   const tabs = values.filter(node => node?.type === 'button' && node?.props?.className?.split?.(' ').includes('pf-tab')).map(node => childrenOf(node)[0])
-  assert.deepEqual(tabs, ['总览', '工具集', '分类管理', '数据源配置', '已抓取数据', '发布与存储', '工作流生成器', '草稿审核与发布', '发布审计'])
+  assert.deepEqual(tabs, ['总览', '工具集', '分类管理', '数据源配置', '发布与存储', '工作流生成器', '草稿审核与发布', '发布审计', '已抓取数据'])
   assert.match(client.source, /PrismFlowPublisherProfileDocument\/v2/)
   assert.match(client.source, /保存配置并准备重启/)
   assert.match(client.source, /api\('\/publisher-profile\/apply'/)
@@ -285,25 +285,45 @@ test('source categories are dynamic, exclude archived options for new sources an
 
 test('captured-content tab renders server-paged searchable sortable category-filtered records', async () => {
   const query = { search: 'AI', category: 'news', aiProcessed: 'true', sortBy: 'title', sortOrder: 'asc', page: 2, pageSize: 20 }
+  const aiSummaryMarkdown = '**AI 摘要标题。** [查看完整内容](https://example.com/news)了解核心进展。'
   const page = { total: 45, categories: [{ category: 'news', count: 30 }, { category: 'paper', count: 15 }], records: [{
-    storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', aiProcessed: true, firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-02T00:00:00.000Z', fetchedAt: '2026-01-02T00:00:00.000Z',
-    title: 'AI News', description: '完整摘要', sourceAiSummary: '来源摘要', aiSummary: 'AI 摘要', aiScore: 85, aiReason: '四维加权评分理由', aiReviewedAt: '2026-01-02T01:02:03.000Z', url: 'https://example.com/news', publishedAt: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author',
+    storeId: 'a'.repeat(64), sourceId: 'rss:news', externalId: 'entry-1', aiProcessed: true, firstSeenAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z', fetchedAt: '2026-01-02T00:00:00.000Z',
+    title: 'AI News', description: '完整摘要', sourceAiSummary: '来源摘要', aiSummary: aiSummaryMarkdown, aiScore: 85, aiReason: '四维加权评分理由', aiReviewedAt: '2026-01-02T01:02:03.000Z', url: 'https://example.com/news', publishedAt: '2026-01-01T00:00:00.000Z', source: 'News', category: 'news', author: 'Author',
   }] }
   page.records.push({ ...page.records[0], storeId: 'b'.repeat(64), externalId: 'entry-2', title: '未处理资讯', description: '未处理原始摘要',
     aiProcessed: false, sourceAiSummary: '', aiSummary: '', aiScore: null, aiReason: '', aiReviewedAt: '' })
   const client = await loadClient(new Map([[0, 'content'], [3, status], [51, query], [52, page]]))
-  const values = descendants(client.renderDashboard())
-  for (const label of ['已抓取数据', '搜索', '分类', '排序字段', '顺序', 'AI 处理', '每页', '来源', '作者', '发布时间', '抓取时间', '最后更新', '上一页', '下一页']) assert.ok(values.includes(label) || values.some(node => node?.props?.label === label), label)
+  const dashboard = client.renderDashboard()
+  const values = descendants(dashboard)
+  for (const label of ['已抓取数据', '搜索', '分类', '排序字段', '顺序', 'AI 处理', '每页', '来源', '作者', '发布时间', '抓取时间', 'AI 摘要更新', '上一页', '下一页']) assert.ok(values.includes(label) || values.some(node => node?.props?.label === label), label)
+  const sortField = values.find(node => node?.props?.label === '排序字段')
+  assert.ok(sortField.props.options.some(option => option.value === 'aiReviewedAt' && option.label === 'AI 摘要更新时间'))
+  assert.equal(sortField.props.options.some(option => option.value === 'updatedAt'), false)
   assert.ok(values.includes('AI News')); assert.ok(values.includes('完整摘要')); assert.ok(values.includes('展开完整信息')); assert.ok(values.includes('第 2 / 3 页 · 共 45 条')); assert.ok(values.includes('AI 已处理'))
   const cards = values.filter(node => node?.type === 'article' && node?.props?.className?.split?.(' ').includes('pf-content-card'))
   assert.equal(cards.length, 2)
   assert.ok(cards[0].props.className.includes('pf-content-card-processed'))
   assert.equal(cards[1].props.className.includes('pf-content-card-processed'), false)
-  const summaries = values.filter(node => node?.props?.className === 'pf-content-summary')
-  assert.deepEqual(summaries.map(node => childrenOf(node)[0]), ['AI 摘要', '未处理原始摘要'])
+  const paginations = values.filter(node => node?.type === 'nav' && node?.props?.className?.split?.(' ').includes('pf-content-pagination'))
+  assert.deepEqual(paginations.map(node => node.props['aria-label']), ['已抓取数据顶部分页', '已抓取数据底部分页'])
+  const [cardHeading, cardSide] = childrenOf(childrenOf(cards[0])[0])
+  assert.equal(cardHeading.props.className, 'pf-content-heading')
+  assert.equal(cardSide.props.className, 'pf-content-card-side')
+  assert.equal(childrenOf(cardHeading)[0].type, 'input')
+  assert.equal(childrenOf(cardSide)[0].props.className, 'pf-content-badges')
+  const summaries = values.filter(node => node?.props?.className?.split?.(' ').includes('pf-content-summary'))
+  assert.equal(summaries.length, 2)
+  assert.equal(childrenOf(summaries[1])[0], '未处理原始摘要')
   const processedValues = descendants(cards[0])
   const unprocessedValues = descendants(cards[1])
   assert.ok(processedValues.includes('原始摘要'))
+  assert.ok(processedValues.includes('AI 摘要标题。'))
+  const renderedLink = processedValues.find(node => node?.type === 'a' && node.props?.href === 'https://example.com/news' && childrenOf(node).includes('查看完整内容'))
+  assert.ok(renderedLink)
+  const copyMarkdown = processedValues.find(node => node?.type?.name === 'Button' && node.props?.['aria-label'] === '复制AI 摘要的原始 Markdown')
+  assert.ok(copyMarkdown)
+  await copyMarkdown.props.onClick()
+  assert.deepEqual(client.clipboardWrites, [aiSummaryMarkdown])
   assert.equal(processedValues.filter(value => value === '完整摘要').length, 1)
   assert.equal(unprocessedValues.filter(value => value === '原始摘要').length, 1)
   assert.equal(unprocessedValues.filter(value => value === '未处理原始摘要').length, 1)
@@ -312,6 +332,9 @@ test('captured-content tab renders server-paged searchable sortable category-fil
   for (const value of ['来源 AI 摘要', '来源摘要', 'AI 审核', 'AI 摘要', '评分理由', '四维加权评分理由', '记录标识']) assert.ok(values.includes(value), value)
   assert.ok(values.includes('2026-01-01 08:00:00 +08:00'))
   assert.ok(values.includes('2026-01-02 08:00:00 +08:00'))
+  assert.ok(values.some(value => typeof value === 'string' && value.includes('原文内容更新：首次抓取后未发生内容更新')))
+  assert.ok(values.includes('2026-01-02 09:02:03 +08:00'))
+  assert.ok(values.includes('尚未处理'))
   assert.ok(values.includes('评分：85 / 100\n审核时间：2026-01-02 09:02:03 +08:00'))
   assert.equal(values.includes('AI摘要'), false)
   assert.match(client.source, /标题、原始摘要、AI 摘要、来源或作者/u)
@@ -319,6 +342,20 @@ test('captured-content tab renders server-paged searchable sortable category-fil
   assert.match(client.source, /api\(`\/content\?\$\{params\.toString\(\)\}`/u)
   assert.match(client.appendedStyle.textContent, /\.pf-content-list\{[^}]*flex-direction:column/u)
   assert.match(client.appendedStyle.textContent, /\.pf-content-card-body\{[^}]*grid-template-columns/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-content-card-side\{[^}]*align-items:flex-end/u)
+  assert.match(client.appendedStyle.textContent, /\.pf-content-badges\{[^}]*justify-content:flex-end/u)
+
+  const scrollCalls = []
+  childrenOf(dashboard)[1].props.ref.current = { scrollTo(options) { scrollCalls.push(options) } }
+  const nextButtons = values.filter(node => node?.type?.name === 'Button' && childrenOf(node).includes('下一页'))
+  assert.equal(nextButtons.length, 2)
+  const turning = nextButtons[1].props.onClick()
+  assert.match(client.fetchCalls[0].url, /offset=40/u)
+  client.pendingFetches[0]({ ok: true, async json() { return { ...page, records: [] } } })
+  await turning
+  assert.equal(scrollCalls.length, 1)
+  assert.equal(scrollCalls[0].top, 0)
+  assert.equal(scrollCalls[0].behavior, 'smooth')
 })
 
 test('captured-content selection deletes only current-page IDs after confirmation and clears on reload', async () => {
@@ -400,6 +437,25 @@ test('Chat prompt suggestion dock loads above the composer and fills without aut
   assert.match(client.appendedStyle.textContent, /\.pf-prompt-item\{[^}]*max-height:40px[^}]*border:1px solid[^}]*border-radius:8px[^}]*overflow:hidden/u)
   assert.match(client.appendedStyle.textContent, /\.pf-prompt-chip\{[^}]*flex:0 0 auto[^}]*max-width:260px[^}]*max-height:38px[^}]*border:0[^}]*white-space:pre-line[^}]*-webkit-line-clamp:2/u)
   assert.match(client.appendedStyle.textContent, /\.pf-prompt-copy\{[^}]*width:34px[^}]*height:38px[^}]*border:0[^}]*border-left:1px solid/u)
+})
+
+test('Chat prompt suggestion copy falls back when the Clipboard API is unavailable', async () => {
+  const client = await loadClient(new Map(), { disableClipboard: true, execCommandResult: true })
+  let tree = client.renderPromptDock({ input: { draft: '', phase: 'plain' }, inputActions: { setDraft() {} } })
+  assert.equal(tree, null)
+  client.effects.at(-1).effect()
+  await Promise.resolve()
+  client.pendingFetches[0]({ ok: true, status: 200, async json() { return { suggestions: { items: [
+    { id: 'fallback', text: '复制完整候选文案', enabled: true },
+  ] } } } })
+  await new Promise(resolve => setTimeout(resolve, 0))
+  tree = client.renderPromptDock({ input: { draft: '', phase: 'plain' }, inputActions: { setDraft() {} } })
+  const copyButton = descendants(tree).find(node => node?.props?.['aria-label'] === '复制候选文案：fallback')
+  assert.ok(copyButton)
+  await copyButton.props.onClick({ stopPropagation() {} })
+  assert.deepEqual(client.clipboardWrites, ['复制完整候选文案'])
+  tree = client.renderPromptDock({ input: { draft: '', phase: 'plain' }, inputActions: { setDraft() {} } })
+  assert.ok(descendants(tree).some(node => node?.props?.['aria-label'] === '已复制候选文案：fallback'))
 })
 
 test('toolset page exposes write-only image endpoint, model, size, encoding, and API Key controls', async () => {

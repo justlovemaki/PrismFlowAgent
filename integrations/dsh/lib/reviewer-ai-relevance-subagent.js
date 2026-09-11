@@ -15,8 +15,8 @@ const DEFAULT_CLUSTER_INSTRUCTION = `你是AI资讯事件聚类专家。只根�
 不得仅根据索引相邻、表面词句相似或同属宽泛主题而合并。只输出需要合并的clusterIndex组；不确定或无需合并的候选不要输出，系统会将它们安全地保留为单例。`
 
 const DEFAULT_INSTRUCTION = `你是AI内容主编与资深资讯评委。对每条原始Markdown独立判断、彻底重写并评分，不得依赖关键词词典。
-内容要求：ai_summary以加粗标题开头并使用中文新闻播报风格；不校验标题或正文的句数和每句话字数。避免排比、转折和连接词；允许少量自然口语感。标题和正文之间只能用空格。
-格式红线：ai_summary必须是绝对单行字符串，禁止真实换行、\\n、\\r和<br\\>；结构分隔只能使用空格或<br/>。标题使用**短标题。**。核心术语和关键数据可加粗，每处不超过10字。
+内容要求：ai_summary以加粗新闻标题开头并使用中文新闻播报风格；标题必须为10至18个可见字符，同时表达主体与核心事件，禁止只有情绪、评价或宽泛概念。正文必须写成3至4个完整短句，每句建议20至25个可见字符，并必须以。！？之一结尾。只保留主体、核心事件与关键影响，删除背景铺陈、同义重复、排比、转折和连接词；允许少量自然口语感。标题和正文之间只能用空格。
+格式红线：ai_summary必须是绝对单行字符串，禁止真实换行、\\n、\\r和<br\\>；结构分隔只能使用空格或<br/>。标题使用**新闻标题。**。核心术语和关键数据可加粗，每处不超过10字。
 链接硬规则：每张卡片都有articleUrl，必须恰好使用一次并自然嵌入正文句中，格式为[约10至15个中文字符](完整articleUrl)。链接锚文本、标题和普通正文都不得包含“AI资讯”。不得伪造、截断或重复任何URL；链接去掉Markdown符号后句子仍须通顺。
 Emoji规则：根据语境动态选择并穿插在句中，不得堆在句末；短句最多1个，宁缺毋滥。
 媒体与SEO规则：媒体只能位于文字最后；有候选媒体时必须保留至少1个；最多1个视频或2张图片，不能混用。若输出图片，每一张图片Alt都必须且只能以“AI资讯：”开头，统一格式为<br/>![AI资讯：具体中文画面描述](URL)<br/>；每张图片对应一次“AI资讯”，其他位置不得出现。图片Alt严禁使用image、alt text、photo、插图等通用词。若没有输出图片（包括仅输出视频），全文不得出现“AI资讯”。视频格式为<br/><video src="URL" controls="controls" width="100%"></video><br/>。
@@ -107,6 +107,26 @@ function normalizeSeoMarker(summary) {
   return normalized.replace(/!\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/giu, (_match, alt, url) => `![AI资讯：${alt.trim()}](${url})`)
 }
 
+const MIN_EDITORIAL_TITLE_CHARS = 10
+const MAX_EDITORIAL_TITLE_CHARS = 18
+const MIN_EDITORIAL_SENTENCES = 3
+const MAX_EDITORIAL_SENTENCES = 4
+function editorialCopyMetrics(summary) {
+  const title = summary.match(/^\*\*([^*]+)\*\*/u)
+  if (!title) return { title: Number.POSITIVE_INFINITY, sentences: 0, completeSentences: false }
+  const body = summary.slice(title[0].length)
+    .replace(/!\[[^\]]*\]\((?:https?:\/\/[^\s)]+)\)/giu, '')
+    .replace(/<video\s+[^>]*src="https?:\/\/[^"\s]+"[^>]*><\/video>/giu, '')
+    .replace(/\[([^\]]+)\]\((?:https?:\/\/[^\s)]+)\)/giu, '$1')
+    .replace(/<br\s*\/>/giu, '').replace(/\*\*/gu, '').replace(/\s+/gu, '')
+  const sentences = body.match(/[^。！？]+[。！？]+/gu) ?? []
+  return {
+    title: Array.from(title[1].replace(/\s+/gu, '')).length,
+    sentences: sentences.length,
+    completeSentences: sentences.join('') === body,
+  }
+}
+
 const SCORE_DIMENSION_PATTERNS = [
   /AI相关性\(40%\)[:：]\s*(\d{1,3})/u, /新闻新鲜度\(20%\)[:：]\s*(\d{1,3})/u,
   /炸裂程度\(20%\)[:：]\s*(\d{1,3})/u, /影响力\(20%\)[:：]\s*(\d{1,3})/u,
@@ -138,6 +158,13 @@ function validateEditorial(card, raw) {
     || /[\u0000-\u001f\u007f]/u.test(raw.reason) || /\\[nr]/u.test(raw.reason)) throw new Error('Reviewer returned an invalid editorial object')
   raw = normalizeWeightedScore({ ...raw, ai_summary: normalizeSeoMarker(raw.ai_summary) })
   if (!raw.ai_summary.startsWith('**')) throw new Error('Reviewer violated the editorial title contract')
+  const copyMetrics = editorialCopyMetrics(raw.ai_summary)
+  if (copyMetrics.title < MIN_EDITORIAL_TITLE_CHARS || copyMetrics.title > MAX_EDITORIAL_TITLE_CHARS) {
+    throw new Error(`Reviewer violated the editorial title length contract (${copyMetrics.title}; expected ${MIN_EDITORIAL_TITLE_CHARS}-${MAX_EDITORIAL_TITLE_CHARS})`)
+  }
+  if (!copyMetrics.completeSentences || copyMetrics.sentences < MIN_EDITORIAL_SENTENCES || copyMetrics.sentences > MAX_EDITORIAL_SENTENCES) {
+    throw new Error(`Reviewer violated the editorial sentence contract (${copyMetrics.sentences}; expected ${MIN_EDITORIAL_SENTENCES}-${MAX_EDITORIAL_SENTENCES} complete sentences)`)
+  }
   const dimensions = scoreDimensions(raw.reason)
   const calculated = Math.round(dimensions[0] * 0.4 + dimensions[1] * 0.2 + dimensions[2] * 0.2 + dimensions[3] * 0.2)
   if (dimensions.some(score => score < 0 || score > 100) || calculated !== raw.ai_score
@@ -238,7 +265,7 @@ function clusterBatches(cards, maxCards, maxChars) {
 export function apply(ctx, rawConfig) {
   const config = cleanConfig(rawConfig)
   const fingerprint = createHash('sha256').update(JSON.stringify({
-    version: 5, provider: config.subagentProvider, batchSize: config.batchSize, maxCards: config.maxCards,
+    version: 9, provider: config.subagentProvider, batchSize: config.batchSize, maxCards: config.maxCards,
     maxCardChars: config.maxCardChars, maxClusterInputChars: config.maxClusterInputChars, minimumAiScore: config.minimumAiScore,
     instruction: config.instruction, clusterInstruction: config.clusterInstruction, persona: config.persona,
     output: OUTPUT_SCHEMA, clusterOutput: CLUSTER_OUTPUT_SCHEMA,
