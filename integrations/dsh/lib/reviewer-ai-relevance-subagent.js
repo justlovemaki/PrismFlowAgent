@@ -15,7 +15,7 @@ const DEFAULT_CLUSTER_INSTRUCTION = `你是AI资讯事件聚类专家。只根�
 不得仅根据索引相邻、表面词句相似或同属宽泛主题而合并。只输出需要合并的clusterIndex组；不确定或无需合并的候选不要输出，系统会将它们安全地保留为单例。`
 
 const DEFAULT_INSTRUCTION = `你是AI内容主编与资深资讯评委。对每条原始Markdown独立判断、彻底重写并评分，不得依赖关键词词典。
-内容要求：ai_summary以加粗新闻标题开头并使用中文新闻播报风格；标题必须为10至18个可见字符，同时表达主体与核心事件，禁止只有情绪、评价或宽泛概念。正文必须写成3至4个完整短句，每句建议20至25个可见字符，并必须以。！？之一结尾。只保留主体、核心事件与关键影响，删除背景铺陈、同义重复、排比、转折和连接词；允许少量自然口语感。标题和正文之间只能用空格。
+内容要求：ai_summary以加粗新闻标题开头并使用中文新闻播报风格；标题必须为10至18个可见字符，生成时以12至16个可见字符为目标并在输出前逐字计数，避免落在边界外；标题同时表达主体与核心事件，禁止只有情绪、评价或宽泛概念。正文必须写成3至4个完整短句，每句建议20至25个可见字符，并必须以。！？之一结尾。只保留主体、核心事件与关键影响，删除背景铺陈、同义重复、排比、转折和连接词；允许少量自然口语感。标题和正文之间只能用空格。
 格式红线：ai_summary必须是绝对单行字符串，禁止真实换行、\\n、\\r和<br\\>；结构分隔只能使用空格或<br/>。标题使用**新闻标题。**。核心术语和关键数据可加粗，每处不超过10字。
 链接硬规则：每张卡片都有articleUrl，必须恰好使用一次并自然嵌入正文句中，格式为[约10至15个中文字符](完整articleUrl)。链接锚文本、标题和普通正文都不得包含“AI资讯”。不得伪造、截断或重复任何URL；链接去掉Markdown符号后句子仍须通顺。
 Emoji规则：根据语境动态选择并穿插在句中，不得堆在句末；短句最多1个，宁缺毋滥。
@@ -265,7 +265,7 @@ function clusterBatches(cards, maxCards, maxChars) {
 export function apply(ctx, rawConfig) {
   const config = cleanConfig(rawConfig)
   const fingerprint = createHash('sha256').update(JSON.stringify({
-    version: 9, provider: config.subagentProvider, batchSize: config.batchSize, maxCards: config.maxCards,
+    version: 10, provider: config.subagentProvider, batchSize: config.batchSize, maxCards: config.maxCards,
     maxCardChars: config.maxCardChars, maxClusterInputChars: config.maxClusterInputChars, minimumAiScore: config.minimumAiScore,
     instruction: config.instruction, clusterInstruction: config.clusterInstruction, persona: config.persona,
     output: OUTPUT_SCHEMA, clusterOutput: CLUSTER_OUTPUT_SCHEMA,
@@ -294,7 +294,10 @@ export function apply(ctx, rawConfig) {
           const payload = JSON.stringify(indexed).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
           let validationError; let maySplit = false
           for (let attempt = 0; attempt < 3; attempt += 1) {
-            const repair = attempt === 0 ? '' : `\n\n上一次输出未通过可信校验：${validationError.message}。这是本次无工具、无副作用的格式修复重试。必须重新生成全部cardIndex，不得复用违规摘要结构或缺失的SEO标记。`
+            const titleRepair = validationError && /editorial title length contract/u.test(validationError.message)
+              ? ' 标题长度修复必须以12至16个可见字符为目标，逐字计数后再输出，不得再次贴近10字符下限。'
+              : ''
+            const repair = attempt === 0 ? '' : `\n\n上一次输出未通过可信校验：${validationError.message}。这是本次无工具、无副作用的格式修复重试。必须重新生成全部cardIndex，不得复用违规摘要结构或缺失的SEO标记。${titleRepair}`
             const prompt = `${config.instruction}${repair}\n\n${rules}\n<BEGIN_CONTENT_CARDS_JSON>\n${payload}\n<END_CONTENT_CARDS_JSON>\n${rules}`
             let result
             try {
@@ -317,6 +320,7 @@ export function apply(ctx, rawConfig) {
             catch (error) {
               if (!(error instanceof Error)) throw error
               validationError = error
+              maySplit ||= /editorial (?:title(?: length)?|sentence) contract/u.test(error.message)
             }
           }
           if (maySplit && batch.length > 1 && splitDepth < 3) {

@@ -48,7 +48,7 @@ The bundle contributes independently configurable Cordis rows. Storage, producti
 Use the package-shipped updater as the normal entry point. It validates the target Profile first, records whether DSH Web is running and its port, stops every active DSH process, runs `plugin add` and the offline installer, restarts Web only when it was previously running, and waits for `/api/prismflow/status` to become healthy. This keeps package replacement—including Sharp's native binary—inside the same offline boundary as SQLite, writer-lock, and Profile changes.
 
 ```sh
-pnpm dlx --allow-build=sharp --package https://flaredrive-news.pages.dev/webdav/prismflow-dsh-0.24.109.tgz prismflow-dsh-update --package https://flaredrive-news.pages.dev/webdav/prismflow-dsh-0.24.109.tgz --profile web
+pnpm dlx --allow-build=sharp --package https://flaredrive-news.pages.dev/webdav/prismflow-dsh-0.24.110.tgz prismflow-dsh-update --package https://flaredrive-news.pages.dev/webdav/prismflow-dsh-0.24.110.tgz --profile web
 ```
 
 To pack and run the same automatic flow locally:
@@ -56,7 +56,7 @@ To pack and run the same automatic flow locally:
 ```sh
 cd integrations/dsh
 npm pack
-pnpm dlx --allow-build=sharp --package ./prismflow-dsh-0.24.109.tgz prismflow-dsh-update --package ./prismflow-dsh-0.24.109.tgz --profile web
+pnpm dlx --allow-build=sharp --package ./prismflow-dsh-0.24.110.tgz prismflow-dsh-update --package ./prismflow-dsh-0.24.110.tgz --profile web
 ```
 
 The updater resolves DSH Home from `--dsh-home`, then `$DSH_HOME`, then `~/.dsh`; it detects and pins the coherent installed DSH version unless `--dsh-version` is supplied. Because DSH does not expose another process's `DSH_HOME` in its command line, invoking this explicit updater authorizes it to stop every visible active DSH process, not merely the target Profile. Its own `dsh plugin exec` ancestry is excluded. `--no-restart` disables automatic Web restart; Web is also left stopped when it was not running before the update. If package installation fails after shutdown, the updater still attempts to restore the previously running Web before reporting both outcomes. A successful restart uses the previous Web port (default 3080), the selected Profile and DSH Home, and the pinned DSH version, then requires the PrismFlow status endpoint to pass its health check.

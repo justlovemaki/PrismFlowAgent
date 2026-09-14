@@ -1,6 +1,6 @@
 {
   "name": "@prismflow/dsh",
-  "version": "0.24.109",
+  "version": "0.24.110",
   "description": "Native PrismFlow plugins and one-stop dashboard for DeepSeek Harness",
   "type": "module",
   "main": "./lib/core.js",

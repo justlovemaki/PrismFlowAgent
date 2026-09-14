@@ -117,9 +117,9 @@ test('reviewer rejects summaries outside the required complete sentence count', 
   const f = fixture(() => {
     const first = editorial(0, 88, ['foundation-models'])
     first.editorial.ai_summary = `**人工智能模型正式发布。** 主体公布核心进展。[查看完整内容说明](${cards[0].articleUrl})介绍关键变化。`
-    return { decisions: [first, editorial(1, 10)] }
+    return { decisions: [first] }
   })
-  await assert.rejects(f.provider().reviewBatch(cards, { agent: {}, signal: new AbortController().signal }), /editorial sentence contract/u)
+  await assert.rejects(f.provider().reviewBatch([cards[0]], { agent: {}, signal: new AbortController().signal }), /editorial sentence contract/u)
   assert.equal(f.starts.length, 3)
   assert.match(f.starts[1].options.prompt[0].text, /expected 3-4 complete sentences/u)
 })
@@ -128,9 +128,9 @@ test('reviewer rejects an incomplete trailing sentence', async () => {
   const f = fixture(() => {
     const first = editorial(0, 88, ['foundation-models'])
     first.editorial.ai_summary = first.editorial.ai_summary.replace(/。$/u, '未完')
-    return { decisions: [first, editorial(1, 10)] }
+    return { decisions: [first] }
   })
-  await assert.rejects(f.provider().reviewBatch(cards, { agent: {}, signal: new AbortController().signal }), /editorial sentence contract/u)
+  await assert.rejects(f.provider().reviewBatch([cards[0]], { agent: {}, signal: new AbortController().signal }), /editorial sentence contract/u)
   assert.equal(f.starts.length, 3)
 })
 
@@ -149,20 +149,21 @@ test('reviewer rejects a title below the editorial minimum', async () => {
   const f = fixture(() => {
     const first = editorial(0, 88, ['foundation-models'])
     first.editorial.ai_summary = first.editorial.ai_summary.replace('**人工智能模型迎来重要发布。**', '**模型发布。**')
-    return { decisions: [first, editorial(1, 10)] }
+    return { decisions: [first] }
   })
-  await assert.rejects(f.provider().reviewBatch(cards, { agent: {}, signal: new AbortController().signal }), /editorial title length contract/u)
+  await assert.rejects(f.provider().reviewBatch([cards[0]], { agent: {}, signal: new AbortController().signal }), /editorial title length contract/u)
   assert.equal(f.starts.length, 3)
   assert.match(f.starts[1].options.prompt[0].text, /expected 10-18/u)
+  assert.match(f.starts[1].options.prompt[0].text, /12至16个可见字符/u)
 })
 
 test('reviewer rejects an overlong editorial title and requests a bounded repair', async () => {
   const f = fixture(() => {
     const first = editorial(0, 88, ['foundation-models'])
     first.editorial.ai_summary = first.editorial.ai_summary.replace('**人工智能模型迎来重要发布。**', '**这是一个明显超过十八个可见字符限制的人工智能新闻标题。**')
-    return { decisions: [first, editorial(1, 10)] }
+    return { decisions: [first] }
   })
-  await assert.rejects(f.provider().reviewBatch(cards, { agent: {}, signal: new AbortController().signal }), /editorial title length contract/u)
+  await assert.rejects(f.provider().reviewBatch([cards[0]], { agent: {}, signal: new AbortController().signal }), /editorial title length contract/u)
   assert.equal(f.starts.length, 3)
   assert.match(f.starts[1].options.prompt[0].text, /editorial title length contract/u)
 })
@@ -195,6 +196,23 @@ test('reviewer splits a repeatedly failed editorial batch and preserves every va
   const result = await f.provider().reviewBatch(cards, { agent: {} })
   assert.deepEqual(result.map(item => item.storeId), cards.map(card => card.storeId))
   assert.equal(f.starts.length, 5)
+})
+
+test('reviewer also splits a batch after repeated editorial contract failures', async () => {
+  let calls = 0
+  const f = fixture(options => {
+    calls += 1
+    const submitted = JSON.parse(options.prompt[0].text
+      .split('<BEGIN_CONTENT_CARDS_JSON>\n')[1].split('\n<END_CONTENT_CARDS_JSON>')[0])
+    const decisions = submitted.map(card => editorial(card.cardIndex, 80, [], card.articleUrl))
+    if (calls <= 3) decisions[0].editorial.ai_summary = decisions[0].editorial.ai_summary
+      .replace('**人工智能模型迎来重要发布。**', '**智能模型正式发布。**')
+    return { decisions }
+  })
+  const result = await f.provider().reviewBatch(cards, { agent: {} })
+  assert.deepEqual(result.map(item => item.storeId), cards.map(card => card.storeId))
+  assert.equal(f.starts.length, 5)
+  assert.match(f.starts[1].options.prompt[0].text, /12至16个可见字符/u)
 })
 
 test('reviewer performs sparse global clustering and conservatively keeps omitted indices as singletons', async () => {
