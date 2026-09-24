@@ -87,6 +87,13 @@ async function request(origin, path, body, headers = {}, method) {
   return { status: response.status, value: await response.json() }
 }
 
+async function requestWithoutOrigin(origin, path, body, headers = {}) {
+  const response = await fetch(`${origin}/api/prismflow${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body),
+  })
+  return { status: response.status, value: await response.json() }
+}
+
 async function requestZip(origin, path, buffer) {
   const response = await fetch(`${origin}/api/prismflow${path}`, { method: 'POST', headers: { 'content-type': 'application/zip', origin }, body: buffer })
   return { status: response.status, value: await response.json() }
@@ -363,7 +370,7 @@ test('dashboard API exposes only configuration, immutable draft review/publicati
     const status = await request(app.origin, '/status')
     assert.equal(status.status, 200)
     assert.equal(status.value.pluginVersion, PACKAGE_VERSION)
-    assert.deepEqual(status.value.services, { sources: true, sourceSettings: true, contentStore: true, publishers: true, receipts: true, production: true, generatorWorkflows: true, toolsets: false, imageGenerationSettings: true, rssOutputs: true })
+    assert.deepEqual(status.value.services, { sources: true, sourceSettings: true, contentStore: true, publishers: true, receipts: true, production: true, generatorWorkflows: true, toolsets: false, imageGenerationSettings: true, aiPrompts: false, rssOutputs: true })
     assert.deepEqual(status.value.counts, { sources: 1, sourceSettings: 1, contents: 1, publishers: 1, generators: 1, generatorWorkflows: 1, rssOutputs: 1 })
 
     const image = await request(app.origin, '/image-generation/settings')
@@ -655,6 +662,21 @@ test('every Dashboard API request requires a literal loopback Host on the listen
     assert.equal((await requestWithHost(app.origin, '/status', '127.0.0.1:1')).status, 403)
     assert.equal((await requestWithHost(app.origin, '/status', `localhost:${port}`)).status, 200)
     assert.equal((await requestWithHost(app.origin, '/status', `[::1]:${port}`)).status, 200)
+  } finally { await app.close() }
+})
+
+test('paired DSH remote reissues are admitted only with the loopback same-origin transport marker', async () => {
+  const calls = []
+  const app = await dashboard({ prismContentStore: { async deleteBatch(ids) {
+    calls.push(ids); return { deletedIds: ids, missingIds: [], failedIds: [] }
+  } } })
+  const body = { storeIds: ['a'.repeat(64)], confirm: true }
+  try {
+    assert.equal((await requestWithoutOrigin(app.origin, '/content/delete', body)).status, 403)
+    assert.equal((await requestWithoutOrigin(app.origin, '/content/delete', body, { 'sec-fetch-site': 'cross-site' })).status, 403)
+    const proxied = await requestWithoutOrigin(app.origin, '/content/delete', body, { 'sec-fetch-site': 'same-origin' })
+    assert.equal(proxied.status, 200)
+    assert.deepEqual(calls, [body.storeIds])
   } finally { await app.close() }
 })
 

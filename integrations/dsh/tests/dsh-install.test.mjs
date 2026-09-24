@@ -56,21 +56,26 @@ test('one-stop installer recognizes Windows DSH command paths and ignores unrela
   assert.deepEqual(findActiveDshProcesses(entries, 99).map(entry => entry.pid), [10])
 })
 
-test('one-stop installer accepts the compatible DSH line and pins the same exact SQLite backend', () => {
-  assert.equal(sqliteVersionForDsh('0.1.0-rc.6'), '0.1.0-rc.6')
-  assert.equal(sqliteVersionForDsh('0.1.1-rc.2'), '0.1.1-rc.2')
-  assert.equal(sqliteVersionForDsh('0.1.2-rc.1'), '0.1.2-rc.1')
-  assert.equal(sqliteVersionForDsh('0.1.9-rc.12'), '0.1.9-rc.12')
-  assert.equal(sqliteVersionForDsh('0.1.9'), '0.1.9')
+test('one-stop installer accepts every later semantic DSH release and pins the same exact SQLite backend', () => {
+  for (const version of [
+    '0.1.0-rc.6', '0.1.1-rc.2', '0.1.7-rc.1', '0.1.9',
+    '0.2.0-alpha.1', '0.2.0-rc.1', '1.0.0', '2.3.4-beta.5+build.7',
+  ]) assert.equal(sqliteVersionForDsh(version), version)
   assert.throws(() => sqliteVersionForDsh('0.1.0-rc.5'), /unsupported DSH version/u)
-  assert.throws(() => sqliteVersionForDsh('0.1.2-alpha.2'), /unsupported DSH version/u)
-  assert.throws(() => sqliteVersionForDsh('0.2.0-rc.1'), /unsupported DSH version/u)
+  assert.throws(() => sqliteVersionForDsh('0.1.0-beta.9'), /unsupported DSH version/u)
+  for (const version of ['0.1', 'v0.1.7', '0.1.7-', '0.1.7-rc..1', 'not-a-version']) {
+    assert.throws(() => sqliteVersionForDsh(version), /unsupported DSH version/u)
+  }
 })
 
 test('one-stop installer detects one coherent installed DSH release without an exact allowlist', async t => {
   const profile = await mkdtemp(join(tmpdir(), 'prismflow-dsh-version-'))
   t.after(() => rm(profile, { recursive: true, force: true }))
   assert.equal(detectInstalledDshVersion(profile), undefined)
+  const sqliteDirectory = join(profile, 'node_modules', '@deepseek-ai', 'dsh-storage-sqlite')
+  mkdirSync(sqliteDirectory, { recursive: true })
+  writeFileSync(join(sqliteDirectory, 'package.json'), '{"version":"0.1.9-rc.12"}\n')
+  assert.equal(detectInstalledDshVersion(profile), '0.1.9-rc.12')
   for (const packageName of ['dsh-base', 'dsh-storage-domain']) {
     const directory = join(profile, 'node_modules', '@deepseek-ai', packageName)
     mkdirSync(directory, { recursive: true })
@@ -202,9 +207,12 @@ test('published package exposes the explicit installer without a postinstall hoo
   assert.match(source, /configureDashboardRow/u)
   assert.doesNotMatch(source, /install-dashboard\.mjs/u)
   assert.match(updaterSource, /await stopDshProcesses\(before\)/u)
-  assert.ok(updaterSource.indexOf('await stopDshProcesses(before)') < updaterSource.indexOf("run('pnpm', ['dlx'"))
-  assert.ok(updaterSource.indexOf("run('pnpm', ['dlx'") < updaterSource.indexOf("run(process.execPath, [installer"))
+  assert.ok(updaterSource.indexOf('await stopDshProcesses(before)') < updaterSource.indexOf("run('pnpm', dshDlxArgs"))
+  assert.ok(updaterSource.indexOf("run('pnpm', dshDlxArgs") < updaterSource.indexOf("run(process.execPath, [installer"))
   assert.ok(updaterSource.indexOf("run(process.execPath, [installer") < updaterSource.lastIndexOf('startDshWeb(options, port)'))
+  assert.match(updaterSource, /--config\.resolution-mode=time-based/u)
+  assert.match(updaterSource, /--config\.cache-dir=/u)
+  assert.match(updaterSource, /if \(Date\.now\(\) - healthySince >= HEALTH_STABILITY_MS\)/u)
   assert.match(updaterSource, /waitForHealth\(port\)/u)
   assert.match(updaterSource, /if \(updateError && restartError\)/u)
   const escapedVersion = packageJson.version.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')

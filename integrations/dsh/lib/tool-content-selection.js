@@ -54,7 +54,7 @@ export function apply(ctx) {
 
   registerPrismFlowTool(ctx, defineTool({
     name: 'prismflow_create_ai_selection',
-    description: 'Default all-sources path over records already persisted in PrismFlow Content Store. Selection artifacts and Drafts created during the current Asia/Shanghai calendar day never participate in exclusion. Older Content Store records represented by published Drafts, plus records that AI event comparison identifies as the same or semantically equivalent historical event, are excluded automatically. This tool never fetches, refreshes, or synchronizes a source; do not call prismflow_sources or prismflow_sync_source unless the user separately and explicitly requests synchronization. Create one immutable AI-only Selection using batched AI editorial scoring, bounded AI title-summary event clustering passes, diverse ranking, and bounded verbatim material packing. This tool cannot narrow to one source or lower item/token budgets. A window below 48 hours or category/topic filter requires explicit user approval.',
+    description: 'Default all-sources path over records already persisted in PrismFlow Content Store. This tool is cache-only: it never generates AI summaries or scores and skips records without a current cached editorial review. If no current reviews exist, report that explicit prismflow_review_pending_content is required and do not invoke it automatically. Selection artifacts and Drafts created during the current Asia/Shanghai calendar day never participate in exclusion. Older Content Store records represented by published Drafts, plus records that AI event comparison identifies as the same or semantically equivalent historical event, are excluded automatically. This tool never fetches, refreshes, or synchronizes a source; do not call prismflow_sources or prismflow_sync_source unless the user separately and explicitly requests synchronization. Create one immutable AI-only Selection using cached editorial scores, bounded AI title-summary event clustering passes, diverse ranking, and bounded verbatim material packing. This tool cannot narrow to one source or lower item/token budgets. A window below 48 hours or category/topic filter requires explicit user approval.',
     parameters: filters(), output: {
       schema: selectionSchema,
       render: (_args, value) => [{ type: 'text', text: `AI selection ${value.selectionId}: ${value.selectedCount} items across ${value.sourceIds.length} selected source(s), about ${value.estimatedTokens} conservative tokens. Use prismflow_create_generation_request_from_ai_selection next.` }],
@@ -63,12 +63,40 @@ export function apply(ctx) {
   }))
   registerPrismFlowTool(ctx, defineTool({
     name: EXPLICIT_SOURCE_SELECTION_TOOL,
-    description: 'Restricted exact-source AI Selection. Selection artifacts and Drafts created during the current Asia/Shanghai calendar day never participate in exclusion. Older Content Store records represented by published Drafts, plus records that AI event comparison identifies as the same or semantically equivalent historical event, are excluded automatically. Use only when the user explicitly requests one exact persisted source; every call requires one-shot user approval. Otherwise use prismflow_create_ai_selection across all sources.',
+    description: 'Restricted exact-source, cache-only AI Selection. It never generates AI summaries or scores and skips records without a current cached editorial review. If no current reviews exist, report that explicit prismflow_review_pending_content is required and do not invoke it automatically. Selection artifacts and Drafts created during the current Asia/Shanghai calendar day never participate in exclusion. Older Content Store records represented by published Drafts, plus records that AI event comparison identifies as the same or semantically equivalent historical event, are excluded automatically. Use only when the user explicitly requests one exact persisted source; every call requires one-shot user approval. Otherwise use prismflow_create_ai_selection across all sources.',
     parameters: { ...filters(), sourceId: { type: 'string', required: true, description: 'Exact source id explicitly requested by the user.' } },
     output: {
       schema: selectionSchema,
       render: (_args, value) => [{ type: 'text', text: `Source-restricted AI selection ${value.selectionId}: ${value.selectedCount} items from ${value.sourceIds.join(', ') || 'no projected source'}.` }],
     },
     async execute(args, exec) { return ctx.prismContentSelections.create(serviceQuery(args), { signal: exec?.signal, agent: exec?.agent }) },
+  }))
+  registerPrismFlowTool(ctx, defineTool({
+    name: 'prismflow_review_pending_content',
+    description: 'Explicit AI review operation. Use only when the user specifically requests AI review, AI summaries, pre-scoring, or authorizes preparation after a cache-only Selection reports missing reviews. Evaluates pending Content Store records, assigns weighted 4-dimension scores, generates concise single-line headlines and summaries, and caches the results in SQLite. Never call this merely because the user requested an AI Selection.',
+    parameters: filters(),
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: {
+          totalCandidates: { type: 'integer', required: true },
+          cachedCount: { type: 'integer', required: true },
+          newlyReviewedCount: { type: 'integer', required: true },
+          qualifyingCount: { type: 'integer', required: true },
+          belowThresholdCount: { type: 'integer', required: true },
+          minimumAiScore: { type: 'integer', required: true },
+          hours: { type: 'integer', required: true },
+          asOf: { type: 'string', required: true },
+        },
+      },
+      render: (_args, value) => [{
+        type: 'text',
+        text: `AI review completed for ${value.totalCandidates} candidates in the last ${value.hours} hours: ${value.newlyReviewedCount} newly reviewed, ${value.cachedCount} cached. ${value.qualifyingCount} items qualified (score >= ${value.minimumAiScore}), ${value.belowThresholdCount} items fell below threshold. Reviews are permanently cached for instant Selection.`,
+      }],
+    },
+    async execute(args, exec) {
+      return ctx.prismContentSelections.reviewPendingContent(serviceQuery(args), { signal: exec?.signal, agent: exec?.agent })
+    },
   }))
 }

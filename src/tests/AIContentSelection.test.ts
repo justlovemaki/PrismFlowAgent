@@ -91,9 +91,10 @@ test('enforces a bounded source quota before general diversity ranking', () => {
   const githubCount = ranked.filter(item => item.cluster.representative.record.sourceId === 'github-trending:daily').length;
   assert.ok(githubCount >= 3 && githubCount <= 5);
   assert.deepEqual(ranked.slice(0, 3).map(item => item.reasons[0]), ['source-quota', 'source-quota', 'source-quota']);
-  assert.throws(() => rankDiverseEvents(clusterAIEvents(github.slice(0, 2)), {
+  const fallbackRanked = rankDiverseEvents(clusterAIEvents(github.slice(0, 2)), {
     maxItems: 10, maxPerSource: 8, sourceQuota: { sourceId: 'github-trending:daily', minItems: 3, maxItems: 5 },
-  }), /source quota cannot be satisfied/u);
+  });
+  assert.equal(fallbackRanked.filter(item => item.cluster.representative.record.sourceId === 'github-trending:daily').length, 2);
 });
 
 test('extracts and deduplicates bounded media only from conservatively rendered source contexts', () => {

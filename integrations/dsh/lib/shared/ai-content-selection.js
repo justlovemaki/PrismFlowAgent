@@ -314,9 +314,10 @@ export function rankDiverseEvents(clusters, options) {
         coveredTopics.add(topic); };
     if (quota) {
         const quotaCandidates = remaining.filter(cluster => cluster.representative.record.sourceId === quota.sourceId);
-        if (quotaCandidates.length < quota.minItems)
-            throw new Error(`Selection source quota cannot be satisfied for ${quota.sourceId}: requires at least ${quota.minItems}, found ${quotaCandidates.length}`);
-        for (const cluster of quotaCandidates.slice(0, quota.minItems))
+        if (quotaCandidates.length < quota.minItems) {
+            console.warn(`[AIContentSelection] Selection source quota cannot be satisfied for ${quota.sourceId}: requires at least ${quota.minItems}, found ${quotaCandidates.length}; falling back to best-effort selection.`);
+        }
+        for (const cluster of quotaCandidates.slice(0, quota.maxItems))
             take(cluster);
     }
     for (const cluster of remaining) {

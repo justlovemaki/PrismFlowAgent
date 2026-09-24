@@ -1,6 +1,6 @@
 - insert:
     - id: prismflow-core
-      name: '@prismflow/dsh/core'
+      name: '@prismflow/dsh'
 
     - id: prismflow-publisher-core
       name: '@prismflow/dsh/publisher-core'
@@ -128,6 +128,10 @@
         avifQuality: 70
         avifEffort: 5
         ffmpegPath: ''
+
+    - id: prismflow-store-ai-prompts
+      name: '@prismflow/dsh/store-ai-prompts'
+      disabled: true
 
     - id: prismflow-skill-provider
       name: '@prismflow/dsh/prismflow-skill-provider'

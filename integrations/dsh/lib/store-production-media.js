@@ -11,6 +11,7 @@ const DefaultAsset = Schema.object({ ref: Schema.string().required(), assetId: S
 export const Config = Schema.object({
   maxAssetBytes: Schema.number().step(1).min(1_024).max(32 * 1024 * 1024).default(10 * 1024 * 1024),
   maxAssets: Schema.number().step(1).min(1).max(100_000).default(10_000),
+  retentionDays: Schema.number().step(1).min(1).max(365).default(3),
   defaultAssets: Schema.array(DefaultAsset).default([]),
 })
 
@@ -78,6 +79,27 @@ export class PrismProductionMediaService extends Service {
   requireAssets() { if (!this.assets) throw new Error('Production media store is unavailable'); return this.assets }
   enqueue(operation) { const result = this.tail.then(operation); this.tail = result.then(() => {}, () => {}); return result }
 
+  async pruneExpired(now = new Date()) {
+    const days = typeof this.config.retentionDays === 'number' && this.config.retentionDays > 0 ? this.config.retentionDays : 3
+    const cutoffTime = now.getTime() - days * 24 * 60 * 60 * 1000
+    const assets = this.requireAssets()
+    const deploymentRefs = new Set(this.defaultAssets.values())
+    const toDelete = []
+
+    for (const [key, record] of assets.entries()) {
+      if (deploymentRefs.has(key)) continue
+      const created = Date.parse(record?.createdAt ?? '')
+      if (Number.isFinite(created) && created < cutoffTime) {
+        toDelete.push(key)
+      }
+    }
+
+    for (const key of toDelete) {
+      try { await assets.delete(key) }
+      catch (error) { this.ctx.logger?.warn(`Failed to prune expired media asset ${key}: ${String(error)}`) }
+    }
+  }
+
   /** Internal pre-production admission seam. No Dashboard or publication route calls this method. */
   async ingest(value) {
     let bytes = Buffer.isBuffer(value) ? Buffer.from(value) : value instanceof Uint8Array ? Buffer.from(value) : undefined
@@ -103,6 +125,7 @@ export class PrismProductionMediaService extends Service {
     }
     const sha256 = createHash('sha256').update(bytes).digest('hex')
     return this.enqueue(async () => {
+      await this.pruneExpired()
       const assets = this.requireAssets()
       const existing = assets.get(sha256)
       if (existing) {

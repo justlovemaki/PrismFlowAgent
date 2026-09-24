@@ -14,9 +14,11 @@ function harness() {
 
 test('selection tools expose only bounded policy-lowering inputs and never output bodies/material/providers', async () => {
   const { tools, calls, listeners } = harness()
-  assert.deepEqual([...tools.keys()], ['prismflow_create_ai_selection', 'prismflow_create_ai_selection_from_explicit_source'])
+  assert.deepEqual([...tools.keys()], ['prismflow_create_ai_selection', 'prismflow_create_ai_selection_from_explicit_source', 'prismflow_review_pending_content'])
   const create = tools.get('prismflow_create_ai_selection')
   assert.match(create.description, /never fetches, refreshes, or synchronizes/u)
+  assert.match(create.description, /cache-only: it never generates AI summaries or scores/u)
+  assert.match(tools.get('prismflow_review_pending_content').description, /Never call this merely because the user requested an AI Selection/u)
   const names = Object.keys(create.parameters.properties)
   assert.deepEqual(names.sort(), ['asOf', 'category', 'hours', 'topic'])
   assert.equal(names.includes('sourceId'), false)

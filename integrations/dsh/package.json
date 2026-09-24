@@ -1,14 +1,13 @@
 {
   "name": "@prismflow/dsh",
-  "version": "0.24.110",
+  "version": "0.24.125",
   "description": "Native PrismFlow plugins and one-stop dashboard for DeepSeek Harness",
   "type": "module",
-  "main": "./lib/core.js",
+  "main": "./index.js",
   "exports": {
-    ".": "./lib/core.js",
+    ".": "./index.js",
     "./client": "./lib/client.js",
     "./ui": "./lib/ui.js",
-    "./ui/package.json": "./package.json",
     "./ffmpeg-runtime": "./lib/ffmpeg-runtime.js",
     "./core": "./lib/core.js",
     "./source-rss": "./lib/source-rss.js",
@@ -23,6 +22,7 @@
     "./store-generator-workflows": "./lib/store-generator-workflows.js",
     "./store-prismflow-toolsets": "./lib/store-prismflow-toolsets.js",
     "./store-image-generation-settings": "./lib/store-image-generation-settings.js",
+    "./store-ai-prompts": "./lib/store-ai-prompts.js",
     "./prismflow-skill-provider": "./lib/prismflow-skill-provider.js",
     "./reviewer-ai-relevance-subagent": "./lib/reviewer-ai-relevance-subagent.js",
     "./store-publication-receipts": "./lib/store-publication-receipts.js",
@@ -58,6 +58,7 @@
   },
   "files": [
     "lib",
+    "index.js",
     "plugins",
     "skills",
     "manual-import",
@@ -83,13 +84,13 @@
     }
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/dsh-client-ui-layout": ">=0.1.0-rc.6 <0.2.0",
-    "@deepseek-ai/dsh-client-ui-sidebar": ">=0.1.0-rc.6 <0.2.0",
-    "@deepseek-ai/dsh-credentials": ">=0.1.0-rc.6 <0.2.0",
-    "@deepseek-ai/dsh-storage-domain": ">=0.1.0-rc.6 <0.2.0",
-    "@deepseek-ai/dsh-storage-sqlite": ">=0.1.0-rc.6 <0.2.0",
-    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.6 <0.2.0"
+    "@deepseek-ai/cordis": ">=4.0.1",
+    "@deepseek-ai/dsh-client-ui-layout": ">=0.1.0-rc.6 || >=0.1.7-rc.1 <0.1.8-0",
+    "@deepseek-ai/dsh-client-ui-sidebar": ">=0.1.0-rc.6 || >=0.1.7-rc.1 <0.1.8-0",
+    "@deepseek-ai/dsh-credentials": ">=0.1.0-rc.6 || >=0.1.7-rc.1 <0.1.8-0",
+    "@deepseek-ai/dsh-storage-domain": ">=0.1.0-rc.6 || >=0.1.7-rc.1 <0.1.8-0",
+    "@deepseek-ai/dsh-storage-sqlite": ">=0.1.0-rc.6 || >=0.1.7-rc.1 <0.1.8-0",
+    "@deepseek-ai/dsh-tools": ">=0.1.0-rc.6 || >=0.1.7-rc.1 <0.1.8-0"
   },
   "peerDependenciesMeta": {
     "@deepseek-ai/dsh-client-ui-layout": {
@@ -121,14 +122,14 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.2",
-    "@deepseek-ai/dsh-client-ui-layout": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-renderer": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-client-ui-sidebar": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-credentials": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-storage-domain": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-storage-sqlite": "^0.1.2-rc.1",
-    "@deepseek-ai/dsh-tools": "^0.1.2-rc.1",
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh-client-ui-layout": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-client-ui-renderer": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-client-ui-sidebar": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-credentials": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-storage-domain": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-storage-sqlite": "0.1.7-rc.1",
+    "@deepseek-ai/dsh-tools": "0.1.7-rc.1",
     "typescript": "^5.9.3"
   },
   "scripts": {

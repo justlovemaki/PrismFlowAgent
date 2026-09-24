@@ -26,6 +26,7 @@ test('Chat tool origins distinguish personal-plugin tools from system defaults',
   assert.deepEqual(PRISMFLOW_PERSONAL_CUSTOM_TOOL_NAMES, [
     'prismflow_create_ai_selection',
     'prismflow_create_ai_selection_from_explicit_source',
+    'prismflow_review_pending_content',
     'prismflow_process_markdown_media',
     'prismflow_trigger_insight_daily_build',
     'prismflow_image_generation',
@@ -37,7 +38,7 @@ test('Chat tool origins distinguish personal-plugin tools from system defaults',
   assert.equal(prismFlowToolOrigin('prismflow_create_ai_selection'), 'personal-custom')
   assert.equal(prismFlowToolOrigin('prismflow_ai_selections'), 'system-default')
   assert.equal(prismFlowToolOrigin('prismflow_sources'), 'system-default')
-  assert.equal(PRISMFLOW_CORE_TOOL_NAMES.length, 21)
+  assert.equal(PRISMFLOW_CORE_TOOL_NAMES.length, 22)
   assert.equal(PRISMFLOW_CORE_TOOL_NAMES.every(name => prismFlowToolOrigin(name) === 'system-default'), true)
   assert.equal(PRISMFLOW_SYSTEM_PLUGIN_IDS.length, 5)
   assert.equal(PRISMFLOW_PERSONAL_PLUGIN_IDS.length, 7)
@@ -199,6 +200,23 @@ test('optional native personal plugin appears only after its ZIP contents are ma
   assert.equal(removed.bundled, false); assert.equal(nativeDisposed, true); assert.equal(store.listPlugins().some(plugin => plugin.pluginId === installed.pluginId), false)
   await assert.rejects(access(join(store.pluginRoot, installed.pluginId)), { code: 'ENOENT' })
   await assert.rejects(store.deletePersonalPlugin({ pluginId: 'prismflow-system-sources', expected: { version: saved.version, sha256: saved.sha256 } }), /Unknown removable/u)
+})
+
+test('known historical packaged plugin Manifests upgrade to current tools while unknown mutations fail closed', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'prismflow-legacy-personal-plugin-')); t.after(() => rm(root, { recursive: true, force: true }))
+  const store = await fixture(); store.pluginRoot = join(root, 'plugins', 'prismflow-personal')
+  const directory = join(store.pluginRoot, 'prismflow-personal-selection'); await mkdir(directory, { recursive: true })
+  const legacy = {
+    format: 'prismflow-personal-plugin/v1', pluginId: 'prismflow-personal-selection', name: 'AI Selection',
+    description: '跨全部来源创建不可变 Selection，并保留选择证据与来源配额。', version: '1', entry: 'index.mjs',
+    tools: ['prismflow_create_ai_selection', 'prismflow_create_ai_selection_from_explicit_source'],
+  }
+  await writeFile(join(directory, 'prismflow-plugin.json'), JSON.stringify(legacy)); await writeFile(join(directory, 'index.mjs'), 'export default function activate() {}')
+  await store.scanPersonalPlugins()
+  assert.deepEqual(store.listPlugins().find(plugin => plugin.pluginId === legacy.pluginId).tools,
+    ['prismflow_create_ai_selection', 'prismflow_create_ai_selection_from_explicit_source', 'prismflow_review_pending_content'])
+  await writeFile(join(directory, 'prismflow-plugin.json'), JSON.stringify({ ...legacy, tools: [...legacy.tools, 'prismflow_content'] }))
+  await assert.rejects(store.scanPersonalPlugins(), /Manifest differs from its package definition/u)
 })
 
 test('executable personal plugin Bundles install in the separate root, activate after restart, and delete with a tombstone', async t => {

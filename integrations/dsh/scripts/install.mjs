@@ -11,11 +11,11 @@ import { configurePrismFlowRuntime, configureProfileManifest, configureSqliteSto
 import { migrateJsonStorageToSqlite } from '../lib/storage-sqlite-migration.js'
 import { acquireWriterLease } from '../lib/writer-lease-lock.js'
 
-const DEFAULT_DSH_VERSION = '0.1.2-rc.1'
+const DEFAULT_DSH_VERSION = '0.1.7-rc.1'
 const PLUGIN_VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version
 const MANUAL_IMPORT_ROOT = new URL('../manual-import/', import.meta.url)
 const PROFILE_NAME = /^[A-Za-z0-9_-]{1,64}$/u
-const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u
+const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u
 
 function usage() {
   console.error('Usage: prismflow-dsh-install [--profile <name>] [--dsh-home <path>] [--dsh-version <version>] [--migrate-json --confirm-dsh-stopped]')

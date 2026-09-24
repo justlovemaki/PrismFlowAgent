@@ -298,7 +298,9 @@ export function apply(ctx, rawConfig) {
               ? ' 标题长度修复必须以12至16个可见字符为目标，逐字计数后再输出，不得再次贴近10字符下限。'
               : ''
             const repair = attempt === 0 ? '' : `\n\n上一次输出未通过可信校验：${validationError.message}。这是本次无工具、无副作用的格式修复重试。必须重新生成全部cardIndex，不得复用违规摘要结构或缺失的SEO标记。${titleRepair}`
-            const prompt = `${config.instruction}${repair}\n\n${rules}\n<BEGIN_CONTENT_CARDS_JSON>\n${payload}\n<END_CONTENT_CARDS_JSON>\n${rules}`
+            const customPrompts = ctx.get?.('prismAiPrompts')?.get?.()
+            const activeInstruction = customPrompts?.editorialInstruction || config.instruction
+            const prompt = `${activeInstruction}${repair}\n\n${rules}\n<BEGIN_CONTENT_CARDS_JSON>\n${payload}\n<END_CONTENT_CARDS_JSON>\n${rules}`
             let result
             try {
               const run = await ctx.subagents.start(config.subagentProvider, {
@@ -369,7 +371,9 @@ export function apply(ctx, rawConfig) {
           let clustered; let lastError
           for (let attempt = 0; attempt < 3; attempt += 1) {
             const repair = attempt === 0 ? '' : `\n\n上一次聚类输出未通过校验：${lastError.message}。请重新输出本批次的稀疏合并组；每个索引最多出现一次。`
-            const prompt = `${config.clusterInstruction}${repair}\n\n${rules}\n<BEGIN_EVENT_CARDS_JSON>\n${batch.payload}\n<END_EVENT_CARDS_JSON>\n${rules}`
+            const customPrompts = ctx.get?.('prismAiPrompts')?.get?.()
+            const activeClusterInstruction = customPrompts?.clusterInstruction || config.clusterInstruction
+            const prompt = `${activeClusterInstruction}${repair}\n\n${rules}\n<BEGIN_EVENT_CARDS_JSON>\n${batch.payload}\n<END_EVENT_CARDS_JSON>\n${rules}`
             try {
               const run = await ctx.subagents.start(config.subagentProvider, {
                 label: `PrismFlow AI event clustering ${index + 1}/${batches.length}`, prompt: [{ type: 'text', text: prompt }], parent: execution.agent,

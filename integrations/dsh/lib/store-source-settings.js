@@ -251,13 +251,32 @@ export class PrismSourceSettings extends Service {
   }
   categoryUsage(borrowed = new Map()) {
     const usage = new Map()
-    const collect = (records, field) => {
-      for (const record of records) for (const id of referencedCategories(record)) {
-        if (!usage.has(id)) usage.set(id, { sources: 0, contents: 0, history: 0 })
-        usage.get(id)[field] += 1
+    const collectTable = (table, field) => {
+      if (!table) return
+      for (const [, value] of table.entries()) {
+        for (const id of referencedCategories(value)) {
+          if (!usage.has(id)) usage.set(id, { sources: 0, contents: 0, history: 0 })
+          usage.get(id)[field] += 1
+        }
       }
     }
-    collect([...this.requireSources().entries()].filter(([key]) => key !== CATEGORY_CATALOG_KEY).map(([, value]) => value), 'sources')
+    const collectArray = (records, field) => {
+      if (!records) return
+      for (const record of records) {
+        for (const id of referencedCategories(record)) {
+          if (!usage.has(id)) usage.set(id, { sources: 0, contents: 0, history: 0 })
+          usage.get(id)[field] += 1
+        }
+      }
+    }
+    for (const [key, value] of this.requireSources().entries()) {
+      if (key !== CATEGORY_CATALOG_KEY) {
+        for (const id of referencedCategories(value)) {
+          if (!usage.has(id)) usage.set(id, { sources: 0, contents: 0, history: 0 })
+          usage.get(id).sources += 1
+        }
+      }
+    }
     const content = this.ctx.get('prismContentStore')
     const production = this.ctx.get('prismProduction')
     const selections = this.ctx.get('prismContentSelections')
@@ -269,10 +288,10 @@ export class PrismSourceSettings extends Service {
     const requests = domain('prismflow_production')?.table('requests') ?? production?.requests
     const drafts = domain('prismflow_production')?.table('drafts') ?? production?.drafts
     const selectionRows = domain('prismflow_content_selection')?.table('selections') ?? selections?.selections
-    if (items) collect([...items.entries()].map(([, value]) => value), 'contents')
-    else if (content?.records) collect(content.records(), 'contents')
+    if (items) collectTable(items, 'contents')
+    else if (content?.records) collectArray(content.records(), 'contents')
     for (const table of [requests, drafts, selectionRows]) {
-      if (table) collect([...table.entries()].map(([, value]) => value), 'history')
+      if (table) collectTable(table, 'history')
     }
     const knownSources = new Set(this.list().map(row => row.settingsId))
     const bindings = this.ctx.prismSources.categoryBindings?.() ?? this.ctx.prismSources.list().map(row => ({ sourceId: row.id, category: null }))
@@ -280,7 +299,7 @@ export class PrismSourceSettings extends Service {
     for (const binding of bindings) {
       if (knownSources.has(binding.sourceId)) continue
       if (typeof binding.category !== 'string') unknownSources = true
-      else collect([{ category: binding.category }], 'sources')
+      else collectArray([{ category: binding.category }], 'sources')
     }
     const missingDomains = [
       !(items || content?.records) && 'prismflow_content',

@@ -1,6 +1,5 @@
-window.__ModuleLoader__.load({
-  id: '@prismflow/dsh/ui',
-  factory: (require) => {
+;(() => {
+  const prismflowClientFactory = (require) => {
     const module = { exports: {} }
     const exports = module.exports
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
@@ -916,6 +915,7 @@ window.__ModuleLoader__.load({
       const [categoryCatalog, setCategoryCatalog] = React.useState(null)
       const [categoryEditor, setCategoryEditor] = React.useState(null)
       const [categorySearch, setCategorySearch] = React.useState('')
+      const [aiPromptSettings, setAiPromptSettings] = React.useState(null)
       const categoryRows = categoryCatalog?.categories ?? []
       const sourceCategoryOptions = categoryRows.filter(row => !row.archived || sourceSettings.some(source => source.settingsId === editingSourceId && source.category === row.id))
         .map(row => ({ value: row.id, label: `${row.name} (${row.id})${row.archived ? ' · 已归档' : ''}` }))
@@ -1117,23 +1117,49 @@ window.__ModuleLoader__.load({
 
       async function loadPrismToolset() {
         const value = await run('toolsets:load', async signal => {
-          const [toolsets, image, prompts] = await Promise.all([
+          const [toolsets, image, prompts, aiPrompts] = await Promise.all([
             api('/toolsets', { signal }),
             status?.services.imageGenerationSettings ? api('/image-generation/settings', { signal }) : Promise.resolve(null),
             api('/prompt-suggestions', { signal }),
+            status?.services.aiPrompts ? api('/ai-prompts/settings', { signal }) : Promise.resolve(null),
           ])
-          return { toolsets, image, prompts }
+          return { toolsets, image, prompts, aiPrompts }
         })
         if (value) {
           setPrismToolset(value.toolsets.toolset)
           setPrismPlugins(value.toolsets.plugins || [])
           setPrismSkills(value.toolsets.skills || [])
           setPromptSuggestions(value.prompts?.suggestions ?? null)
+          if (value.aiPrompts) setAiPromptSettings(value.aiPrompts.settings)
           if (value.image) {
             setImageGenerationSettings({ ...value.image.settings, avifQuality: String(value.image.settings.avifQuality), avifEffort: String(value.image.settings.avifEffort) })
             setImageGenerationCredential(value.image.credential); setImageGenerationCredentialValue(''); setFfmpegStatus(value.image.ffmpeg ?? null)
           }
         }
+      }
+      function editAiPromptSetting(field, value) { setAiPromptSettings(current => ({ ...current, [field]: value })) }
+      async function saveAiPromptSettings() {
+        const current = aiPromptSettings
+        if (!current) return
+        const value = await run('ai-prompts:save', signal => api('/ai-prompts/settings', { body: {
+          settings: {
+            editorialInstruction: current.editorialInstruction.trim(),
+            clusterInstruction: current.clusterInstruction.trim(),
+            hotKeywordsPrompt: current.hotKeywordsPrompt.trim(),
+            hotKeywordsConsolidationPrompt: current.hotKeywordsConsolidationPrompt.trim(),
+          },
+          expected: { version: current.version, sha256: current.sha256 },
+        }, signal }), 'AI 审稿与热词提示词配置已保存，下一次调用立即生效。')
+        if (value) setAiPromptSettings(value.settings)
+      }
+      async function resetAiPromptSettings() {
+        const current = aiPromptSettings
+        if (!current) return
+        if (!window.confirm('确认将所有 AI 审稿、聚类和热词提取提示词恢复为系统内置默认值？')) return
+        const value = await run('ai-prompts:reset', signal => api('/ai-prompts/reset', { body: {
+          expected: { version: current.version, sha256: current.sha256 },
+        }, signal }), '已恢复为系统内置默认提示词。')
+        if (value) setAiPromptSettings(value.settings)
       }
       function editImageGenerationSetting(field, value) { setImageGenerationSettings(current => ({ ...current, [field]: value })) }
       async function saveImageGenerationSettings() {
@@ -1388,6 +1414,33 @@ window.__ModuleLoader__.load({
               h('div', { className: 'pf-image-credential-actions' },
                 h(Button, { primary: true, onClick: saveImageGenerationCredential, disabled: !!busy || !imageGenerationCredentialValue || !imageGenerationCredential?.writable || !imageGenerationCredential?.allowDashboardWrite }, imageGenerationCredential?.configured ? '轮换 API Key' : '保存 API Key'),
                 h(Button, { danger: true, onClick: removeImageGenerationCredential, disabled: !!busy || !imageGenerationCredential?.configured || !imageGenerationCredential?.writable || !imageGenerationCredential?.allowDashboardWrite }, '移除 API Key'))))) : null
+        const aiPromptsPanel = aiPromptSettings ? h('section', { className: 'pf-card pf-toolset-section' },
+          h('header', { className: 'pf-toolset-section-head' },
+            h('div', { className: 'pf-toolset-section-title' },
+              h('h3', null, 'AI 审稿与热词提取提示词'),
+              h('p', null, '在线调整 AI 筛选（审稿打分、事件聚类）和热词提取（Map分批、Reduce归纳）的 Subagent Prompt。保存后立即生效。')),
+            h('span', { className: 'pf-badge' }, `修订 ${aiPromptSettings.version}`)),
+          h('div', { className: 'pf-toolset-section-body' },
+            h('div', { className: 'pf-field' },
+              h('label', null, 'AI 审稿与打分提示词 (editorialInstruction)'),
+              h('p', { className: 'pf-field-help' }, '用于 AI 筛选中对单条资讯打分、提取加粗标题与单行短摘要。严格要求单行并保留相应字段。'),
+              h('textarea', { className: 'pf-textarea', style: { minHeight: 140 }, value: aiPromptSettings.editorialInstruction, onChange: e => editAiPromptSetting('editorialInstruction', e.target.value) })),
+            h('div', { className: 'pf-field', style: { marginTop: 12 } },
+              h('label', null, 'AI 事件语义聚类提示词 (clusterInstruction)'),
+              h('p', { className: 'pf-field-help' }, '用于跨来源比对多条报道，将描述同一核心事件的报道进行语义合并。'),
+              h('textarea', { className: 'pf-textarea', style: { minHeight: 100 }, value: aiPromptSettings.clusterInstruction, onChange: e => editAiPromptSetting('clusterInstruction', e.target.value) })),
+            h('div', { className: 'pf-field', style: { marginTop: 12 } },
+              h('label', null, '热词提取 Map 阶段提示词 (hotKeywordsPrompt)'),
+              h('p', { className: 'pf-field-help' }, '从 24 小时 AI 摘要分批切片中抽取核心实体词、技术术语和事件词。'),
+              h('textarea', { className: 'pf-textarea', style: { minHeight: 110 }, value: aiPromptSettings.hotKeywordsPrompt, onChange: e => editAiPromptSetting('hotKeywordsPrompt', e.target.value) })),
+            h('div', { className: 'pf-field', style: { marginTop: 12 } },
+              h('label', null, '热词归并 Reduce 阶段提示词 (hotKeywordsConsolidationPrompt)'),
+              h('p', { className: 'pf-field-help' }, '对跨批次聚合后的候选词做同义词消歧合并与热度重排。'),
+              h('textarea', { className: 'pf-textarea', style: { minHeight: 90 }, value: aiPromptSettings.hotKeywordsConsolidationPrompt, onChange: e => editAiPromptSetting('hotKeywordsConsolidationPrompt', e.target.value) }))),
+          h('div', { className: 'pf-toolset-section-actions' },
+            h(Button, { danger: true, onClick: resetAiPromptSettings, disabled: !!busy }, '恢复默认提示词'),
+            h(Button, { onClick: loadPrismToolset, disabled: !!busy }, '放弃修改'),
+            h(Button, { primary: true, onClick: saveAiPromptSettings, disabled: !!busy }, '保存提示词配置'))) : null
         return h('section', { className: 'pf-toolset-page' },
           h('header', { className: 'pf-toolset-header' },
             h('div', { className: 'pf-toolset-header-copy' }, h('h2', { className: 'pf-section-title' }, 'PrismFlow 工具集'), h('p', { className: 'pf-section-help' }, '“导出全部配置”会加密备份当前工作流及其完整历史、Profile 兼容生成器、数据源、发布与存储目标、图片设置、工具集及相关 Cookie/API Key；不导出已抓取内容。')),
@@ -1397,6 +1450,7 @@ window.__ModuleLoader__.load({
           h('div', { className: 'pf-toolset-stack' },
             promptSuggestionsPanel,
             imageGenerationPanel,
+            aiPromptsPanel,
             h('section', { className: 'pf-card pf-toolset-section' },
               h('header', { className: 'pf-toolset-section-head' },
                 h('div', { className: 'pf-toolset-section-title' }, h('h3', null, '插件与 Skill 配置'), h('p', null, '配置模式同时控制插件、插件工具和 Skill；Skill 只提供指令，不授予工具权限。')),
@@ -3236,5 +3290,9 @@ window.__ModuleLoader__.load({
     exports.publisherRuntimeApplied = publisherRuntimeApplied
     exports.PromptSuggestionsDock = PromptSuggestionsDock
     return module.exports
-  },
-})
+  }
+  // DSH <= 0.1.1 keyed client rows by the Loader subpath, while DSH 0.1.7+
+  // keys them by the owning package. Register both aliases from one bundle.
+  window.__ModuleLoader__.load({ id: '@prismflow/dsh', factory: prismflowClientFactory })
+  window.__ModuleLoader__.load({ id: '@prismflow/dsh/ui', factory: prismflowClientFactory })
+})()

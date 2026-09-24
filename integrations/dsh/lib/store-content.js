@@ -135,6 +135,11 @@ export class PrismContentStore extends Service {
   }
 
   count(query = {}, filter) {
+    const table = this.requireItems()
+    if ((!query || Object.keys(query).length === 0) && !filter) {
+      if (typeof table.size === 'number') return table.size
+      if (table.map instanceof Map) return table.map.size
+    }
     return countStoredContent(this.records(filter), query)
   }
 

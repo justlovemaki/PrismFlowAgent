@@ -8,9 +8,10 @@ import { deriveDashboardProfileBinding } from '../lib/dashboard-install.js'
 import { detectInstalledDshVersion, findActiveDshProcesses, listProcProcesses, resolveInstallerDshHome, sqliteVersionForDsh } from '../lib/dsh-install.js'
 
 const PROFILE_NAME = /^[A-Za-z0-9_-]{1,64}$/u
-const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/u
+const VERSION = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u
 const STOP_TIMEOUT_MS = 15_000
 const START_TIMEOUT_MS = 45_000
+const HEALTH_STABILITY_MS = 2_000
 
 function usage() {
   console.error('Usage: prismflow-dsh-update --package <package-spec> [--profile <name>] [--dsh-home <path>] [--dsh-version <version>] [--no-restart]')
@@ -53,6 +54,14 @@ function parseArgs(argv) {
 function command(name) {
   if (process.platform !== 'win32' || /[\\/]/u.test(name) || /\.(?:cmd|exe)$/iu.test(name)) return name
   return `${name}.cmd`
+}
+function dshDlxArgs(options, ...args) {
+  // DSH releases use ranges for their Cordis runtime dependencies. Resolve the
+  // dependency graph as it existed when that exact DSH release was published.
+  // A dedicated cache also avoids reusing a graph that an earlier plain `dlx`
+  // resolved after incompatible Cordis/HMR versions were published.
+  const cacheDir = join(options.dshHome, 'cache', 'prismflow-dsh-dlx')
+  return [`--config.cache-dir=${cacheDir}`, '--config.resolution-mode=time-based', 'dlx', `@deepseek-ai/dsh@${options.dshVersion}`, ...args]
 }
 function run(name, args, options = {}) {
   const result = spawnSync(command(name), args, {
@@ -144,13 +153,14 @@ async function stopDshProcesses(entries) {
 }
 function startDshWeb(options, port) {
   const environment = { ...process.env, DSH_HOME: options.dshHome }
-  const args = ['dlx', `@deepseek-ai/dsh@${options.dshVersion}`, options.profileName, '--port', String(port), '--no-open']
+  const args = dshDlxArgs(options, options.profileName, '--port', String(port), '--no-open')
   if (process.platform === 'win32') {
     const result = spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
-      "Start-Process -FilePath 'pnpm.cmd' -ArgumentList @('dlx', $env:PRISMFLOW_DSH_PACKAGE, $env:PRISMFLOW_DSH_PROFILE, '--port', $env:PRISMFLOW_DSH_PORT, '--no-open') -RedirectStandardOutput $env:PRISMFLOW_DSH_STDOUT -RedirectStandardError $env:PRISMFLOW_DSH_STDERR -WindowStyle Hidden"], {
+      "Start-Process -FilePath 'pnpm.cmd' -ArgumentList @($env:PRISMFLOW_DSH_CACHE, '--config.resolution-mode=time-based', 'dlx', $env:PRISMFLOW_DSH_PACKAGE, $env:PRISMFLOW_DSH_PROFILE, '--port', $env:PRISMFLOW_DSH_PORT, '--no-open') -RedirectStandardOutput $env:PRISMFLOW_DSH_STDOUT -RedirectStandardError $env:PRISMFLOW_DSH_STDERR -WindowStyle Hidden"], {
       stdio: 'ignore', windowsHide: true,
       env: {
         ...environment,
+        PRISMFLOW_DSH_CACHE: `--config.cache-dir=${join(options.dshHome, 'cache', 'prismflow-dsh-dlx')}`,
         PRISMFLOW_DSH_PACKAGE: `@deepseek-ai/dsh@${options.dshVersion}`,
         PRISMFLOW_DSH_PROFILE: options.profileName,
         PRISMFLOW_DSH_PORT: String(port),
@@ -167,19 +177,33 @@ function startDshWeb(options, port) {
 }
 async function waitForHealth(port) {
   const deadline = Date.now() + START_TIMEOUT_MS
+  let healthySince = 0
+  let healthyValue
   let lastError = 'not started'
   while (Date.now() < deadline) {
     try {
       const response = await fetch(`http://127.0.0.1:${port}/api/prismflow/status`, { signal: AbortSignal.timeout(2_000) })
       if (response.ok) {
         const value = await response.json()
-        if (value && typeof value === 'object') return value
-        lastError = 'status response was malformed'
-      } else lastError = `status returned HTTP ${response.status}`
-    } catch (error) { lastError = error.message }
+        if (value && typeof value === 'object') {
+          healthySince ||= Date.now()
+          healthyValue = value
+          if (Date.now() - healthySince >= HEALTH_STABILITY_MS) return healthyValue
+        } else {
+          healthySince = 0
+          lastError = 'status response was malformed'
+        }
+      } else {
+        healthySince = 0
+        lastError = `status returned HTTP ${response.status}`
+      }
+    } catch (error) {
+      healthySince = 0
+      lastError = error.message
+    }
     await delay(500)
   }
-  fail(`DSH Web did not become healthy on port ${port}: ${lastError}`)
+  fail(`DSH Web did not remain healthy on port ${port}: ${lastError}`)
 }
 
 async function main() {
@@ -202,8 +226,8 @@ async function main() {
   try {
     await stopDshProcesses(before)
     const environment = { ...process.env, DSH_HOME: options.dshHome }
-    run('pnpm', ['dlx', `@deepseek-ai/dsh@${options.dshVersion}`, 'plugin', '--profile', options.profileName,
-      'add', '--allow-build=sharp', options.packageSpec], { env: environment })
+    run('pnpm', dshDlxArgs(options, 'plugin', '--profile', options.profileName,
+      'add', '--allow-build=sharp', options.packageSpec), { env: environment })
     const installer = join(profileDir, 'node_modules', '@prismflow', 'dsh', 'scripts', 'install.mjs')
     if (!existsSync(installer)) fail(`updated package did not expose its installer: ${installer}`)
     run(process.execPath, [installer, '--profile', options.profileName, '--dsh-home', options.dshHome,

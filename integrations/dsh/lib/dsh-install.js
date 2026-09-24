@@ -10,12 +10,14 @@ const DEFAULT_GENERATOR_BUILDER_PROFILE = Object.freeze({
   maxSteps: 8, maxInputChars: 100000, maxIntermediateOutputChars: 100000, maxCombinedInputChars: 250000,
   maxOutputChars: 100000, maxPromptAggregateChars: 32000,
 })
-const COMPATIBLE_DSH_VERSION = /^0\.1\.(\d+)(?:-rc\.([1-9]\d*))?$/u
+const SEMVER = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/u
+const MINIMUM_DSH_VERSION = Object.freeze({ major: 0, minor: 1, patch: 0, prerelease: Object.freeze(['rc', 6]) })
 const DSH_VERSION_SENTINELS = Object.freeze([
   '@deepseek-ai/dsh-base',
   '@deepseek-ai/dsh-storage-domain',
   '@deepseek-ai/dsh-tools',
   '@deepseek-ai/dsh-client-ui-layout',
+  '@deepseek-ai/dsh-storage-sqlite',
 ])
 const ENABLED_RUNTIME_IDS = Object.freeze([
   'prismflow-store-source-settings',
@@ -30,6 +32,7 @@ const ENABLED_RUNTIME_IDS = Object.freeze([
   'prismflow-store-rss-outputs',
   'prismflow-store-toolsets',
   'prismflow-store-image-generation-settings',
+  'prismflow-store-ai-prompts',
   'prismflow-skill-provider',
   'prismflow-tool-production-media',
   'prismflow-store-production',
@@ -100,12 +103,43 @@ export function resolveInstallerDshHome(explicitHome, env = process.env, userHom
   return join(userHome, '.dsh')
 }
 
+function parseSemver(version) {
+  const match = typeof version === 'string' ? SEMVER.exec(version) : null
+  if (!match) return undefined
+  const core = match.slice(1, 4).map(Number)
+  const identifiers = match[4]?.split('.') ?? []
+  if (core.some(value => !Number.isSafeInteger(value))
+    || identifiers.some(identifier => /^\d+$/u.test(identifier) && (identifier.length > 1 && identifier.startsWith('0')))) return undefined
+  const prerelease = identifiers.map(identifier => /^\d+$/u.test(identifier) ? Number(identifier) : identifier)
+  if (prerelease.some(identifier => typeof identifier === 'number' && !Number.isSafeInteger(identifier))) return undefined
+  return { major: core[0], minor: core[1], patch: core[2], prerelease }
+}
+
+function comparePrerelease(left, right) {
+  if (!left.length || !right.length) return left.length === right.length ? 0 : left.length ? -1 : 1
+  for (let index = 0; index < Math.max(left.length, right.length); index += 1) {
+    const leftIdentifier = left[index]
+    const rightIdentifier = right[index]
+    if (leftIdentifier === undefined || rightIdentifier === undefined) return leftIdentifier === undefined ? -1 : 1
+    if (leftIdentifier === rightIdentifier) continue
+    if (typeof leftIdentifier === 'number' && typeof rightIdentifier === 'number') return leftIdentifier < rightIdentifier ? -1 : 1
+    if (typeof leftIdentifier === 'number' || typeof rightIdentifier === 'number') return typeof leftIdentifier === 'number' ? -1 : 1
+    return leftIdentifier < rightIdentifier ? -1 : 1
+  }
+  return 0
+}
+
+function compareSemver(left, right) {
+  for (const field of ['major', 'minor', 'patch']) {
+    if (left[field] !== right[field]) return left[field] < right[field] ? -1 : 1
+  }
+  return comparePrerelease(left.prerelease, right.prerelease)
+}
+
 export function sqliteVersionForDsh(dshVersion) {
-  const match = typeof dshVersion === 'string' ? COMPATIBLE_DSH_VERSION.exec(dshVersion) : null
-  const patch = match ? Number(match[1]) : -1
-  const releaseCandidate = match?.[2] === undefined ? undefined : Number(match[2])
-  if (!match || (patch === 0 && releaseCandidate !== undefined && releaseCandidate < 6)) {
-    fail(`unsupported DSH version ${JSON.stringify(dshVersion)}; expected a compatible 0.1.x RC/stable release at or after 0.1.0-rc.6`)
+  const parsed = parseSemver(dshVersion)
+  if (!parsed || compareSemver(parsed, MINIMUM_DSH_VERSION) < 0) {
+    fail(`unsupported DSH version ${JSON.stringify(dshVersion)}; expected a semantic version at or after 0.1.0-rc.6`)
   }
   return dshVersion
 }

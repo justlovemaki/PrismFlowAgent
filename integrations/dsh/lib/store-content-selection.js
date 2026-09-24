@@ -432,6 +432,83 @@ export class PrismContentSelectionStore extends Service {
     operation.finally(() => { if (this.activeCreate === operation) this.activeCreate = undefined }).catch(() => {})
     return operation
   }
+  async reviewPendingContent(query = {}, execution = {}) {
+    if (this.stopping) return Promise.reject(new Error('AI selection store is stopping'))
+    const signals = [execution.signal, this.shutdownController.signal].filter(Boolean)
+    const signal = signals.length === 1 ? signals[0] : AbortSignal.any(signals)
+    const exec = { ...execution, signal }
+    const snapshot = await this.ctx.prismContentRelevance.snapshotCurrent(query, exec)
+    throwIfAborted(signal)
+    const publishedSnapshot = this.publishedSemanticSnapshot()
+    const publishedContentStoreIds = new Set(publishedSnapshot.exactStoreIds)
+    const snapshotClaims = [...snapshot.matched, ...snapshot.ambiguous, ...snapshot.unmatched]
+    const reviewClaims = snapshotClaims
+      .filter(claim => !publishedContentStoreIds.has(claim.record.storeId))
+      .sort((left, right) => left.record.storeId.localeCompare(right.record.storeId))
+    const reviewer = this.reviewer
+    if (!reviewer) throw new Error('AI editorial reviewer is unavailable')
+    let cachedCount = 0
+    let alreadyScoredHigh = 0
+    let alreadyScoredLow = 0
+    const pending = []
+    for (const claim of reviewClaims) {
+      const cached = validReview(this.requireReviews().get(claim.record.storeId), claim.record.storeId)
+      if (cached && cached.contentHash === claim.contentHash
+        && cached.relevanceProfileFingerprint === snapshot.relevanceProfileFingerprint
+        && cached.reviewerProfileFingerprint === reviewer.fingerprint) {
+        cachedCount += 1
+        if (cached.aiScore >= reviewer.minimumAiScore) alreadyScoredHigh += 1
+        else alreadyScoredLow += 1
+      } else {
+        pending.push(claim)
+      }
+    }
+    const pendingBatches = []
+    for (let index = 0; index < pending.length; index += reviewer.batchSize) {
+      pendingBatches.push(pending.slice(index, index + reviewer.batchSize))
+    }
+    const REVIEW_CONCURRENCY = 3
+    let nextBatchIndex = 0
+    let newlyScoredHigh = 0
+    let newlyScoredLow = 0
+    const reviewWorkers = Array.from({ length: Math.min(REVIEW_CONCURRENCY, pendingBatches.length) }, async () => {
+      while (nextBatchIndex < pendingBatches.length) {
+        throwIfAborted(signal)
+        const batch = pendingBatches[nextBatchIndex]
+        nextBatchIndex += 1
+        const cards = batch.map(claim => reviewerCard(claim, reviewer.maxCardChars))
+        const decisions = await reviewer.reviewBatch(cards, exec)
+        throwIfAborted(signal)
+        const rows = decisions.map(decision => {
+          const claim = batch.find(item => item.record.storeId === decision.storeId)
+          if (!claim) throw new Error('AI editorial reviewer returned an unknown result id')
+          return {
+            version: 2, storeId: decision.storeId, sourceId: claim.record.sourceId, contentHash: claim.contentHash,
+            relevanceProfileFingerprint: snapshot.relevanceProfileFingerprint, reviewerProfileFingerprint: reviewer.fingerprint,
+            topics: decision.topics, aiSummary: decision.aiSummary, aiScore: decision.aiScore,
+            reason: decision.reason, reviewedAt: new Date().toISOString(),
+          }
+        })
+        await this.mutate(async () => { for (const row of rows) await this.requireReviews().put(row.storeId, row) })
+        for (const row of rows) {
+          if (row.aiScore >= reviewer.minimumAiScore) newlyScoredHigh += 1
+          else newlyScoredLow += 1
+        }
+      }
+    })
+    await Promise.all(reviewWorkers)
+    return {
+      totalCandidates: reviewClaims.length,
+      cachedCount,
+      newlyReviewedCount: pending.length,
+      qualifyingCount: alreadyScoredHigh + newlyScoredHigh,
+      belowThresholdCount: alreadyScoredLow + newlyScoredLow,
+      minimumAiScore: reviewer.minimumAiScore,
+      hours: snapshot.hours,
+      asOf: snapshot.asOf,
+    }
+  }
+
   async createInner(query, execution) {
     const maxItems = integer(query.maxItems, this.config.defaultMaxItems, 'maxItems', 1, this.config.maxItems)
     const maxInputTokens = integer(query.maxInputTokens, this.config.defaultMaxInputTokens, 'maxInputTokens', 1024, this.config.maxInputTokens)
@@ -454,36 +531,21 @@ export class PrismContentSelectionStore extends Service {
     if (reviewClaims.length === 0) throw new Error('No unpublished content remains in the AI selection window')
     const reviewer = this.reviewer
     if (!reviewer) throw new Error('AI editorial reviewer is unavailable')
-    const acceptedReviews = []; let rejectedReviews = 0; const pending = []
+    const acceptedReviews = []; let rejectedReviews = 0; let pendingReviews = 0
     for (const claim of reviewClaims) {
       const cached = validReview(this.requireReviews().get(claim.record.storeId), claim.record.storeId)
       if (cached && cached.contentHash === claim.contentHash
         && cached.relevanceProfileFingerprint === snapshot.relevanceProfileFingerprint
         && cached.reviewerProfileFingerprint === reviewer.fingerprint) {
         if (cached.aiScore >= reviewer.minimumAiScore) acceptedReviews.push({ claim, review: cached }); else rejectedReviews += 1
-      } else pending.push(claim)
+      } else pendingReviews += 1
     }
-    for (let index = 0; index < pending.length; index += reviewer.batchSize) {
-      throwIfAborted(execution.signal)
-      const batch = pending.slice(index, index + reviewer.batchSize)
-      const cards = batch.map(claim => reviewerCard(claim, reviewer.maxCardChars))
-      const decisions = await reviewer.reviewBatch(cards, execution)
-      throwIfAborted(execution.signal)
-      const rows = decisions.map(decision => {
-        const claim = batch.find(item => item.record.storeId === decision.storeId)
-        if (!claim) throw new Error('AI editorial reviewer returned an unknown result id')
-        return {
-          version: 2, storeId: decision.storeId, sourceId: claim.record.sourceId, contentHash: claim.contentHash,
-          relevanceProfileFingerprint: snapshot.relevanceProfileFingerprint, reviewerProfileFingerprint: reviewer.fingerprint,
-          topics: decision.topics, aiSummary: decision.aiSummary, aiScore: decision.aiScore,
-          reason: decision.reason, reviewedAt: new Date().toISOString(),
-        }
-      })
-      await this.mutate(async () => { for (const row of rows) await this.requireReviews().put(row.storeId, row) })
-      for (const row of rows) {
-        const claim = batch.find(item => item.record.storeId === row.storeId)
-        if (row.aiScore >= reviewer.minimumAiScore) acceptedReviews.push({ claim, review: row }); else rejectedReviews += 1
-      }
+    const reviewedCount = acceptedReviews.length + rejectedReviews
+    if (reviewedCount === 0) {
+      throw new Error(`No cached AI reviews are available for Selection; ${pendingReviews} candidate(s) require explicit prismflow_review_pending_content first`)
+    }
+    if (pendingReviews > 0) {
+      this.ctx.logger?.info?.(`AI Selection skipped ${pendingReviews} candidate(s) without a current cached AI review.`)
     }
     const candidates = acceptedReviews.map(({ claim, review }) => ({
       record: claim.record, contentHash: claim.contentHash,
@@ -553,7 +615,7 @@ export class PrismContentSelectionStore extends Service {
     if (sourceQuota) {
       const packedQuotaCount = packed.filter(item => item.ranked.cluster.representative.record.sourceId === sourceQuota.sourceId).length
       if (packedQuotaCount < sourceQuota.minItems || packedQuotaCount > sourceQuota.maxItems) {
-        throw new Error(`Packed material violates source quota for ${sourceQuota.sourceId}: expected ${sourceQuota.minItems}-${sourceQuota.maxItems}, got ${packedQuotaCount}`)
+        this.ctx.logger?.warn?.(`Packed material falls short of source quota for ${sourceQuota.sourceId}: expected ${sourceQuota.minItems}-${sourceQuota.maxItems}, got ${packedQuotaCount}; proceeding with best effort.`)
       }
     }
     const relevanceClaims = []
@@ -589,7 +651,7 @@ export class PrismContentSelectionStore extends Service {
       counts: {
         candidate: snapshot.candidateCount, publishedExcluded, semanticPublishedExcluded,
         localMatched: snapshot.matched.length, ambiguous: snapshot.ambiguous.length,
-        reviewed: reviewClaims.length, reviewAccepted: acceptedReviews.length, reviewRejected: rejectedReviews,
+        reviewed: reviewedCount, reviewAccepted: acceptedReviews.length, reviewRejected: rejectedReviews,
         eventClusters: clusters.length, selected: items.length,
       },
       items, totalMaterialChars: JSON.stringify(items.map(item => item.material)).length,

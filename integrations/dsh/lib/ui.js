@@ -98,7 +98,12 @@ function validateLoopbackHost(req) {
 function validateSameOrigin(req, authority, originRequired = false) {
   const origin = req.headers.origin
   if (origin === undefined) {
-    if (originRequired) throw new HttpError(403, 'An explicit same-origin request is required')
+    // DSH's paired remote desktop strips the public Origin before reissuing the
+    // already device-gated request to loopback and stamps this forbidden
+    // browser header. Host and peer loopback validation still run separately.
+    if (originRequired && req.headers['sec-fetch-site'] !== 'same-origin') {
+      throw new HttpError(403, 'An explicit same-origin request is required')
+    }
     return
   }
   try {
@@ -883,6 +888,9 @@ async function drainForProfileApply(ctx, timeoutMs = 30_000) {
     activeAttempts: Math.min(activeAttempts, 20_000), restartAllowed }
 }
 
+let cachedPendingOperation = null
+let cachedPendingOperationExpiresAt = 0
+
 async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
   const pathname = requestUrl.pathname
   const method = req.method ?? 'GET'
@@ -969,6 +977,7 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
         generatorWorkflows: generatorWorkflows !== undefined,
         toolsets: ctx.get('prismToolsets') !== undefined,
         imageGenerationSettings: ctx.get('prismImageGenerationSettings') !== undefined,
+        aiPrompts: ctx.get('prismAiPrompts') !== undefined,
         rssOutputs: rssOutputs !== undefined,
       },
       counts: {
@@ -1077,6 +1086,45 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
     const body = await readJson(req); allowFields(body, [])
     try { return jsonResponse(res, 200, { credential: await requireService(ctx, 'prismImageGenerationSettings', 'Image generation settings').unsetCredential() }) }
     catch (error) { throw imageSettingsError(error) }
+  }
+
+  if (method === 'GET' && pathname === `${API_PREFIX}/ai-prompts/settings`) {
+    const settings = requireService(ctx, 'prismAiPrompts', 'AI prompts settings')
+    return jsonResponse(res, 200, { settings: settings.get(), defaults: settings.getDefaults() })
+  }
+
+  if (method === 'POST' && pathname === `${API_PREFIX}/ai-prompts/settings`) {
+    const body = await readJson(req); allowFields(body, ['settings', 'expected'])
+    const input = plainObject(body.settings, 'settings')
+    allowFields(input, ['editorialInstruction', 'clusterInstruction', 'hotKeywordsPrompt', 'hotKeywordsConsolidationPrompt'])
+    const expected = plainObject(body.expected, 'expected'); allowFields(expected, ['version', 'sha256'])
+    try {
+      const service = requireService(ctx, 'prismAiPrompts', 'AI prompts settings')
+      const settings = await service.update(input, expected)
+      return jsonResponse(res, 200, { settings, defaults: service.getDefaults() })
+    } catch (error) {
+      if (error?.name === 'AiPromptsError') {
+        const status = error.code === 'conflict' ? 409 : error.code === 'unavailable' ? 503 : 400
+        throw new HttpError(status, error.message, { code: `ai_prompts_${error.code}` })
+      }
+      throw error
+    }
+  }
+
+  if (method === 'POST' && pathname === `${API_PREFIX}/ai-prompts/reset`) {
+    const body = await readJson(req); allowFields(body, ['expected'])
+    const expected = plainObject(body.expected, 'expected'); allowFields(expected, ['version', 'sha256'])
+    try {
+      const service = requireService(ctx, 'prismAiPrompts', 'AI prompts settings')
+      const settings = await service.resetToDefaults(expected)
+      return jsonResponse(res, 200, { settings, defaults: service.getDefaults() })
+    } catch (error) {
+      if (error?.name === 'AiPromptsError') {
+        const status = error.code === 'conflict' ? 409 : error.code === 'unavailable' ? 503 : 400
+        throw new HttpError(status, error.message, { code: `ai_prompts_${error.code}` })
+      }
+      throw error
+    }
   }
 
   if (method === 'GET' && pathname === `${API_PREFIX}/categories`) {
@@ -1321,11 +1369,23 @@ async function routeRequest(ctx, req, res, requestUrl, profileBinding) {
   if (method === 'GET' && pathname === `${API_PREFIX}/publisher-profile/pending-operation`) {
     allowQuery(requestUrl.searchParams, [])
     const binding = publisherProfileBinding(profileBinding)
-    try { return jsonResponse(res, 200, { operation: getPendingPublisherProfileOperation(binding.profileName, { home: binding.dshHome }) ?? null }) }
+    const now = Date.now()
+    if (cachedPendingOperation && now < cachedPendingOperationExpiresAt) {
+      return jsonResponse(res, 200, cachedPendingOperation)
+    }
+    try {
+      const operation = getPendingPublisherProfileOperation(binding.profileName, { home: binding.dshHome }) ?? null
+      const payload = { operation }
+      cachedPendingOperation = payload
+      cachedPendingOperationExpiresAt = now + 3000 // 3 seconds TTL
+      return jsonResponse(res, 200, payload)
+    }
     catch (error) { throw publisherProfileError(error) }
   }
 
   if (method === 'POST' && pathname === `${API_PREFIX}/publisher-profile/pending-operation`) {
+    cachedPendingOperation = null
+    cachedPendingOperationExpiresAt = 0
     allowQuery(requestUrl.searchParams, [])
     const body = await readJson(req)
     allowFields(body, ['action', 'operationId'])

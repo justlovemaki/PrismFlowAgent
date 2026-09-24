@@ -7,6 +7,9 @@ import { documentFingerprint, normalizePublisherConfig, publisherConfigRevision,
 import { validatePublisherChangePlan } from '../lib/publisher-profile-cli.js'
 
 const clientPath = new URL('../lib/client.js', import.meta.url)
+const packageEntryPath = new URL('../index.js', import.meta.url)
+const runtimePackagePath = new URL('../lib/package.json', import.meta.url)
+const bundlePatchPath = new URL('../cordis.patch.yml', import.meta.url)
 const packagePath = new URL('../package.json', import.meta.url)
 const installerPath = new URL('../scripts/install-dashboard.mjs', import.meta.url)
 const packageVersion = JSON.parse(await readFile(packagePath, 'utf8')).version
@@ -160,16 +163,29 @@ const status = {
   counts: { sources: 2, sourceSettings: 1, contents: 42, publishers: 1, generators: 1, generatorWorkflows: 1, rssOutputs: 0 },
 }
 
-test('dashboard client is exported by the owning package without a generated file dependency', async () => {
+test('dashboard client has one bare-package DSH 0.1.7+ owner while retaining the legacy client alias', async () => {
   const packageJson = JSON.parse(await readFile(packagePath, 'utf8'))
+  const runtimePackage = JSON.parse(await readFile(runtimePackagePath, 'utf8'))
+  const clientSource = await readFile(clientPath, 'utf8')
+  const packageEntry = await readFile(packageEntryPath, 'utf8')
+  const bundlePatch = await readFile(bundlePatchPath, 'utf8')
   const installer = await readFile(installerPath, 'utf8')
   assert.equal(packageJson.version, packageVersion)
   assert.equal(packageJson.dependencies['prism-flow-agent'], undefined, 'packed DSH package must not depend on its repository parent')
-  assert.equal(packageJson.exports['./ui/package.json'], './package.json')
+  assert.equal(packageJson.main, './index.js')
+  assert.equal(packageJson.exports['.'], './index.js')
+  assert.equal(packageJson.exports['./ui/package.json'], undefined)
+  assert.ok(packageJson.files.includes('index.js'))
   assert.deepEqual(packageJson.dsh.client, {
     platform: 'web',
     inject: ['@deepseek-ai/dsh-client-ui-layout', '@deepseek-ai/dsh-client-ui-sidebar'],
   })
+  assert.deepEqual(runtimePackage, { name: '@prismflow/dsh', type: 'module', private: true })
+  assert.match(packageEntry, /export \{ default \} from '\.\/lib\/core\.js'/u)
+  assert.match(bundlePatch, /id: prismflow-core\s+name: '@prismflow\/dsh'/u)
+  assert.doesNotMatch(bundlePatch, /prismflow-client-carrier/u)
+  assert.match(clientSource, /load\(\{ id: '@prismflow\/dsh', factory: prismflowClientFactory \}\)/u)
+  assert.match(clientSource, /load\(\{ id: '@prismflow\/dsh\/ui', factory: prismflowClientFactory \}\)/u)
   assert.match(installer, /delete profilePackage\.dependencies\['@prismflow\/dsh-dashboard'\]/u)
   assert.doesNotMatch(installer, /file:\.prismflow\/dashboard/u)
 })
