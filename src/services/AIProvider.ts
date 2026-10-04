@@ -132,7 +132,9 @@ const getCustomFetch = (name: string, dispatcher?: any) => {
     try {
       const res = await fetch(input, { ...init, dispatcher } as any);
       if (!res.ok) {
-        const errorText = await res.text().catch(() => 'No error text');
+        // Read a clone so the SDK can still consume the original error body.
+        // Consuming `res` here masks useful API errors with "Body has already been read".
+        const errorText = await res.clone().text().catch(() => 'No error text');
         console.error(`[${name}] API Error: ${res.status} ${errorText}`);
       }
       return res;
