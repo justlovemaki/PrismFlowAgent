@@ -55,7 +55,7 @@
     "sqlite3": "^5.1.7",
     "typeid-js": "^1.2.0",
     "undici": "^7.22.0",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "yaml": "^2.8.2"
   },
   "devDependencies": {
